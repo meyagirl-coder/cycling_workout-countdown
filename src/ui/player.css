@@ -1,0 +1,175 @@
+:root {
+  --zone-gray: #64748b;
+  --zone-blue: #2563eb;
+  --zone-green: #16a34a;
+  --zone-yellow: #ca8a04;
+  --zone-orange: #ea580c;
+  --zone-red: #dc2626;
+  --zone-purple: #9333ea;
+  --zone-none: #334155;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: #020617;
+  color: #f8fafc;
+  font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.player {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 1.5rem 1.25rem 2.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.player-header {
+  text-align: center;
+}
+
+.workout-name {
+  margin: 0 0 0.35rem;
+  font-size: 1.5rem;
+  font-weight: 800;
+}
+
+.workout-meta {
+  display: flex;
+  justify-content: center;
+  gap: 1rem;
+  font-size: 0.95rem;
+  color: #94a3b8;
+}
+
+.timeline {
+  position: relative;
+  height: 2.25rem;
+  background: #0f172a;
+  border-radius: 0.75rem;
+  overflow: hidden;
+}
+
+.timeline-track {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+
+.timeline-segment {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  background: var(--zone-none);
+}
+
+.timeline-segment.zone-none {
+  background: repeating-linear-gradient(45deg, #1e293b, #1e293b 6px, #0f172a 6px, #0f172a 12px);
+}
+
+.timeline-cursor {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: #f8fafc;
+  box-shadow: 0 0 6px rgba(248, 250, 252, 0.9);
+  transition: left 0.2s linear;
+}
+
+.status-panel {
+  display: flex;
+  justify-content: space-around;
+  align-items: center;
+  padding: 2rem 1rem;
+  border-radius: 1.5rem;
+  background: var(--zone-none);
+  transition: background-color 0.5s ease;
+}
+
+.countdown-number {
+  font-size: 4.5rem;
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+.countdown-label,
+.target-pct {
+  margin-top: 0.5rem;
+  font-size: 0.95rem;
+  opacity: 0.85;
+}
+
+.target-watt {
+  font-size: 3.25rem;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.controls {
+  display: grid;
+  grid-template-columns: 1fr 2fr 1fr;
+  gap: 0.75rem;
+}
+
+.controls .btn-stop {
+  grid-column: 1 / -1;
+}
+
+.btn {
+  padding: 1rem;
+  border: none;
+  border-radius: 1rem;
+  font-size: 1.1rem;
+  font-weight: 700;
+  cursor: pointer;
+  background: #1e293b;
+  color: #f8fafc;
+}
+
+.btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.btn-primary {
+  background: #f8fafc;
+  color: #020617;
+}
+
+.btn-danger {
+  background: transparent;
+  color: #f87171;
+  border: 1px solid #7f1d1d;
+}
+
+.finished-banner {
+  text-align: center;
+  font-size: 1.25rem;
+  font-weight: 800;
+  padding: 1rem;
+  border-radius: 1rem;
+  background: #14532d;
+}
+
+.finished-banner.hidden {
+  display: none;
+}
+
+.zone-gray { background-color: var(--zone-gray); }
+.zone-blue { background-color: var(--zone-blue); }
+.zone-green { background-color: var(--zone-green); }
+.zone-yellow { background-color: var(--zone-yellow); }
+.zone-orange { background-color: var(--zone-orange); }
+.zone-red { background-color: var(--zone-red); }
+.zone-purple { background-color: var(--zone-purple); }
+.zone-none { background-color: var(--zone-none); }
