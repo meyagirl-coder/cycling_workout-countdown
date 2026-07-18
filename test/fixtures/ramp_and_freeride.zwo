@@ -1,0 +1,14 @@
+<workout_file>
+    <author>Test Author</author>
+    <name>Ramp Builder with Recovery</name>
+    <description>Ramp up, free ride recovery, ramp down - tests ramp interpolation and freeride null power.</description>
+    <sportType>bike</sportType>
+    <tags/>
+    <workout>
+        <Warmup Duration="300" PowerLow="0.4" PowerHigh="0.6"/>
+        <Ramp Duration="300" PowerLow="0.6" PowerHigh="1.0"/>
+        <FreeRide Duration="180"/>
+        <Ramp Duration="240" PowerLow="1.0" PowerHigh="0.6" Cadence="85"/>
+        <Cooldown Duration="300" PowerLow="0.6" PowerHigh="0.4"/>
+    </workout>
+</workout_file>

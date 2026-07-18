@@ -1,0 +1,16 @@
+{
+  "name": "cycling-workout-countdown",
+  "version": "0.1.0",
+  "description": "自行車課表執行倒數計時器 - 純前端 PWA",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "devDependencies": {
+    "ajv": "^8.17.1",
+    "jsdom": "^25.0.1",
+    "vitest": "^2.1.9"
+  }
+}
