@@ -1,6 +1,7 @@
 import { extractEventId } from '../integrations/intervalsIcu.js';
 import { parseZwoXml } from '../parser/zwoParser.js';
 import { createTimerWorkerClient } from '../worker/timerWorkerClient.js';
+import { handleTimerEvents, playCountdownBeep, speakCountdownWarning } from './countdownAlerts.js';
 import { createPlayerView } from './renderPlayer.js';
 import { createUploadView } from './uploadView.js';
 
@@ -46,9 +47,19 @@ export function initPlayerApp(rootEl) {
     onStop: () => client.stop(),
   });
 
-  client.onUpdate((state) => {
+  client.onUpdate((state, events) => {
     latestState = state;
-    if (currentWorkout) playerView.update(currentWorkout, state, DEFAULT_FTP);
+    if (!currentWorkout) return;
+
+    playerView.update(currentWorkout, state, DEFAULT_FTP);
+    handleTimerEvents(events, {
+      workout: currentWorkout,
+      state,
+      ftp: DEFAULT_FTP,
+      playBeep: playCountdownBeep,
+      speak: speakCountdownWarning,
+      showNextIntervalBanner: playerView.showNextIntervalBanner,
+    });
   });
 
   /** 解析成功就切到執行頁；失敗就把訊息顯示在上傳畫面，回傳是否成功 */

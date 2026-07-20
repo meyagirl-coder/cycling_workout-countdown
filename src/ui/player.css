@@ -229,6 +229,20 @@ body {
   transition: left 0.2s linear;
 }
 
+.next-interval-banner {
+  text-align: center;
+  padding: 0.85rem 1rem;
+  border-radius: 1rem;
+  background: #1e293b;
+  border: 1px solid #334155;
+  font-weight: 700;
+  font-size: 1.05rem;
+}
+
+.next-interval-banner.hidden {
+  display: none;
+}
+
 .status-panel {
   display: flex;
   justify-content: space-around;
@@ -244,6 +258,28 @@ body {
   font-weight: 900;
   font-variant-numeric: tabular-nums;
   line-height: 1;
+}
+
+/* 剩餘 <=10 秒（本組時長 >10 秒）時的倒數視覺提示，規格 §4.4 */
+.countdown-number.countdown-urgent {
+  color: #f87171;
+  animation: countdown-pulse 1s ease-in-out infinite;
+}
+
+@keyframes countdown-pulse {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.08);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .countdown-number.countdown-urgent {
+    animation: none;
+  }
 }
 
 .countdown-label,

@@ -1,14 +1,7 @@
 import { computeCurrentTarget } from '../engine/timerEngine.js';
 import { formatDurationLabel, formatMMSS } from './formatTime.js';
+import { INTERVAL_TYPE_LABELS } from './intervalLabels.js';
 import { buildIntervalBoundaries, buildTimelineSegments, computeCursorPct } from './timelineSegments.js';
-
-const INTERVAL_TYPE_LABELS = {
-  warmup: '熱身',
-  steady: '穩定',
-  ramp: '漸變',
-  freeride: '自由騎乘',
-  cooldown: '收操',
-};
 
 const STATUS_LABELS = {
   idle: '尚未開始',
@@ -16,6 +9,12 @@ const STATUS_LABELS = {
   paused: '已暫停',
   finished: '已完成',
 };
+
+/** 剩餘時間 <= 這個秒數且本組時長 > 這個秒數才進入「倒數提示」視覺狀態（規格 §4.4） */
+const COUNTDOWN_URGENT_SECONDS = 10;
+
+/** 「下一組」提示 banner 顯示多久後自動收起 */
+const NEXT_INTERVAL_BANNER_MS = 5000;
 
 /**
  * 建立執行頁 UI（規格 §5）：課表名稱/總時長/目前組別、時間軸圖、大數字倒數、
@@ -41,6 +40,8 @@ export function createPlayerView(rootEl, handlers) {
         <div class="timeline-track"></div>
         <div class="timeline-cursor"></div>
       </div>
+
+      <div class="next-interval-banner hidden"></div>
 
       <div class="status-panel">
         <div class="countdown-block">
@@ -71,6 +72,7 @@ export function createPlayerView(rootEl, handlers) {
     intervalProgress: rootEl.querySelector('.interval-progress'),
     timelineTrack: rootEl.querySelector('.timeline-track'),
     timelineCursor: rootEl.querySelector('.timeline-cursor'),
+    nextIntervalBanner: rootEl.querySelector('.next-interval-banner'),
     statusPanel: rootEl.querySelector('.status-panel'),
     countdownNumber: rootEl.querySelector('.countdown-number'),
     countdownLabel: rootEl.querySelector('.countdown-label'),
@@ -126,6 +128,10 @@ export function createPlayerView(rootEl, handlers) {
     els.countdownNumber.textContent = formatMMSS(remaining);
     els.countdownLabel.textContent = `本組剩餘 · ${INTERVAL_TYPE_LABELS[currentInterval.type]}`;
 
+    // 剩餘 <=10 秒且本組時長 >10 秒才進入倒數提示視覺狀態，避免短組被誤判（規格 §4.4）
+    const isCountdownUrgent = currentInterval.duration > COUNTDOWN_URGENT_SECONDS && remaining > 0 && remaining <= COUNTDOWN_URGENT_SECONDS;
+    els.countdownNumber.classList.toggle('countdown-urgent', isCountdownUrgent);
+
     const target = computeCurrentTarget(workout, state.currentIntervalIndex, state.elapsedInInterval, ftp, state.powerAdjustPct);
     if (target.watts === null) {
       els.targetWatt.textContent = '自由騎乘';
@@ -147,5 +153,19 @@ export function createPlayerView(rootEl, handlers) {
     els.finishedBanner.classList.toggle('hidden', !isFinished);
   }
 
-  return { update, elements: els };
+  let nextIntervalBannerTimeoutId = null;
+
+  /** 切組瞬間顯示下一組資訊（時間/%FTP/瓦數），幾秒後自動收起（規格 §4.4） */
+  function showNextIntervalBanner(text) {
+    els.nextIntervalBanner.textContent = text;
+    els.nextIntervalBanner.classList.remove('hidden');
+
+    if (nextIntervalBannerTimeoutId !== null) clearTimeout(nextIntervalBannerTimeoutId);
+    nextIntervalBannerTimeoutId = setTimeout(() => {
+      els.nextIntervalBanner.classList.add('hidden');
+      nextIntervalBannerTimeoutId = null;
+    }, NEXT_INTERVAL_BANNER_MS);
+  }
+
+  return { update, showNextIntervalBanner, elements: els };
 }
