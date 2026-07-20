@@ -75,6 +75,16 @@ body {
   background: repeating-linear-gradient(45deg, #1e293b, #1e293b 6px, #0f172a 6px, #0f172a 12px);
 }
 
+/* 組別交界線：跟頁面底色同色，不管兩側區間顏色是否相同都看得出組別邊界 */
+.timeline-divider {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: #020617;
+  transform: translateX(-1px);
+}
+
 .timeline-cursor {
   position: absolute;
   top: 0;

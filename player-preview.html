@@ -88,6 +88,15 @@
     background: repeating-linear-gradient(45deg, #1e293b, #1e293b 6px, #0f172a 6px, #0f172a 12px);
   }
 
+  .timeline-divider {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 2px;
+    background: #020617;
+    transform: translateX(-1px);
+  }
+
   .timeline-cursor {
     position: absolute;
     top: 0;
@@ -399,16 +408,74 @@
   }
 
   // ---- src/ui/timelineSegments.js ----
-  function buildTimelineSegments(workout) {
+  const ZONE_BOUNDARIES = [55, 75, 90, 105, 120, 150];
+
+  function sliceIntervalByZone(iv) {
+    if (iv.type === 'freeride' || iv.powerStart === null || iv.powerEnd === null) {
+      return [{ startOffset: 0, endOffset: iv.duration, color: null }];
+    }
+
+    const { duration, powerStart, powerEnd } = iv;
+
+    if (duration <= 0 || powerStart === powerEnd) {
+      return [{ startOffset: 0, endOffset: duration, color: getZoneColor(powerStart).color }];
+    }
+
+    const lo = Math.min(powerStart, powerEnd);
+    const hi = Math.max(powerStart, powerEnd);
+
+    const offsets = new Set([0, duration]);
+    for (const boundary of ZONE_BOUNDARIES) {
+      if (boundary > lo && boundary < hi) {
+        const ratio = (boundary - powerStart) / (powerEnd - powerStart);
+        offsets.add(ratio * duration);
+      }
+    }
+
+    const sorted = Array.from(offsets).sort((a, b) => a - b);
+    const slices = [];
+    for (let i = 0; i < sorted.length - 1; i++) {
+      const startOffset = sorted[i];
+      const endOffset = sorted[i + 1];
+      const midRatio = (startOffset + endOffset) / 2 / duration;
+      const midPct = powerStart + (powerEnd - powerStart) * midRatio;
+      slices.push({ startOffset, endOffset, color: getZoneColor(midPct).color });
+    }
+    return slices;
+  }
+
+  function buildTimelineSegments(workout, adjustPct = 0) {
     const total = workout.totalDuration;
     let acc = 0;
-    return workout.intervals.map((iv) => {
-      const startPct = total > 0 ? (acc / total) * 100 : 0;
-      const widthPct = total > 0 ? (iv.duration / total) * 100 : 0;
+    const segments = [];
+
+    workout.intervals.forEach((iv, intervalIndex) => {
+      const shifted =
+        iv.powerStart === null || iv.powerEnd === null
+          ? iv
+          : { ...iv, powerStart: iv.powerStart + adjustPct, powerEnd: iv.powerEnd + adjustPct };
+
+      for (const slice of sliceIntervalByZone(shifted)) {
+        const startPct = total > 0 ? ((acc + slice.startOffset) / total) * 100 : 0;
+        const widthPct = total > 0 ? ((slice.endOffset - slice.startOffset) / total) * 100 : 0;
+        segments.push({ type: iv.type, intervalIndex, startPct, widthPct, color: slice.color });
+      }
       acc += iv.duration;
-      const color = iv.type === 'freeride' ? null : getZoneColor((iv.powerStart + iv.powerEnd) / 2).color;
-      return { type: iv.type, startPct, widthPct, color };
     });
+
+    return segments;
+  }
+
+  function buildIntervalBoundaries(workout) {
+    const total = workout.totalDuration;
+    if (total <= 0) return [];
+    let acc = 0;
+    const boundaries = [];
+    for (let i = 0; i < workout.intervals.length - 1; i++) {
+      acc += workout.intervals[i].duration;
+      boundaries.push((acc / total) * 100);
+    }
+    return boundaries;
   }
 
   function computeCursorPct(elapsedTotal, totalDuration) {
@@ -478,19 +545,27 @@
     els.redoBtn.addEventListener('click', () => handlers.onRedo());
     els.stopBtn.addEventListener('click', () => handlers.onStop());
 
-    let renderedWorkoutId = null;
+    let renderedTimelineKey = null;
 
-    function renderTimelineIfNeeded(workout) {
-      if (renderedWorkoutId === workout.id) return;
-      renderedWorkoutId = workout.id;
-      const segments = buildTimelineSegments(workout);
-      els.timelineTrack.innerHTML = segments
+    function renderTimelineIfNeeded(workout, adjustPct) {
+      const key = `${workout.id}::${adjustPct}`;
+      if (renderedTimelineKey === key) return;
+      renderedTimelineKey = key;
+
+      const segments = buildTimelineSegments(workout, adjustPct);
+      const segmentsHtml = segments
         .map((seg) => `<div class="timeline-segment ${seg.color ? `zone-${seg.color}` : 'zone-none'}" style="left:${seg.startPct}%;width:${seg.widthPct}%" title="${INTERVAL_TYPE_LABELS[seg.type]}"></div>`)
         .join('');
+
+      const dividersHtml = buildIntervalBoundaries(workout)
+        .map((pct) => `<div class="timeline-divider" style="left:${pct}%"></div>`)
+        .join('');
+
+      els.timelineTrack.innerHTML = segmentsHtml + dividersHtml;
     }
 
     function update(workout, state, ftp) {
-      renderTimelineIfNeeded(workout);
+      renderTimelineIfNeeded(workout, state.powerAdjustPct);
       els.workoutName.textContent = workout.name;
       els.totalDuration.textContent = `總時長 ${formatDurationLabel(workout.totalDuration)}`;
       els.intervalProgress.textContent = `第 ${state.currentIntervalIndex + 1} / ${workout.intervals.length} 組 · ${STATUS_LABELS[state.status]}`;

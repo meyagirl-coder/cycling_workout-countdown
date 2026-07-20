@@ -1,6 +1,6 @@
 import { computeCurrentTarget } from '../engine/timerEngine.js';
 import { formatDurationLabel, formatMMSS } from './formatTime.js';
-import { buildTimelineSegments, computeCursorPct } from './timelineSegments.js';
+import { buildIntervalBoundaries, buildTimelineSegments, computeCursorPct } from './timelineSegments.js';
 
 const INTERVAL_TYPE_LABELS = {
   warmup: '熱身',
@@ -88,23 +88,32 @@ export function createPlayerView(rootEl, handlers) {
   els.redoBtn.addEventListener('click', () => handlers.onRedo());
   els.stopBtn.addEventListener('click', () => handlers.onStop());
 
-  let renderedWorkoutId = null;
+  let renderedTimelineKey = null;
 
-  function renderTimelineIfNeeded(workout) {
-    if (renderedWorkoutId === workout.id) return;
-    renderedWorkoutId = workout.id;
+  function renderTimelineIfNeeded(workout, adjustPct) {
+    const key = `${workout.id}::${adjustPct}`;
+    if (renderedTimelineKey === key) return;
+    renderedTimelineKey = key;
 
-    const segments = buildTimelineSegments(workout);
-    els.timelineTrack.innerHTML = segments
+    // 顏色分段用瞬時功率區間（跟大字卡片背景色同一套 getZoneColor 邏輯）；
+    // 分隔線另外疊在上面，不管相鄰顏色是否相同都要看得出組別交界。
+    const segments = buildTimelineSegments(workout, adjustPct);
+    const segmentsHtml = segments
       .map(
         (seg) =>
           `<div class="timeline-segment ${seg.color ? `zone-${seg.color}` : 'zone-none'}" style="left:${seg.startPct}%;width:${seg.widthPct}%" title="${INTERVAL_TYPE_LABELS[seg.type]}"></div>`
       )
       .join('');
+
+    const dividersHtml = buildIntervalBoundaries(workout)
+      .map((pct) => `<div class="timeline-divider" style="left:${pct}%"></div>`)
+      .join('');
+
+    els.timelineTrack.innerHTML = segmentsHtml + dividersHtml;
   }
 
   function update(workout, state, ftp) {
-    renderTimelineIfNeeded(workout);
+    renderTimelineIfNeeded(workout, state.powerAdjustPct);
 
     els.workoutName.textContent = workout.name;
     els.totalDuration.textContent = `總時長 ${formatDurationLabel(workout.totalDuration)}`;
