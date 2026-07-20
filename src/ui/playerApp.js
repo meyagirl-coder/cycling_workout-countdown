@@ -122,7 +122,12 @@ export function initPlayerApp(rootEl) {
     try {
       let response;
       try {
-        response = await fetch(`${INTERVALS_ICU_PROXY_URL}?eventId=${encodeURIComponent(eventId)}`);
+        // cache: 'no-store' + 一個每次都不同的 _t 參數：即使中間有任何一層沒
+        // 完全遵守 Cache-Control（瀏覽器快取、公司 proxy…），URL 本身每次都
+        // 不同也能保證不會拿到別的 eventId 殘留下來的回應（規格 §5.1 修正）。
+        response = await fetch(`${INTERVALS_ICU_PROXY_URL}?eventId=${encodeURIComponent(eventId)}&_t=${Date.now()}`, {
+          cache: 'no-store',
+        });
       } catch {
         uploadView.showError('連線代理服務失敗，請確認網路連線後再試一次。');
         return;

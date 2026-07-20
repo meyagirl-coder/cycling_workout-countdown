@@ -214,13 +214,29 @@ App 一打開，使用者第一眼看到的畫面：
   - 一句簡短說明副標，例如「上傳課表檔案或連結 intervals.icu，開始你的結構化訓練」
   - 只在首頁（上傳畫面）顯示；進到執行頁後隱藏，把畫面空間讓給倒數計時跟
     target watt，這兩個在騎車時才是使用者真正需要一直盯著看的內容。
-- **本機檔案上傳**：選一份 `.zwo` 課表檔案，讀出內容後用 `parseZwoXml()` 解析
-- **intervals.icu 課表載入**：貼上課表網址或直接輸入 event ID，透過
-  `/api/intervals-zwo` 這個 Vercel Serverless Function 代理下載 `.zwo` 內容，
-  一樣用 `parseZwoXml()` 解析（只有部署在有 Serverless Function 的平台才會動，
-  純靜態 hosting 只保留檔案上傳）
+- **intervals.icu 課表載入（主要情境，畫面排最上面）**：貼上課表網址或直接
+  輸入 event ID，透過 `/api/intervals-zwo` 這個 Vercel Serverless Function
+  代理下載 `.zwo` 內容，一樣用 `parseZwoXml()` 解析（只有部署在有 Serverless
+  Function 的平台才會動，純靜態 hosting 只保留檔案上傳）。輸入框下方有「點此
+  查詢最近一筆行事曆訓練代碼」連結，用新分頁打開 `/api/intervals-events`
+  查詢工具（見 §5.1.1），不會離開目前畫面；區塊標題字級跟「上傳課表」一致、
+  置中對齊，視覺上兩個載入方式權重相同。
+- **本機檔案上傳（次要情境，畫面排在 intervals.icu 區塊下方，中間用「或」分
+  隔）**：選一份 `.zwo` 課表檔案，讀出內容後用 `parseZwoXml()` 解析
 - 解析失敗（檔案或 intervals.icu 回傳的內容都一樣）要有清楚的錯誤訊息，並
   留在首頁讓使用者重試，不能整個畫面壞掉
+
+#### 5.1.1 找 event ID：`/api/intervals-events`
+
+只列出「今天（含）或未來」的課表事件，已過去的日期一律濾掉；`events` 依
+日期由近到遠排序，`nearest` 是離今天最近、還沒發生的那一筆（週期性排課、
+同一週有多天課表時就是這個欄位要解決的情境）。**「今天」以使用者瀏覽器的
+本地日期為準，不是 Vercel 伺服器的時區**——伺服器多半跑在 UTC，跟台灣
+（UTC+8）這類時區在地區跨日的那幾小時內會整整差一天，所以前端呼叫這支 API
+時一律帶 `?today=YYYY-MM-DD`（瀏覽器本地日期），伺服器只有在完全沒收到這個
+參數時才退回用自己的 UTC 日期。`api/intervals-zwo.js`／`api/intervals-events.js`
+兩支 proxy 的回應都帶 `Cache-Control: no-store`、`Pragma: no-cache`、
+`Expires: 0`，避免任何一層快取把舊的或別的 event ID 的內容當成最新結果回傳。
 
 ### 5.2 執行頁 UI 需求
 
