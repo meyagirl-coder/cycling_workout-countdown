@@ -110,4 +110,23 @@ describe('createUploadView', () => {
     expect(submitBtn.textContent).toBe('載入');
     expect(input.disabled).toBe(false);
   });
+
+  it('renders the "查詢最近一筆" lookup link below the intervals.icu input, opening in a new tab', () => {
+    document.body.innerHTML = '<div id="root"></div>';
+    const root = document.getElementById('root');
+    createUploadView(root, makeHandlers());
+
+    const link = root.querySelector('.upload-intervals-lookup-link');
+    expect(link).not.toBeNull();
+    expect(link.textContent).toBe('點此查詢最近一筆行事曆訓練代碼');
+    expect(link.getAttribute('href')).toBe('/api/intervals-events');
+    expect(link.getAttribute('target')).toBe('_blank');
+    expect(link.getAttribute('rel')).toContain('noopener');
+
+    // Must sit after the input+submit row, inside the intervals.icu form,
+    // so it reads as "look up an ID here, then come back and paste it below".
+    const row = root.querySelector('.upload-intervals-row');
+    expect(row.compareDocumentPosition(link) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(link.closest('.upload-intervals-form')).not.toBeNull();
+  });
 });

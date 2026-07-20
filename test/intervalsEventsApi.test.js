@@ -39,6 +39,7 @@ beforeEach(() => {
 afterEach(() => {
   process.env = { ...ORIGINAL_ENV };
   vi.unstubAllGlobals();
+  vi.useRealTimers();
 });
 
 describe('api/intervals-events handler', () => {
@@ -72,7 +73,10 @@ describe('api/intervals-events handler', () => {
     expect(res.statusCode).toBe(400);
   });
 
-  it('defaults to a 7-days-back / 30-days-forward window and calls the correct upstream URL with Basic Auth', async () => {
+  it('defaults the query window to today through 30 days forward, not a fixed lookback range', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-07-21T12:00:00Z'));
+
     const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => [] });
     vi.stubGlobal('fetch', fetchMock);
 
@@ -83,34 +87,46 @@ describe('api/intervals-events handler', () => {
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const [calledUrl, calledOptions] = fetchMock.mock.calls[0];
-    expect(calledUrl).toMatch(/^https:\/\/intervals\.icu\/api\/v1\/athlete\/i999999\/events\?oldest=\d{4}-\d{2}-\d{2}&newest=\d{4}-\d{2}-\d{2}$/);
+    expect(calledUrl).toBe('https://intervals.icu/api/v1/athlete/i999999/events?oldest=2026-07-21&newest=2026-08-20');
 
     const expectedAuth = `Basic ${Buffer.from('API_KEY:secret-test-key').toString('base64')}`;
     expect(calledOptions.headers.Authorization).toBe(expectedAuth);
 
     expect(res.statusCode).toBe(200);
+    expect(res.body.today).toBe('2026-07-21');
     expect(res.body.events).toEqual([]);
+    expect(res.body.nearest).toBeNull();
   });
 
-  it('honors explicit oldest/newest query params', async () => {
-    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => [] });
-    vi.stubGlobal('fetch', fetchMock);
+  it('honors an explicit oldest query param for the upstream request, but still filters the response to today-or-later', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-07-21T12:00:00Z'));
 
-    const req = makeReq({ query: { oldest: '2026-01-01', newest: '2026-01-31' } });
+    const events = [
+      { id: 1, name: 'Old ride', start_date_local: '2026-01-05T06:00:00' },
+      { id: 2, name: 'Upcoming ride', start_date_local: '2026-07-25T06:00:00' },
+    ];
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => events }));
+
+    const req = makeReq({ query: { oldest: '2026-01-01', newest: '2026-12-31' } });
     const res = makeRes();
 
     await handler(req, res);
 
-    const [calledUrl] = fetchMock.mock.calls[0];
-    expect(calledUrl).toBe('https://intervals.icu/api/v1/athlete/i999999/events?oldest=2026-01-01&newest=2026-01-31');
-    expect(res.body.oldest).toBe('2026-01-01');
-    expect(res.body.newest).toBe('2026-01-31');
+    expect(res.body.oldest).toBe('2026-01-01'); // honored for the upstream query
+    expect(res.body.newest).toBe('2026-12-31');
+    // ...but the past-dated event is still excluded from the actual results.
+    expect(res.body.events.map((e) => e.id)).toEqual([2]);
+    expect(res.body.nearest.id).toBe(2);
   });
 
-  it('relays the event list and count from intervals.icu', async () => {
+  it('excludes past-dated events even when they fall inside the queried range', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-07-21T12:00:00Z'));
+
     const events = [
-      { id: 111, name: 'SST 3x12', start_date_local: '2026-07-21T06:00:00', type: 'Ride' },
-      { id: 222, name: 'Endurance Ride', start_date_local: '2026-07-23T06:00:00', type: 'Ride' },
+      { id: 1, name: 'Yesterday', start_date_local: '2026-07-20T06:00:00' },
+      { id: 2, name: 'Today', start_date_local: '2026-07-21T06:00:00' },
     ];
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => events }));
 
@@ -119,10 +135,46 @@ describe('api/intervals-events handler', () => {
 
     await handler(req, res);
 
-    expect(res.statusCode).toBe(200);
-    expect(res.headers['Content-Type']).toContain('json');
-    expect(res.body.count).toBe(2);
-    expect(res.body.events).toEqual(events);
+    // Today's own event is included ("today or future"); yesterday's is not.
+    expect(res.body.events.map((e) => e.id)).toEqual([2]);
+    expect(res.body.nearest.id).toBe(2);
+  });
+
+  it('sorts multiple upcoming events ascending and picks the nearest one as `nearest` (e.g. a weekly Tue/Thu plan)', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-07-21T12:00:00Z')); // a Tuesday
+
+    const thisThursday = { id: 1, name: 'Thu intervals', start_date_local: '2026-07-23T06:00:00' };
+    const nextTuesday = { id: 2, name: 'Next Tue SST', start_date_local: '2026-07-28T06:00:00' };
+    const nextThursday = { id: 3, name: 'Next Thu intervals', start_date_local: '2026-07-30T06:00:00' };
+    // Deliberately out of chronological order, as a real API response might be.
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => [nextThursday, thisThursday, nextTuesday] }));
+
+    const req = makeReq();
+    const res = makeRes();
+
+    await handler(req, res);
+
+    expect(res.body.events.map((e) => e.id)).toEqual([1, 2, 3]); // nearest-first
+    expect(res.body.nearest).toEqual(thisThursday);
+    expect(res.body.count).toBe(3);
+  });
+
+  it('returns nearest: null and an empty events array when nothing upcoming is found', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-07-21T12:00:00Z'));
+
+    const events = [{ id: 1, name: 'Long gone', start_date_local: '2026-01-01T06:00:00' }];
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => events }));
+
+    const req = makeReq();
+    const res = makeRes();
+
+    await handler(req, res);
+
+    expect(res.body.count).toBe(0);
+    expect(res.body.events).toEqual([]);
+    expect(res.body.nearest).toBeNull();
   });
 
   it('maps a network failure to a 502', async () => {

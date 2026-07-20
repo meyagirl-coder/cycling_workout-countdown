@@ -173,6 +173,18 @@ body {
   cursor: not-allowed;
 }
 
+.upload-intervals-lookup-link {
+  align-self: flex-start;
+  color: #60a5fa;
+  font-size: 0.85rem;
+  text-decoration: underline;
+}
+
+.upload-intervals-lookup-link:hover,
+.upload-intervals-lookup-link:focus-visible {
+  color: #93c5fd;
+}
+
 .upload-error {
   margin: 0;
   color: #f87171;
