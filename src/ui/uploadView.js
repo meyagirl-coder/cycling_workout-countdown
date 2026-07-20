@@ -32,6 +32,12 @@ export function createUploadView(rootEl, handlers) {
           />
           <button type="submit" class="upload-intervals-submit">載入</button>
         </div>
+        <a
+          class="upload-intervals-lookup-link"
+          href="/api/intervals-events"
+          target="_blank"
+          rel="noopener noreferrer"
+        >點此查詢最近一筆行事曆訓練代碼</a>
       </form>
 
       <p class="upload-error hidden"></p>
