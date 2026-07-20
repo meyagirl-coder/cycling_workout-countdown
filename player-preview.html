@@ -38,6 +38,27 @@
     display: none;
   }
 
+  .app-banner {
+    max-width: 480px;
+    margin: 0 auto;
+    padding: 2.5rem 1.25rem 0.5rem;
+    text-align: center;
+  }
+
+  .app-banner-title {
+    margin: 0 0 0.5rem;
+    font-size: 1.6rem;
+    font-weight: 900;
+    text-wrap: balance;
+  }
+
+  .app-banner-subtitle {
+    margin: 0;
+    color: #94a3b8;
+    font-size: 0.9rem;
+    text-wrap: balance;
+  }
+
   .upload-screen {
     max-width: 480px;
     margin: 0 auto;
@@ -270,12 +291,25 @@
   }
 
   .finished-banner {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.75rem;
     text-align: center;
-    font-size: 1.15rem;
-    font-weight: 800;
-    padding: 1rem;
+    padding: 1.15rem 1rem;
     border-radius: 1rem;
     background: #14532d;
+  }
+
+  .finished-banner-text {
+    margin: 0;
+    font-size: 1.15rem;
+    font-weight: 800;
+  }
+
+  .btn-return-home {
+    background: #f8fafc;
+    color: #14532d;
   }
 
   .finished-banner.hidden {
@@ -309,6 +343,7 @@
 </head>
 <body>
 <div id="app">
+  <div class="app-banner-mount"></div>
   <div class="upload-mount"></div>
   <div class="player-mount hidden"></div>
 </div>
@@ -440,6 +475,25 @@
       const v = c === 'x' ? r : (r & 0x3) | 0x8;
       return v.toString(16);
     });
+  }
+
+  // ---- src/ui/appBanner.js ----
+  function createAppBanner(rootEl) {
+    rootEl.innerHTML = `
+      <header class="app-banner">
+        <h1 class="app-banner-title">自行車訓練課表播放器</h1>
+        <p class="app-banner-subtitle">上傳課表檔案或連結 intervals.icu，開始你的結構化訓練</p>
+      </header>
+    `;
+    const bannerEl = rootEl.querySelector('.app-banner');
+    return {
+      show() {
+        bannerEl.classList.remove('hidden');
+      },
+      hide() {
+        bannerEl.classList.add('hidden');
+      },
+    };
   }
 
   // ---- src/ui/uploadView.js ----
@@ -755,7 +809,10 @@
           <button type="button" class="btn btn-redo">重做本組</button>
           <button type="button" class="btn btn-stop btn-danger">提早結束</button>
         </div>
-        <div class="finished-banner hidden">課表完成！</div>
+        <div class="finished-banner hidden">
+          <p class="finished-banner-text">課表完成！</p>
+          <button type="button" class="btn btn-return-home">回到主畫面</button>
+        </div>
         <p class="preview-note">FTP 暫定 200W（尚未接上設定頁）</p>
       </div>
     `;
@@ -777,12 +834,14 @@
       redoBtn: rootEl.querySelector('.btn-redo'),
       stopBtn: rootEl.querySelector('.btn-stop'),
       finishedBanner: rootEl.querySelector('.finished-banner'),
+      returnHomeBtn: rootEl.querySelector('.btn-return-home'),
     };
 
     els.playPauseBtn.addEventListener('click', () => handlers.onPlayPause());
     els.skipBtn.addEventListener('click', () => handlers.onSkip());
     els.redoBtn.addEventListener('click', () => handlers.onRedo());
     els.stopBtn.addEventListener('click', () => handlers.onStop());
+    els.returnHomeBtn.addEventListener('click', () => handlers.onReturnHome());
 
     let renderedTimelineKey = null;
 
@@ -803,8 +862,19 @@
       els.timelineTrack.innerHTML = segmentsHtml + dividersHtml;
     }
 
+    let nextIntervalBannerTimeoutId = null;
+
+    function hideNextIntervalBannerNow() {
+      if (nextIntervalBannerTimeoutId !== null) {
+        clearTimeout(nextIntervalBannerTimeoutId);
+        nextIntervalBannerTimeoutId = null;
+      }
+      els.nextIntervalBanner.classList.add('hidden');
+    }
+
     function update(workout, state, ftp) {
       renderTimelineIfNeeded(workout, state.powerAdjustPct);
+      if (state.status === 'idle') hideNextIntervalBannerNow();
       els.workoutName.textContent = workout.name;
       els.totalDuration.textContent = `總時長 ${formatDurationLabel(workout.totalDuration)}`;
       els.intervalProgress.textContent = `第 ${state.currentIntervalIndex + 1} / ${workout.intervals.length} 組 · ${STATUS_LABELS[state.status]}`;
@@ -838,15 +908,13 @@
       els.finishedBanner.classList.toggle('hidden', !isFinished);
     }
 
-    let nextIntervalBannerTimeoutId = null;
-
     function showNextIntervalBanner(text) {
       els.nextIntervalBanner.textContent = text;
       els.nextIntervalBanner.classList.remove('hidden');
       if (nextIntervalBannerTimeoutId !== null) clearTimeout(nextIntervalBannerTimeoutId);
       nextIntervalBannerTimeoutId = setTimeout(() => {
-        els.nextIntervalBanner.classList.add('hidden');
         nextIntervalBannerTimeoutId = null;
+        els.nextIntervalBanner.classList.add('hidden');
       }, NEXT_INTERVAL_BANNER_MS);
     }
 
@@ -902,8 +970,11 @@
 
   // ---- driver (same role as src/ui/playerApp.js, single-thread for this preview instead of a Web Worker) ----
   const DEFAULT_FTP = 200;
+  const bannerMount = document.querySelector('.app-banner-mount');
   const uploadMount = document.querySelector('.upload-mount');
   const playerMount = document.querySelector('.player-mount');
+
+  const appBanner = createAppBanner(bannerMount);
 
   let engine = null;
   let currentWorkout = null;
@@ -939,6 +1010,13 @@
       stopLoop();
       applyEngineResult(result.events);
     },
+    onReturnHome: () => {
+      playerMount.classList.add('hidden');
+      uploadMount.classList.remove('hidden');
+      appBanner.show();
+      uploadView.clearError();
+      currentWorkout = null;
+    },
   });
 
   async function handleFileSelected(file) {
@@ -962,6 +1040,7 @@
 
     currentWorkout = workout;
     engine = createTimerEngine(workout);
+    appBanner.hide();
     uploadMount.classList.add('hidden');
     playerMount.classList.remove('hidden');
     render();

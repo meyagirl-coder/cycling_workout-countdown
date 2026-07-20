@@ -27,6 +27,28 @@ body {
   display: none;
 }
 
+/* App 品牌識別橫幅（規格 §5.1）：整個 App 最上方，只在首頁顯示 */
+.app-banner {
+  max-width: 480px;
+  margin: 0 auto;
+  padding: 2.5rem 1.25rem 0.5rem;
+  text-align: center;
+}
+
+.app-banner-title {
+  margin: 0 0 0.5rem;
+  font-size: 1.85rem;
+  font-weight: 900;
+  text-wrap: balance;
+}
+
+.app-banner-subtitle {
+  margin: 0;
+  color: #94a3b8;
+  font-size: 0.95rem;
+  text-wrap: balance;
+}
+
 .upload-screen {
   max-width: 480px;
   margin: 0 auto;
@@ -333,12 +355,25 @@ body {
 }
 
 .finished-banner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.85rem;
   text-align: center;
-  font-size: 1.25rem;
-  font-weight: 800;
-  padding: 1rem;
+  padding: 1.25rem 1rem;
   border-radius: 1rem;
   background: #14532d;
+}
+
+.finished-banner-text {
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 800;
+}
+
+.btn-return-home {
+  background: #f8fafc;
+  color: #14532d;
 }
 
 .finished-banner.hidden {
