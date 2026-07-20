@@ -167,6 +167,20 @@
     transition: left 0.2s linear;
   }
 
+  .next-interval-banner {
+    text-align: center;
+    padding: 0.75rem 1rem;
+    border-radius: 1rem;
+    background: #1e293b;
+    border: 1px solid #334155;
+    font-weight: 700;
+    font-size: 0.95rem;
+  }
+
+  .next-interval-banner.hidden {
+    display: none;
+  }
+
   .status-panel {
     display: flex;
     justify-content: space-around;
@@ -182,6 +196,21 @@
     font-weight: 900;
     font-variant-numeric: tabular-nums;
     line-height: 1;
+  }
+
+  .countdown-number.countdown-urgent {
+    color: #f87171;
+    animation: countdown-pulse 1s ease-in-out infinite;
+  }
+
+  @keyframes countdown-pulse {
+    0%,
+    100% {
+      transform: scale(1);
+    }
+    50% {
+      transform: scale(1.08);
+    }
   }
 
   .countdown-label,
@@ -271,6 +300,9 @@
   @media (prefers-reduced-motion: reduce) {
     .timeline-cursor {
       transition: none;
+    }
+    .countdown-number.countdown-urgent {
+      animation: none;
     }
   }
 </style>
@@ -689,6 +721,8 @@
   // ---- src/ui/renderPlayer.js ----
   const INTERVAL_TYPE_LABELS = { warmup: '熱身', steady: '穩定', ramp: '漸變', freeride: '自由騎乘', cooldown: '收操' };
   const STATUS_LABELS = { idle: '尚未開始', running: '進行中', paused: '已暫停', finished: '已完成' };
+  const COUNTDOWN_URGENT_SECONDS = 10;
+  const NEXT_INTERVAL_BANNER_MS = 5000;
 
   function createPlayerView(rootEl, handlers) {
     rootEl.innerHTML = `
@@ -704,6 +738,7 @@
           <div class="timeline-track"></div>
           <div class="timeline-cursor"></div>
         </div>
+        <div class="next-interval-banner hidden"></div>
         <div class="status-panel">
           <div class="countdown-block">
             <div class="countdown-number">0:00</div>
@@ -731,6 +766,7 @@
       intervalProgress: rootEl.querySelector('.interval-progress'),
       timelineTrack: rootEl.querySelector('.timeline-track'),
       timelineCursor: rootEl.querySelector('.timeline-cursor'),
+      nextIntervalBanner: rootEl.querySelector('.next-interval-banner'),
       statusPanel: rootEl.querySelector('.status-panel'),
       countdownNumber: rootEl.querySelector('.countdown-number'),
       countdownLabel: rootEl.querySelector('.countdown-label'),
@@ -779,6 +815,9 @@
       els.countdownNumber.textContent = formatMMSS(remaining);
       els.countdownLabel.textContent = `本組剩餘 · ${INTERVAL_TYPE_LABELS[currentInterval.type]}`;
 
+      const isCountdownUrgent = currentInterval.duration > COUNTDOWN_URGENT_SECONDS && remaining > 0 && remaining <= COUNTDOWN_URGENT_SECONDS;
+      els.countdownNumber.classList.toggle('countdown-urgent', isCountdownUrgent);
+
       const target = computeCurrentTarget(workout, state.currentIntervalIndex, state.elapsedInInterval, ftp, state.powerAdjustPct);
       if (target.watts === null) {
         els.targetWatt.textContent = '自由騎乘';
@@ -799,7 +838,66 @@
       els.finishedBanner.classList.toggle('hidden', !isFinished);
     }
 
-    return { update };
+    let nextIntervalBannerTimeoutId = null;
+
+    function showNextIntervalBanner(text) {
+      els.nextIntervalBanner.textContent = text;
+      els.nextIntervalBanner.classList.remove('hidden');
+      if (nextIntervalBannerTimeoutId !== null) clearTimeout(nextIntervalBannerTimeoutId);
+      nextIntervalBannerTimeoutId = setTimeout(() => {
+        els.nextIntervalBanner.classList.add('hidden');
+        nextIntervalBannerTimeoutId = null;
+      }, NEXT_INTERVAL_BANNER_MS);
+    }
+
+    return { update, showNextIntervalBanner };
+  }
+
+  // ---- src/ui/countdownAlerts.js ----
+  const COUNTDOWN_SPEECH_TEXT = '10 秒後切換下一組';
+
+  function handleTimerEvents(events, { workout, state, ftp, playBeep, speak, showNextIntervalBanner }) {
+    if (events.includes(TIMER_EVENTS.COUNTDOWN_WARNING)) {
+      playBeep();
+      speak(COUNTDOWN_SPEECH_TEXT);
+    }
+    if (events.includes(TIMER_EVENTS.INTERVAL_CHANGED)) {
+      showNextIntervalBanner(formatNextIntervalText(workout, state, ftp));
+    }
+  }
+
+  function formatNextIntervalText(workout, state, ftp) {
+    const iv = workout.intervals[state.currentIntervalIndex];
+    const typeLabel = INTERVAL_TYPE_LABELS[iv.type];
+    const durationLabel = formatMMSS(iv.duration);
+    const target = computeCurrentTarget(workout, state.currentIntervalIndex, 0, ftp, state.powerAdjustPct);
+    if (target.watts === null) return `下一組：${typeLabel} · ${durationLabel}`;
+    return `下一組：${typeLabel} · ${durationLabel} · ${Math.round(target.pct)}% FTP · ${target.watts}W`;
+  }
+
+  let sharedAudioContext = null;
+
+  function playCountdownBeep() {
+    const AudioContextCtor = typeof window !== 'undefined' && (window.AudioContext || window.webkitAudioContext);
+    if (!AudioContextCtor) return;
+    if (!sharedAudioContext) sharedAudioContext = new AudioContextCtor();
+    const ctx = sharedAudioContext;
+    const oscillator = ctx.createOscillator();
+    const gain = ctx.createGain();
+    oscillator.connect(gain);
+    gain.connect(ctx.destination);
+    oscillator.frequency.value = 880;
+    gain.gain.setValueAtTime(0.2, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.3);
+    oscillator.start();
+    oscillator.stop(ctx.currentTime + 0.3);
+  }
+
+  function speakCountdownWarning(text) {
+    if (typeof window === 'undefined' || !window.speechSynthesis || typeof SpeechSynthesisUtterance === 'undefined') return;
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.lang = 'zh-TW';
+    window.speechSynthesis.speak(utterance);
   }
 
   // ---- driver (same role as src/ui/playerApp.js, single-thread for this preview instead of a Web Worker) ----
@@ -818,28 +916,28 @@
   const playerView = createPlayerView(playerMount, {
     onPlayPause: () => {
       const { status } = engine.getState();
+      let result;
       if (status === 'running') {
-        engine.pause();
+        result = engine.pause();
         stopLoop();
       } else {
-        engine.play();
+        result = engine.play();
         startLoop();
       }
-      render();
+      applyEngineResult(result.events);
     },
     onSkip: () => {
-      engine.skip();
+      const result = engine.skip();
       stopLoopIfFinished();
-      render();
+      applyEngineResult(result.events);
     },
     onRedo: () => {
-      engine.redo();
-      render();
+      applyEngineResult(engine.redo().events);
     },
     onStop: () => {
-      engine.stop();
+      const result = engine.stop();
       stopLoop();
-      render();
+      applyEngineResult(result.events);
     },
   });
 
@@ -872,9 +970,9 @@
   function startLoop() {
     if (intervalId !== null) return;
     intervalId = setInterval(() => {
-      engine.tick(Date.now());
+      const result = engine.tick(Date.now());
       stopLoopIfFinished();
-      render();
+      applyEngineResult(result.events);
     }, 200);
   }
 
@@ -891,6 +989,20 @@
 
   function render() {
     if (currentWorkout) playerView.update(currentWorkout, engine.getState(), DEFAULT_FTP);
+  }
+
+  /** 每次 engine 動作（tick 或按鈕）後統一重繪＋處理倒數提示事件（規格 §4.4） */
+  function applyEngineResult(events) {
+    render();
+    if (!currentWorkout) return;
+    handleTimerEvents(events, {
+      workout: currentWorkout,
+      state: engine.getState(),
+      ftp: DEFAULT_FTP,
+      playBeep: playCountdownBeep,
+      speak: speakCountdownWarning,
+      showNextIntervalBanner: playerView.showNextIntervalBanner,
+    });
   }
 </script>
 </body>

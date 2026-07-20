@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { formatDurationLabel, formatMMSS } from '../src/ui/formatTime.js';
 import { buildIntervalBoundaries, buildTimelineSegments, computeCursorPct } from '../src/ui/timelineSegments.js';
 import { createPlayerView } from '../src/ui/renderPlayer.js';
@@ -161,6 +161,10 @@ describe('computeCursorPct', () => {
 });
 
 describe('createPlayerView', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it('renders workout name, total duration, and interval progress', () => {
     document.body.innerHTML = '<div id="root"></div>';
     const root = document.getElementById('root');
@@ -275,5 +279,64 @@ describe('createPlayerView', () => {
     expect(handlers.onSkip).toHaveBeenCalledTimes(1);
     expect(handlers.onRedo).toHaveBeenCalledTimes(1);
     expect(handlers.onStop).toHaveBeenCalledTimes(1);
+  });
+
+  it('adds countdown-urgent only when remaining <=10s on a segment longer than 10s (regression 4.4)', () => {
+    document.body.innerHTML = '<div id="root"></div>';
+    const root = document.getElementById('root');
+    const view = createPlayerView(root, { onPlayPause: vi.fn(), onSkip: vi.fn(), onRedo: vi.fn(), onStop: vi.fn() });
+    const countdownEl = () => root.querySelector('.countdown-number');
+
+    // warmup is 12s: 11s remaining -> not yet urgent
+    view.update(makeWorkout(), makeIdleState({ currentIntervalIndex: 0, elapsedInInterval: 1 }), 200);
+    expect(countdownEl().classList.contains('countdown-urgent')).toBe(false);
+
+    // 9s remaining -> urgent
+    view.update(makeWorkout(), makeIdleState({ currentIntervalIndex: 0, elapsedInInterval: 3 }), 200);
+    expect(countdownEl().classList.contains('countdown-urgent')).toBe(true);
+
+    // steady segment is only 10s long (not >10s), so it must never go urgent even at 9s remaining
+    view.update(makeWorkout(), makeIdleState({ currentIntervalIndex: 1, elapsedInInterval: 1 }), 200);
+    expect(countdownEl().classList.contains('countdown-urgent')).toBe(false);
+  });
+
+  it('showNextIntervalBanner displays the text and auto-hides after the banner duration', () => {
+    vi.useFakeTimers();
+    document.body.innerHTML = '<div id="root"></div>';
+    const root = document.getElementById('root');
+    const view = createPlayerView(root, { onPlayPause: vi.fn(), onSkip: vi.fn(), onRedo: vi.fn(), onStop: vi.fn() });
+    const banner = root.querySelector('.next-interval-banner');
+
+    expect(banner.classList.contains('hidden')).toBe(true);
+
+    view.showNextIntervalBanner('下一組：穩定 · 0:10 · 88% FTP · 176W');
+    expect(banner.classList.contains('hidden')).toBe(false);
+    expect(banner.textContent).toBe('下一組：穩定 · 0:10 · 88% FTP · 176W');
+
+    vi.advanceTimersByTime(4999);
+    expect(banner.classList.contains('hidden')).toBe(false);
+
+    vi.advanceTimersByTime(1);
+    expect(banner.classList.contains('hidden')).toBe(true);
+  });
+
+  it('showNextIntervalBanner resets the auto-hide timer when called again before it fires', () => {
+    vi.useFakeTimers();
+    document.body.innerHTML = '<div id="root"></div>';
+    const root = document.getElementById('root');
+    const view = createPlayerView(root, { onPlayPause: vi.fn(), onSkip: vi.fn(), onRedo: vi.fn(), onStop: vi.fn() });
+    const banner = root.querySelector('.next-interval-banner');
+
+    view.showNextIntervalBanner('第一次');
+    vi.advanceTimersByTime(3000);
+    view.showNextIntervalBanner('第二次');
+
+    // the original 5s timer would have fired by now if it hadn't been reset
+    vi.advanceTimersByTime(3000);
+    expect(banner.classList.contains('hidden')).toBe(false);
+    expect(banner.textContent).toBe('第二次');
+
+    vi.advanceTimersByTime(2000);
+    expect(banner.classList.contains('hidden')).toBe(true);
   });
 });
