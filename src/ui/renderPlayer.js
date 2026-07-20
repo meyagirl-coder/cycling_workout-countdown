@@ -23,7 +23,7 @@ const NEXT_INTERVAL_BANNER_MS = 5000;
  * elapsedInInterval, elapsedTotal, powerAdjustPct} 丟進 update() 就好。
  *
  * @param {HTMLElement} rootEl
- * @param {{onPlayPause: () => void, onSkip: () => void, onRedo: () => void, onStop: () => void}} handlers
+ * @param {{onPlayPause: () => void, onSkip: () => void, onRedo: () => void, onStop: () => void, onReturnHome: () => void}} handlers
  */
 export function createPlayerView(rootEl, handlers) {
   rootEl.innerHTML = `
@@ -61,7 +61,10 @@ export function createPlayerView(rootEl, handlers) {
         <button type="button" class="btn btn-stop btn-danger">提早結束</button>
       </div>
 
-      <div class="finished-banner hidden">課表完成！</div>
+      <div class="finished-banner hidden">
+        <p class="finished-banner-text">課表完成！</p>
+        <button type="button" class="btn btn-return-home">回到主畫面</button>
+      </div>
     </div>
   `;
 
@@ -83,12 +86,14 @@ export function createPlayerView(rootEl, handlers) {
     redoBtn: rootEl.querySelector('.btn-redo'),
     stopBtn: rootEl.querySelector('.btn-stop'),
     finishedBanner: rootEl.querySelector('.finished-banner'),
+    returnHomeBtn: rootEl.querySelector('.btn-return-home'),
   };
 
   els.playPauseBtn.addEventListener('click', () => handlers.onPlayPause());
   els.skipBtn.addEventListener('click', () => handlers.onSkip());
   els.redoBtn.addEventListener('click', () => handlers.onRedo());
   els.stopBtn.addEventListener('click', () => handlers.onStop());
+  els.returnHomeBtn.addEventListener('click', () => handlers.onReturnHome());
 
   let renderedTimelineKey = null;
 
@@ -114,8 +119,22 @@ export function createPlayerView(rootEl, handlers) {
     els.timelineTrack.innerHTML = segmentsHtml + dividersHtml;
   }
 
+  let nextIntervalBannerTimeoutId = null;
+
+  function hideNextIntervalBannerNow() {
+    if (nextIntervalBannerTimeoutId !== null) {
+      clearTimeout(nextIntervalBannerTimeoutId);
+      nextIntervalBannerTimeoutId = null;
+    }
+    els.nextIntervalBanner.classList.add('hidden');
+  }
+
   function update(workout, state, ftp) {
     renderTimelineIfNeeded(workout, state.powerAdjustPct);
+
+    // 'idle' 只會出現在一份全新課表剛載入、還沒開始的那一刻，藉此收起上一份
+    // 課表可能還沒消失的「下一組資訊」提示，避免殘留到新課表（規格 §4.5）
+    if (state.status === 'idle') hideNextIntervalBannerNow();
 
     els.workoutName.textContent = workout.name;
     els.totalDuration.textContent = `總時長 ${formatDurationLabel(workout.totalDuration)}`;
@@ -153,8 +172,6 @@ export function createPlayerView(rootEl, handlers) {
     els.finishedBanner.classList.toggle('hidden', !isFinished);
   }
 
-  let nextIntervalBannerTimeoutId = null;
-
   /** 切組瞬間顯示下一組資訊（時間/%FTP/瓦數），幾秒後自動收起（規格 §4.4） */
   function showNextIntervalBanner(text) {
     els.nextIntervalBanner.textContent = text;
@@ -162,8 +179,8 @@ export function createPlayerView(rootEl, handlers) {
 
     if (nextIntervalBannerTimeoutId !== null) clearTimeout(nextIntervalBannerTimeoutId);
     nextIntervalBannerTimeoutId = setTimeout(() => {
-      els.nextIntervalBanner.classList.add('hidden');
       nextIntervalBannerTimeoutId = null;
+      els.nextIntervalBanner.classList.add('hidden');
     }, NEXT_INTERVAL_BANNER_MS);
   }
 

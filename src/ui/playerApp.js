@@ -1,6 +1,7 @@
 import { extractEventId } from '../integrations/intervalsIcu.js';
 import { parseZwoXml } from '../parser/zwoParser.js';
 import { createTimerWorkerClient } from '../worker/timerWorkerClient.js';
+import { createAppBanner } from './appBanner.js';
 import { handleTimerEvents, playCountdownBeep, speakCountdownWarning } from './countdownAlerts.js';
 import { createPlayerView } from './renderPlayer.js';
 import { createUploadView } from './uploadView.js';
@@ -21,9 +22,13 @@ const INTERVALS_ICU_PROXY_URL = '/api/intervals-zwo';
  * @returns {{ client: ReturnType<typeof createTimerWorkerClient> }}
  */
 export function initPlayerApp(rootEl) {
-  rootEl.innerHTML = '<div class="upload-mount"></div><div class="player-mount hidden"></div>';
+  rootEl.innerHTML =
+    '<div class="app-banner-mount"></div><div class="upload-mount"></div><div class="player-mount hidden"></div>';
+  const bannerMount = rootEl.querySelector('.app-banner-mount');
   const uploadMount = rootEl.querySelector('.upload-mount');
   const playerMount = rootEl.querySelector('.player-mount');
+
+  const appBanner = createAppBanner(bannerMount);
 
   const client = createTimerWorkerClient();
   let latestState = null;
@@ -45,7 +50,17 @@ export function initPlayerApp(rootEl) {
     onSkip: () => client.skip(),
     onRedo: () => client.redo(),
     onStop: () => client.stop(),
+    onReturnHome: () => returnToHome(),
   });
+
+  /** 執行頁完成橫幅的「回到主畫面」按鈕（規格 §4.5）：純畫面切換，不用重置引擎 */
+  function returnToHome() {
+    playerMount.classList.add('hidden');
+    uploadMount.classList.remove('hidden');
+    appBanner.show();
+    uploadView.clearError();
+    currentWorkout = null;
+  }
 
   client.onUpdate((state, events) => {
     latestState = state;
@@ -74,6 +89,7 @@ export function initPlayerApp(rootEl) {
 
     currentWorkout = workout;
     client.init(workout);
+    appBanner.hide();
     uploadMount.classList.add('hidden');
     playerMount.classList.remove('hidden');
     return true;

@@ -266,7 +266,7 @@ describe('createPlayerView', () => {
   it('wires button clicks to the provided handlers', () => {
     document.body.innerHTML = '<div id="root"></div>';
     const root = document.getElementById('root');
-    const handlers = { onPlayPause: vi.fn(), onSkip: vi.fn(), onRedo: vi.fn(), onStop: vi.fn() };
+    const handlers = { onPlayPause: vi.fn(), onSkip: vi.fn(), onRedo: vi.fn(), onStop: vi.fn(), onReturnHome: vi.fn() };
     const view = createPlayerView(root, handlers);
     view.update(makeWorkout(), makeIdleState(), 200);
 
@@ -274,11 +274,49 @@ describe('createPlayerView', () => {
     root.querySelector('.btn-skip').click();
     root.querySelector('.btn-redo').click();
     root.querySelector('.btn-stop').click();
+    root.querySelector('.btn-return-home').click();
 
     expect(handlers.onPlayPause).toHaveBeenCalledTimes(1);
     expect(handlers.onSkip).toHaveBeenCalledTimes(1);
     expect(handlers.onRedo).toHaveBeenCalledTimes(1);
     expect(handlers.onStop).toHaveBeenCalledTimes(1);
+    expect(handlers.onReturnHome).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows a "回到主畫面" button inside the finished banner (regression 4.5)', () => {
+    document.body.innerHTML = '<div id="root"></div>';
+    const root = document.getElementById('root');
+    const view = createPlayerView(root, { onPlayPause: vi.fn(), onSkip: vi.fn(), onRedo: vi.fn(), onStop: vi.fn(), onReturnHome: vi.fn() });
+
+    const state = makeIdleState({ status: 'finished', currentIntervalIndex: 3, elapsedInInterval: 20, elapsedTotal: 50 });
+    view.update(makeWorkout(), state, 200);
+
+    const banner = root.querySelector('.finished-banner');
+    expect(banner.classList.contains('hidden')).toBe(false);
+    expect(banner.querySelector('.finished-banner-text').textContent).toBe('課表完成！');
+    expect(banner.querySelector('.btn-return-home').textContent).toBe('回到主畫面');
+  });
+
+  it('hides a still-pending next-interval banner as soon as a fresh workout enters the idle state (regression 4.5)', () => {
+    vi.useFakeTimers();
+    document.body.innerHTML = '<div id="root"></div>';
+    const root = document.getElementById('root');
+    const view = createPlayerView(root, { onPlayPause: vi.fn(), onSkip: vi.fn(), onRedo: vi.fn(), onStop: vi.fn(), onReturnHome: vi.fn() });
+    const banner = root.querySelector('.next-interval-banner');
+
+    view.showNextIntervalBanner('下一組：穩定 · 0:10 · 88% FTP · 176W');
+    vi.advanceTimersByTime(1000);
+    expect(banner.classList.contains('hidden')).toBe(false);
+
+    // Loading a fresh workout always starts at 'idle' - any leftover banner
+    // from the previous workout must not bleed into the new one.
+    view.update(makeWorkout(), makeIdleState(), 200);
+    expect(banner.classList.contains('hidden')).toBe(true);
+
+    // The old auto-hide timer should have been cleared, not just overridden -
+    // advancing past when it would have fired must not throw or misbehave.
+    vi.advanceTimersByTime(10000);
+    expect(banner.classList.contains('hidden')).toBe(true);
   });
 
   it('adds countdown-urgent only when remaining <=10s on a segment longer than 10s (regression 4.4)', () => {
