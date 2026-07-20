@@ -2,7 +2,7 @@
 <html lang="zh-TW">
 <head>
 <meta charset="UTF-8" />
-<title>執行頁預覽（假資料）</title>
+<title>執行頁預覽（上傳 .zwo）</title>
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
 <style>
   :root {
@@ -32,6 +32,66 @@
     -webkit-user-select: none;
     user-select: none;
     -webkit-tap-highlight-color: transparent;
+  }
+
+  .hidden {
+    display: none;
+  }
+
+  .upload-screen {
+    max-width: 480px;
+    margin: 0 auto;
+    padding: 3rem 1.25rem;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1rem;
+    text-align: center;
+  }
+
+  .upload-title {
+    margin: 0;
+    font-size: 1.5rem;
+    font-weight: 800;
+  }
+
+  .upload-hint {
+    margin: 0;
+    color: #94a3b8;
+    font-size: 0.95rem;
+  }
+
+  .upload-dropzone {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    padding: 2.5rem 1rem;
+    border: 2px dashed #334155;
+    border-radius: 1.25rem;
+    cursor: pointer;
+    color: #cbd5e1;
+    font-weight: 700;
+  }
+
+  .upload-dropzone:hover,
+  .upload-dropzone:focus-within {
+    border-color: #60a5fa;
+    color: #f8fafc;
+  }
+
+  .upload-input {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    opacity: 0;
+  }
+
+  .upload-error {
+    margin: 0;
+    color: #f87171;
+    font-size: 0.9rem;
   }
 
   .player {
@@ -216,7 +276,10 @@
 </style>
 </head>
 <body>
-<div id="app"></div>
+<div id="app">
+  <div class="upload-mount"></div>
+  <div class="player-mount hidden"></div>
+</div>
 
 <script>
   // ---- src/constants/powerZones.js ----
@@ -240,6 +303,146 @@
 
   function zoneInfo(zone) {
     return { key: zone.key, label: zone.label, color: zone.color };
+  }
+
+  // ---- src/parser/zwoParser.js ----
+  const ZWO_TAG_TYPE_MAP = {
+    warmup: 'warmup',
+    steadystate: 'steady',
+    ramp: 'ramp',
+    freeride: 'freeride',
+    cooldown: 'cooldown',
+  };
+
+  function parseZwoXml(xmlString) {
+    if (typeof xmlString !== 'string' || xmlString.trim() === '') {
+      throw new Error('Invalid ZWO XML: input must be a non-empty string');
+    }
+
+    const doc = new DOMParser().parseFromString(xmlString, 'application/xml');
+
+    const parserError = doc.querySelector('parsererror');
+    if (parserError) {
+      throw new Error(`Invalid ZWO XML: failed to parse XML (${parserError.textContent.trim()})`);
+    }
+
+    const root = doc.querySelector('workout_file');
+    if (!root) {
+      throw new Error('Invalid ZWO XML: missing <workout_file> root element');
+    }
+
+    const workoutEl = root.querySelector('workout');
+    if (!workoutEl) {
+      throw new Error('Invalid ZWO XML: missing <workout> element');
+    }
+
+    const nameEl = root.querySelector('name');
+    const name = nameEl && nameEl.textContent.trim() ? nameEl.textContent.trim() : 'Untitled Workout';
+
+    const intervals = [];
+    for (const el of Array.from(workoutEl.children)) {
+      const type = ZWO_TAG_TYPE_MAP[el.tagName.toLowerCase()];
+      if (!type) continue;
+      intervals.push(parseZwoIntervalElement(el, type));
+    }
+
+    if (intervals.length === 0) {
+      throw new Error('Invalid ZWO XML: no supported interval elements found in <workout>');
+    }
+
+    const totalDuration = intervals.reduce((sum, iv) => sum + iv.duration, 0);
+
+    return { id: generateWorkoutId(), name, source: 'zwo', totalDuration, intervals };
+  }
+
+  function parseZwoIntervalElement(el, type) {
+    const duration = parseZwoIntAttr(el, 'Duration');
+    if (duration === null) {
+      throw new Error(`Invalid ZWO XML: <${el.tagName}> is missing a required Duration attribute`);
+    }
+
+    const cadence = parseZwoIntAttr(el, 'Cadence');
+    let powerStart = null;
+    let powerEnd = null;
+
+    if (type === 'steady') {
+      const power = parseZwoPowerAttr(el, 'Power');
+      if (power === null) {
+        throw new Error(`Invalid ZWO XML: <${el.tagName}> is missing a required Power attribute`);
+      }
+      powerStart = power;
+      powerEnd = power;
+    } else if (type === 'warmup' || type === 'ramp' || type === 'cooldown') {
+      powerStart = parseZwoPowerAttr(el, 'PowerLow');
+      powerEnd = parseZwoPowerAttr(el, 'PowerHigh');
+      if (powerStart === null || powerEnd === null) {
+        throw new Error(`Invalid ZWO XML: <${el.tagName}> is missing PowerLow/PowerHigh attributes`);
+      }
+    }
+
+    return { type, duration, powerStart, powerEnd, cadence };
+  }
+
+  function parseZwoIntAttr(el, attrName) {
+    const raw = el.getAttribute(attrName);
+    if (raw === null || raw === '') return null;
+    const value = Number(raw);
+    if (Number.isNaN(value)) return null;
+    return Math.round(value);
+  }
+
+  function parseZwoPowerAttr(el, attrName) {
+    const raw = el.getAttribute(attrName);
+    if (raw === null || raw === '') return null;
+    const value = Number(raw);
+    if (Number.isNaN(value)) return null;
+    return Math.round(value * 100);
+  }
+
+  function generateWorkoutId() {
+    if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+      return crypto.randomUUID();
+    }
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+      const r = (Math.random() * 16) | 0;
+      const v = c === 'x' ? r : (r & 0x3) | 0x8;
+      return v.toString(16);
+    });
+  }
+
+  // ---- src/ui/uploadView.js ----
+  function createUploadView(rootEl, handlers) {
+    rootEl.innerHTML = `
+      <div class="upload-screen">
+        <h1 class="upload-title">上傳課表</h1>
+        <p class="upload-hint">選擇一份 .zwo 課表檔案（Zwift workout file）開始訓練</p>
+        <label class="upload-dropzone">
+          <input type="file" accept=".zwo,application/xml,text/xml" class="upload-input" />
+          <span>點一下選擇 .zwo 檔案</span>
+        </label>
+        <p class="upload-error hidden"></p>
+      </div>
+    `;
+
+    const input = rootEl.querySelector('.upload-input');
+    const errorEl = rootEl.querySelector('.upload-error');
+
+    input.addEventListener('change', () => {
+      const file = input.files && input.files[0];
+      input.value = '';
+      if (file) handlers.onFileSelected(file);
+    });
+
+    return {
+      showError(message) {
+        errorEl.textContent = message;
+        errorEl.classList.remove('hidden');
+      },
+      clearError() {
+        errorEl.textContent = '';
+        errorEl.classList.add('hidden');
+      },
+    };
   }
 
   // ---- src/engine/timerEngine.js ----
@@ -518,7 +721,7 @@
           <button type="button" class="btn btn-stop btn-danger">提早結束</button>
         </div>
         <div class="finished-banner hidden">課表完成！</div>
-        <p class="preview-note">預覽用假資料課表，FTP 暫定 200W</p>
+        <p class="preview-note">FTP 暫定 200W（尚未接上設定頁）</p>
       </div>
     `;
 
@@ -599,25 +802,20 @@
     return { update };
   }
 
-  // ---- src/ui/fakeWorkout.js ----
-  const FAKE_WORKOUT = {
-    id: 'demo-fake-workout-001',
-    name: '假資料測試課表（Demo Workout）',
-    source: 'zwo',
-    totalDuration: 50,
-    intervals: [
-      { type: 'warmup', duration: 12, powerStart: 50, powerEnd: 70, cadence: null },
-      { type: 'steady', duration: 10, powerStart: 88, powerEnd: 88, cadence: 90 },
-      { type: 'ramp', duration: 8, powerStart: 60, powerEnd: 110, cadence: null },
-      { type: 'freeride', duration: 8, powerStart: null, powerEnd: null, cadence: null },
-      { type: 'cooldown', duration: 12, powerStart: 70, powerEnd: 50, cadence: null },
-    ],
-  };
+  // ---- driver (same role as src/ui/playerApp.js, single-thread for this preview instead of a Web Worker) ----
+  const DEFAULT_FTP = 200;
+  const uploadMount = document.querySelector('.upload-mount');
+  const playerMount = document.querySelector('.player-mount');
 
-  // ---- driver (same role as src/ui/playerApp.js + the worker loop, single-thread for this preview) ----
-  const FAKE_FTP = 200;
-  const engine = createTimerEngine(FAKE_WORKOUT);
-  const view = createPlayerView(document.getElementById('app'), {
+  let engine = null;
+  let currentWorkout = null;
+  let intervalId = null;
+
+  const uploadView = createUploadView(uploadMount, {
+    onFileSelected: (file) => handleFileSelected(file),
+  });
+
+  const playerView = createPlayerView(playerMount, {
     onPlayPause: () => {
       const { status } = engine.getState();
       if (status === 'running') {
@@ -645,7 +843,31 @@
     },
   });
 
-  let intervalId = null;
+  async function handleFileSelected(file) {
+    uploadView.clearError();
+
+    let xmlText;
+    try {
+      xmlText = await file.text();
+    } catch {
+      uploadView.showError('讀取檔案失敗，請再試一次。');
+      return;
+    }
+
+    let workout;
+    try {
+      workout = parseZwoXml(xmlText);
+    } catch (err) {
+      uploadView.showError(`無法解析這份 .zwo 檔案：${err.message}`);
+      return;
+    }
+
+    currentWorkout = workout;
+    engine = createTimerEngine(workout);
+    uploadMount.classList.add('hidden');
+    playerMount.classList.remove('hidden');
+    render();
+  }
 
   function startLoop() {
     if (intervalId !== null) return;
@@ -668,10 +890,8 @@
   }
 
   function render() {
-    view.update(FAKE_WORKOUT, engine.getState(), FAKE_FTP);
+    if (currentWorkout) playerView.update(currentWorkout, engine.getState(), DEFAULT_FTP);
   }
-
-  render();
 </script>
 </body>
 </html>

@@ -23,6 +23,66 @@ body {
   user-select: none;
 }
 
+.hidden {
+  display: none;
+}
+
+.upload-screen {
+  max-width: 480px;
+  margin: 0 auto;
+  padding: 3rem 1.25rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+  text-align: center;
+}
+
+.upload-title {
+  margin: 0;
+  font-size: 1.5rem;
+  font-weight: 800;
+}
+
+.upload-hint {
+  margin: 0;
+  color: #94a3b8;
+  font-size: 0.95rem;
+}
+
+.upload-dropzone {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  padding: 2.5rem 1rem;
+  border: 2px dashed #334155;
+  border-radius: 1.25rem;
+  cursor: pointer;
+  color: #cbd5e1;
+  font-weight: 700;
+}
+
+.upload-dropzone:hover,
+.upload-dropzone:focus-within {
+  border-color: #60a5fa;
+  color: #f8fafc;
+}
+
+.upload-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  opacity: 0;
+}
+
+.upload-error {
+  margin: 0;
+  color: #f87171;
+  font-size: 0.9rem;
+}
+
 .player {
   max-width: 720px;
   margin: 0 auto;
