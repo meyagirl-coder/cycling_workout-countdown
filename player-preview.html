@@ -1,0 +1,602 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8" />
+<title>執行頁預覽（假資料）</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+<style>
+  :root {
+    --zone-gray: #64748b;
+    --zone-blue: #2563eb;
+    --zone-green: #16a34a;
+    --zone-yellow: #ca8a04;
+    --zone-orange: #ea580c;
+    --zone-red: #dc2626;
+    --zone-purple: #9333ea;
+    --zone-none: #334155;
+  }
+
+  * {
+    box-sizing: border-box;
+  }
+
+  html, body {
+    margin: 0;
+    min-height: 100%;
+  }
+
+  body {
+    background: #020617;
+    color: #f8fafc;
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .player {
+    max-width: 480px;
+    margin: 0 auto;
+    padding: 1.25rem 1rem 2.5rem;
+    display: flex;
+    flex-direction: column;
+    gap: 1.25rem;
+  }
+
+  .player-header {
+    text-align: center;
+  }
+
+  .workout-name {
+    margin: 0 0 0.35rem;
+    font-size: 1.25rem;
+    font-weight: 800;
+    text-wrap: balance;
+  }
+
+  .workout-meta {
+    display: flex;
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 0.5rem 1rem;
+    font-size: 0.9rem;
+    color: #94a3b8;
+  }
+
+  .timeline {
+    position: relative;
+    height: 2.25rem;
+    background: #0f172a;
+    border-radius: 0.75rem;
+    overflow: hidden;
+  }
+
+  .timeline-track {
+    position: relative;
+    width: 100%;
+    height: 100%;
+  }
+
+  .timeline-segment {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    background: var(--zone-none);
+  }
+
+  .timeline-segment.zone-none {
+    background: repeating-linear-gradient(45deg, #1e293b, #1e293b 6px, #0f172a 6px, #0f172a 12px);
+  }
+
+  .timeline-cursor {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 3px;
+    background: #f8fafc;
+    box-shadow: 0 0 6px rgba(248, 250, 252, 0.9);
+    transition: left 0.2s linear;
+  }
+
+  .status-panel {
+    display: flex;
+    justify-content: space-around;
+    align-items: center;
+    padding: 1.75rem 0.75rem;
+    border-radius: 1.5rem;
+    background: var(--zone-none);
+    transition: background-color 0.5s ease;
+  }
+
+  .countdown-number {
+    font-size: 3.5rem;
+    font-weight: 900;
+    font-variant-numeric: tabular-nums;
+    line-height: 1;
+  }
+
+  .countdown-label,
+  .target-pct {
+    margin-top: 0.5rem;
+    font-size: 0.9rem;
+    opacity: 0.85;
+  }
+
+  .target-watt {
+    font-size: 2.5rem;
+    font-weight: 900;
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .controls {
+    display: grid;
+    grid-template-columns: 1fr 2fr 1fr;
+    gap: 0.6rem;
+  }
+
+  .controls .btn-stop {
+    grid-column: 1 / -1;
+  }
+
+  .btn {
+    padding: 0.9rem 0.5rem;
+    border: none;
+    border-radius: 1rem;
+    font-size: 1rem;
+    font-weight: 700;
+    cursor: pointer;
+    background: #1e293b;
+    color: #f8fafc;
+  }
+
+  .btn:focus-visible {
+    outline: 2px solid #60a5fa;
+    outline-offset: 2px;
+  }
+
+  .btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+
+  .btn-primary {
+    background: #f8fafc;
+    color: #020617;
+  }
+
+  .btn-danger {
+    background: transparent;
+    color: #f87171;
+    border: 1px solid #7f1d1d;
+  }
+
+  .finished-banner {
+    text-align: center;
+    font-size: 1.15rem;
+    font-weight: 800;
+    padding: 1rem;
+    border-radius: 1rem;
+    background: #14532d;
+  }
+
+  .finished-banner.hidden {
+    display: none;
+  }
+
+  .preview-note {
+    text-align: center;
+    font-size: 0.8rem;
+    color: #64748b;
+  }
+
+  .zone-gray { background-color: var(--zone-gray); }
+  .zone-blue { background-color: var(--zone-blue); }
+  .zone-green { background-color: var(--zone-green); }
+  .zone-yellow { background-color: var(--zone-yellow); }
+  .zone-orange { background-color: var(--zone-orange); }
+  .zone-red { background-color: var(--zone-red); }
+  .zone-purple { background-color: var(--zone-purple); }
+  .zone-none { background-color: var(--zone-none); }
+
+  @media (prefers-reduced-motion: reduce) {
+    .timeline-cursor {
+      transition: none;
+    }
+  }
+</style>
+</head>
+<body>
+<div id="app"></div>
+
+<script>
+  // ---- src/constants/powerZones.js ----
+  const POWER_ZONES = [
+    { key: 'Z1', label: '恢復', maxPct: 55, color: 'gray' },
+    { key: 'Z2', label: '有氧耐力', maxPct: 75, color: 'blue' },
+    { key: 'Z3', label: '節奏', maxPct: 90, color: 'green' },
+    { key: 'Z4', label: '閾值', maxPct: 105, color: 'yellow' },
+    { key: 'Z5', label: '最大攝氧', maxPct: 120, color: 'orange' },
+    { key: 'Z6', label: '無氧', maxPct: 150, color: 'red' },
+    { key: 'Z7', label: '神經肌力', maxPct: Infinity, color: 'purple' },
+  ];
+
+  function getZoneColor(pct) {
+    if (pct < 55) return zoneInfo(POWER_ZONES[0]);
+    for (let i = 1; i < POWER_ZONES.length; i++) {
+      if (pct <= POWER_ZONES[i].maxPct) return zoneInfo(POWER_ZONES[i]);
+    }
+    return zoneInfo(POWER_ZONES[POWER_ZONES.length - 1]);
+  }
+
+  function zoneInfo(zone) {
+    return { key: zone.key, label: zone.label, color: zone.color };
+  }
+
+  // ---- src/engine/timerEngine.js ----
+  const TIMER_EVENTS = {
+    COUNTDOWN_WARNING: 'countdownWarning',
+    INTERVAL_CHANGED: 'intervalChanged',
+    WORKOUT_FINISHED: 'workoutFinished',
+  };
+
+  const COUNTDOWN_WARNING_SECONDS = 10;
+
+  function computeCurrentTarget(workout, intervalIndex, elapsedInInterval, ftp, adjustPct = 0) {
+    const iv = workout.intervals[intervalIndex];
+    if (!iv) throw new Error(`computeCurrentTarget: no interval at index ${intervalIndex}`);
+    if (iv.type === 'freeride') return { watts: null, pct: null };
+
+    const ratio = iv.duration > 0 ? clamp01(elapsedInInterval / iv.duration) : 0;
+    const pct = iv.powerStart + (iv.powerEnd - iv.powerStart) * ratio;
+    const adjustedPct = pct + adjustPct;
+    const watts = Math.round((ftp * adjustedPct) / 100);
+    return { watts, pct: adjustedPct, zoneColor: getZoneColor(adjustedPct) };
+  }
+
+  function createTimerEngine(workout) {
+    let status = 'idle';
+    let elapsedTotal = 0;
+    let startTimestamp = null;
+    let powerAdjustPct = 0;
+
+    function refreshElapsedIfRunning(now) {
+      if (status === 'running') elapsedTotal = Math.max(0, (now - startTimestamp) / 1000);
+    }
+
+    function buildState() {
+      const { index, elapsedInInterval } = locateIntervalAt(workout, elapsedTotal);
+      return { status, currentIntervalIndex: index, elapsedInInterval, elapsedTotal, powerAdjustPct, startTimestamp };
+    }
+
+    function result(events) {
+      return { state: buildState(), events };
+    }
+
+    function play(now = Date.now()) {
+      if (status === 'idle' || status === 'paused') {
+        status = 'running';
+        startTimestamp = now - elapsedTotal * 1000;
+      }
+      return result([]);
+    }
+
+    function pause(now = Date.now()) {
+      if (status === 'running') {
+        refreshElapsedIfRunning(now);
+        status = 'paused';
+        startTimestamp = null;
+      }
+      return result([]);
+    }
+
+    function skip(now = Date.now()) {
+      refreshElapsedIfRunning(now);
+      const { index } = locateIntervalAt(workout, elapsedTotal);
+      const nextIndex = index + 1;
+      const events = [];
+      if (nextIndex >= workout.intervals.length) {
+        elapsedTotal = workout.totalDuration;
+        if (status !== 'finished') {
+          status = 'finished';
+          events.push(TIMER_EVENTS.WORKOUT_FINISHED);
+        }
+      } else {
+        elapsedTotal = cumulativeStart(workout, nextIndex);
+        events.push(TIMER_EVENTS.INTERVAL_CHANGED);
+      }
+      if (status === 'running') startTimestamp = now - elapsedTotal * 1000;
+      return result(events);
+    }
+
+    function redo(now = Date.now()) {
+      refreshElapsedIfRunning(now);
+      const { index } = locateIntervalAt(workout, elapsedTotal);
+      elapsedTotal = cumulativeStart(workout, index);
+      if (status === 'running') startTimestamp = now - elapsedTotal * 1000;
+      return result([]);
+    }
+
+    function stop(now = Date.now()) {
+      refreshElapsedIfRunning(now);
+      const events = status !== 'finished' ? [TIMER_EVENTS.WORKOUT_FINISHED] : [];
+      status = 'finished';
+      startTimestamp = null;
+      return result(events);
+    }
+
+    function adjustPower(deltaPct) {
+      powerAdjustPct += deltaPct;
+      return result([]);
+    }
+
+    function tick(now = Date.now()) {
+      if (status !== 'running') return result([]);
+      const before = locateIntervalAt(workout, elapsedTotal);
+      const prevRemaining = workout.intervals[before.index].duration - before.elapsedInInterval;
+      elapsedTotal = Math.max(0, (now - startTimestamp) / 1000);
+      const after = locateIntervalAt(workout, elapsedTotal);
+      const events = [];
+      if (after.finished) {
+        status = 'finished';
+        events.push(TIMER_EVENTS.WORKOUT_FINISHED);
+      } else if (after.index !== before.index) {
+        events.push(TIMER_EVENTS.INTERVAL_CHANGED);
+      } else {
+        const duration = workout.intervals[after.index].duration;
+        const remaining = duration - after.elapsedInInterval;
+        if (duration > COUNTDOWN_WARNING_SECONDS && prevRemaining > COUNTDOWN_WARNING_SECONDS && remaining <= COUNTDOWN_WARNING_SECONDS) {
+          events.push(TIMER_EVENTS.COUNTDOWN_WARNING);
+        }
+      }
+      return result(events);
+    }
+
+    function getState() {
+      return buildState();
+    }
+
+    return { play, pause, skip, redo, stop, adjustPower, tick, getState };
+  }
+
+  function clamp01(value) {
+    return Math.min(1, Math.max(0, value));
+  }
+
+  function cumulativeStart(workout, index) {
+    let acc = 0;
+    for (let i = 0; i < index; i++) acc += workout.intervals[i].duration;
+    return acc;
+  }
+
+  function locateIntervalAt(workout, elapsedTotal) {
+    const clamped = Math.max(0, elapsedTotal);
+    let acc = 0;
+    for (let i = 0; i < workout.intervals.length; i++) {
+      const duration = workout.intervals[i].duration;
+      if (clamped < acc + duration) return { index: i, elapsedInInterval: clamped - acc, finished: false };
+      acc += duration;
+    }
+    const lastIndex = workout.intervals.length - 1;
+    return { index: lastIndex, elapsedInInterval: workout.intervals[lastIndex].duration, finished: true };
+  }
+
+  // ---- src/ui/formatTime.js ----
+  function formatMMSS(totalSeconds) {
+    const clamped = Math.max(0, Math.round(totalSeconds));
+    const minutes = Math.floor(clamped / 60);
+    const seconds = clamped % 60;
+    return `${minutes}:${String(seconds).padStart(2, '0')}`;
+  }
+
+  function formatDurationLabel(totalSeconds) {
+    const clamped = Math.max(0, Math.round(totalSeconds));
+    const hours = Math.floor(clamped / 3600);
+    const minutes = Math.floor((clamped % 3600) / 60);
+    const seconds = clamped % 60;
+    if (hours > 0) return `${hours}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+    return `${minutes}:${String(seconds).padStart(2, '0')}`;
+  }
+
+  // ---- src/ui/timelineSegments.js ----
+  function buildTimelineSegments(workout) {
+    const total = workout.totalDuration;
+    let acc = 0;
+    return workout.intervals.map((iv) => {
+      const startPct = total > 0 ? (acc / total) * 100 : 0;
+      const widthPct = total > 0 ? (iv.duration / total) * 100 : 0;
+      acc += iv.duration;
+      const color = iv.type === 'freeride' ? null : getZoneColor((iv.powerStart + iv.powerEnd) / 2).color;
+      return { type: iv.type, startPct, widthPct, color };
+    });
+  }
+
+  function computeCursorPct(elapsedTotal, totalDuration) {
+    if (totalDuration <= 0) return 0;
+    return Math.min(100, Math.max(0, (elapsedTotal / totalDuration) * 100));
+  }
+
+  // ---- src/ui/renderPlayer.js ----
+  const INTERVAL_TYPE_LABELS = { warmup: '熱身', steady: '穩定', ramp: '漸變', freeride: '自由騎乘', cooldown: '收操' };
+  const STATUS_LABELS = { idle: '尚未開始', running: '進行中', paused: '已暫停', finished: '已完成' };
+
+  function createPlayerView(rootEl, handlers) {
+    rootEl.innerHTML = `
+      <div class="player">
+        <header class="player-header">
+          <h1 class="workout-name"></h1>
+          <div class="workout-meta">
+            <span class="total-duration"></span>
+            <span class="interval-progress"></span>
+          </div>
+        </header>
+        <div class="timeline">
+          <div class="timeline-track"></div>
+          <div class="timeline-cursor"></div>
+        </div>
+        <div class="status-panel">
+          <div class="countdown-block">
+            <div class="countdown-number">0:00</div>
+            <div class="countdown-label">本組剩餘</div>
+          </div>
+          <div class="target-block">
+            <div class="target-watt">--</div>
+            <div class="target-pct"></div>
+          </div>
+        </div>
+        <div class="controls">
+          <button type="button" class="btn btn-skip">跳組</button>
+          <button type="button" class="btn btn-play-pause btn-primary">▶ 開始</button>
+          <button type="button" class="btn btn-redo">重做本組</button>
+          <button type="button" class="btn btn-stop btn-danger">提早結束</button>
+        </div>
+        <div class="finished-banner hidden">課表完成！</div>
+        <p class="preview-note">預覽用假資料課表，FTP 暫定 200W</p>
+      </div>
+    `;
+
+    const els = {
+      workoutName: rootEl.querySelector('.workout-name'),
+      totalDuration: rootEl.querySelector('.total-duration'),
+      intervalProgress: rootEl.querySelector('.interval-progress'),
+      timelineTrack: rootEl.querySelector('.timeline-track'),
+      timelineCursor: rootEl.querySelector('.timeline-cursor'),
+      statusPanel: rootEl.querySelector('.status-panel'),
+      countdownNumber: rootEl.querySelector('.countdown-number'),
+      countdownLabel: rootEl.querySelector('.countdown-label'),
+      targetWatt: rootEl.querySelector('.target-watt'),
+      targetPct: rootEl.querySelector('.target-pct'),
+      playPauseBtn: rootEl.querySelector('.btn-play-pause'),
+      skipBtn: rootEl.querySelector('.btn-skip'),
+      redoBtn: rootEl.querySelector('.btn-redo'),
+      stopBtn: rootEl.querySelector('.btn-stop'),
+      finishedBanner: rootEl.querySelector('.finished-banner'),
+    };
+
+    els.playPauseBtn.addEventListener('click', () => handlers.onPlayPause());
+    els.skipBtn.addEventListener('click', () => handlers.onSkip());
+    els.redoBtn.addEventListener('click', () => handlers.onRedo());
+    els.stopBtn.addEventListener('click', () => handlers.onStop());
+
+    let renderedWorkoutId = null;
+
+    function renderTimelineIfNeeded(workout) {
+      if (renderedWorkoutId === workout.id) return;
+      renderedWorkoutId = workout.id;
+      const segments = buildTimelineSegments(workout);
+      els.timelineTrack.innerHTML = segments
+        .map((seg) => `<div class="timeline-segment ${seg.color ? `zone-${seg.color}` : 'zone-none'}" style="left:${seg.startPct}%;width:${seg.widthPct}%" title="${INTERVAL_TYPE_LABELS[seg.type]}"></div>`)
+        .join('');
+    }
+
+    function update(workout, state, ftp) {
+      renderTimelineIfNeeded(workout);
+      els.workoutName.textContent = workout.name;
+      els.totalDuration.textContent = `總時長 ${formatDurationLabel(workout.totalDuration)}`;
+      els.intervalProgress.textContent = `第 ${state.currentIntervalIndex + 1} / ${workout.intervals.length} 組 · ${STATUS_LABELS[state.status]}`;
+      els.timelineCursor.style.left = `${computeCursorPct(state.elapsedTotal, workout.totalDuration)}%`;
+
+      const currentInterval = workout.intervals[state.currentIntervalIndex];
+      const remaining = currentInterval.duration - state.elapsedInInterval;
+      els.countdownNumber.textContent = formatMMSS(remaining);
+      els.countdownLabel.textContent = `本組剩餘 · ${INTERVAL_TYPE_LABELS[currentInterval.type]}`;
+
+      const target = computeCurrentTarget(workout, state.currentIntervalIndex, state.elapsedInInterval, ftp, state.powerAdjustPct);
+      if (target.watts === null) {
+        els.targetWatt.textContent = '自由騎乘';
+        els.targetPct.textContent = '';
+        els.statusPanel.className = 'status-panel zone-none';
+      } else {
+        els.targetWatt.textContent = `${target.watts} W`;
+        els.targetPct.textContent = `${Math.round(target.pct)}% FTP`;
+        els.statusPanel.className = `status-panel zone-${target.zoneColor.color}`;
+      }
+
+      const isFinished = state.status === 'finished';
+      els.playPauseBtn.textContent = state.status === 'running' ? '⏸ 暫停' : '▶ 開始';
+      els.playPauseBtn.disabled = isFinished;
+      els.skipBtn.disabled = isFinished;
+      els.redoBtn.disabled = isFinished;
+      els.stopBtn.disabled = isFinished;
+      els.finishedBanner.classList.toggle('hidden', !isFinished);
+    }
+
+    return { update };
+  }
+
+  // ---- src/ui/fakeWorkout.js ----
+  const FAKE_WORKOUT = {
+    id: 'demo-fake-workout-001',
+    name: '假資料測試課表（Demo Workout）',
+    source: 'zwo',
+    totalDuration: 50,
+    intervals: [
+      { type: 'warmup', duration: 12, powerStart: 50, powerEnd: 70, cadence: null },
+      { type: 'steady', duration: 10, powerStart: 88, powerEnd: 88, cadence: 90 },
+      { type: 'ramp', duration: 8, powerStart: 60, powerEnd: 110, cadence: null },
+      { type: 'freeride', duration: 8, powerStart: null, powerEnd: null, cadence: null },
+      { type: 'cooldown', duration: 12, powerStart: 70, powerEnd: 50, cadence: null },
+    ],
+  };
+
+  // ---- driver (same role as src/ui/playerApp.js + the worker loop, single-thread for this preview) ----
+  const FAKE_FTP = 200;
+  const engine = createTimerEngine(FAKE_WORKOUT);
+  const view = createPlayerView(document.getElementById('app'), {
+    onPlayPause: () => {
+      const { status } = engine.getState();
+      if (status === 'running') {
+        engine.pause();
+        stopLoop();
+      } else {
+        engine.play();
+        startLoop();
+      }
+      render();
+    },
+    onSkip: () => {
+      engine.skip();
+      stopLoopIfFinished();
+      render();
+    },
+    onRedo: () => {
+      engine.redo();
+      render();
+    },
+    onStop: () => {
+      engine.stop();
+      stopLoop();
+      render();
+    },
+  });
+
+  let intervalId = null;
+
+  function startLoop() {
+    if (intervalId !== null) return;
+    intervalId = setInterval(() => {
+      engine.tick(Date.now());
+      stopLoopIfFinished();
+      render();
+    }, 200);
+  }
+
+  function stopLoop() {
+    if (intervalId !== null) {
+      clearInterval(intervalId);
+      intervalId = null;
+    }
+  }
+
+  function stopLoopIfFinished() {
+    if (engine.getState().status === 'finished') stopLoop();
+  }
+
+  function render() {
+    view.update(FAKE_WORKOUT, engine.getState(), FAKE_FTP);
+  }
+
+  render();
+</script>
+</body>
+</html>
