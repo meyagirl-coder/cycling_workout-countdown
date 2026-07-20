@@ -77,6 +77,80 @@ body {
   opacity: 0;
 }
 
+.upload-divider {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  color: #64748b;
+  font-size: 0.85rem;
+}
+
+.upload-divider::before,
+.upload-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: #1e293b;
+}
+
+.upload-divider span {
+  padding: 0 0.75rem;
+}
+
+.upload-intervals-form {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.upload-intervals-label {
+  font-size: 0.85rem;
+  color: #94a3b8;
+  text-align: left;
+}
+
+.upload-intervals-row {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.upload-intervals-input {
+  flex: 1;
+  min-width: 0;
+  padding: 0.75rem 1rem;
+  border-radius: 0.75rem;
+  border: 1px solid #334155;
+  background: #0f172a;
+  color: #f8fafc;
+  font-size: 1rem;
+}
+
+.upload-intervals-input:focus {
+  outline: none;
+  border-color: #60a5fa;
+}
+
+.upload-intervals-input:disabled {
+  opacity: 0.6;
+}
+
+.upload-intervals-submit {
+  padding: 0.75rem 1.25rem;
+  border: none;
+  border-radius: 0.75rem;
+  background: #2563eb;
+  color: #f8fafc;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.upload-intervals-submit:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
 .upload-error {
   margin: 0;
   color: #f87171;

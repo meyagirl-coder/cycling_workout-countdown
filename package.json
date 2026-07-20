@@ -4,6 +4,9 @@
   "description": "自行車課表執行倒數計時器 - 純前端 PWA",
   "type": "module",
   "private": true,
+  "engines": {
+    "node": ">=18"
+  },
   "scripts": {
     "test": "vitest run",
     "test:watch": "vitest"

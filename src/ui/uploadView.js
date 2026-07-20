@@ -1,9 +1,12 @@
 /**
- * 上傳畫面：選一份 .zwo 課表檔案，讀出內容後交給呼叫端解析。純 DOM 渲染邏輯，
- * 不碰 parser／計時引擎 —— 收到檔案就透過 onFileSelected(file) 丟出去。
+ * 上傳畫面：選一份 .zwo 課表檔案，或貼上 intervals.icu 課表網址／ID。純 DOM
+ * 渲染邏輯，不碰 parser／計時引擎／fetch —— 收到輸入就透過對應的 handler
+ * 丟給呼叫端處理：
+ *   onFileSelected(file)          選了本機 .zwo 檔案
+ *   onIntervalsIcuSubmit(rawText) 送出 intervals.icu 網址／ID 表單
  *
  * @param {HTMLElement} rootEl
- * @param {{onFileSelected: (file: File) => void}} handlers
+ * @param {{onFileSelected: (file: File) => void, onIntervalsIcuSubmit: (rawText: string) => void}} handlers
  */
 export function createUploadView(rootEl, handlers) {
   rootEl.innerHTML = `
@@ -14,17 +17,43 @@ export function createUploadView(rootEl, handlers) {
         <input type="file" accept=".zwo,application/xml,text/xml" class="upload-input" />
         <span>點一下選擇 .zwo 檔案</span>
       </label>
+
+      <div class="upload-divider"><span>或</span></div>
+
+      <form class="upload-intervals-form">
+        <label class="upload-intervals-label" for="upload-intervals-input">從 intervals.icu 載入</label>
+        <div class="upload-intervals-row">
+          <input
+            type="text"
+            id="upload-intervals-input"
+            class="upload-intervals-input"
+            placeholder="貼上課表網址，或直接輸入 event ID"
+            autocomplete="off"
+          />
+          <button type="submit" class="upload-intervals-submit">載入</button>
+        </div>
+      </form>
+
       <p class="upload-error hidden"></p>
     </div>
   `;
 
-  const input = rootEl.querySelector('.upload-input');
+  const fileInput = rootEl.querySelector('.upload-input');
   const errorEl = rootEl.querySelector('.upload-error');
+  const intervalsForm = rootEl.querySelector('.upload-intervals-form');
+  const intervalsInput = rootEl.querySelector('.upload-intervals-input');
+  const intervalsSubmitBtn = rootEl.querySelector('.upload-intervals-submit');
 
-  input.addEventListener('change', () => {
-    const file = input.files && input.files[0];
-    input.value = ''; // allow re-selecting the same file again after an error
+  fileInput.addEventListener('change', () => {
+    const file = fileInput.files && fileInput.files[0];
+    fileInput.value = ''; // allow re-selecting the same file again after an error
     if (file) handlers.onFileSelected(file);
+  });
+
+  intervalsForm.addEventListener('submit', (event) => {
+    event.preventDefault();
+    const value = intervalsInput.value.trim();
+    if (value) handlers.onIntervalsIcuSubmit(value);
   });
 
   return {
@@ -35,6 +64,11 @@ export function createUploadView(rootEl, handlers) {
     clearError() {
       errorEl.textContent = '';
       errorEl.classList.add('hidden');
+    },
+    setIntervalsIcuLoading(isLoading) {
+      intervalsSubmitBtn.disabled = isLoading;
+      intervalsSubmitBtn.textContent = isLoading ? '載入中…' : '載入';
+      intervalsInput.disabled = isLoading;
     },
   };
 }
