@@ -119,7 +119,6 @@ describe('createUploadView', () => {
     const link = root.querySelector('.upload-intervals-lookup-link');
     expect(link).not.toBeNull();
     expect(link.textContent).toBe('點此查詢最近一筆行事曆訓練代碼');
-    expect(link.getAttribute('href')).toBe('/api/intervals-events');
     expect(link.getAttribute('target')).toBe('_blank');
     expect(link.getAttribute('rel')).toContain('noopener');
 
@@ -128,5 +127,29 @@ describe('createUploadView', () => {
     const row = root.querySelector('.upload-intervals-row');
     expect(row.compareDocumentPosition(link) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(link.closest('.upload-intervals-form')).not.toBeNull();
+  });
+
+  it('sets the lookup link href to the browser\'s local date, not the server/UTC date (regression: 0720 vs 0721 mixup)', () => {
+    document.body.innerHTML = '<div id="root"></div>';
+    const root = document.getElementById('root');
+    createUploadView(root, makeHandlers());
+    const link = root.querySelector('.upload-intervals-lookup-link');
+
+    // Computed the same way the view does (local getters), so this is
+    // correct in whatever timezone the test happens to run in.
+    const now = new Date();
+    const expectedLocalDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+
+    expect(link.getAttribute('href')).toBe(`/api/intervals-events?today=${expectedLocalDate}`);
+  });
+
+  it('puts the intervals.icu section before the .zwo file upload section (primary use case first)', () => {
+    document.body.innerHTML = '<div id="root"></div>';
+    const root = document.getElementById('root');
+    createUploadView(root, makeHandlers());
+
+    const intervalsForm = root.querySelector('.upload-intervals-form');
+    const uploadTitle = root.querySelector('.upload-title');
+    expect(intervalsForm.compareDocumentPosition(uploadTitle) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 });

@@ -98,6 +98,56 @@ describe('api/intervals-events handler', () => {
     expect(res.body.nearest).toBeNull();
   });
 
+  it('sets strong cache-prevention headers so no intermediate cache can serve a stale/wrong response', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => [] }));
+    const req = makeReq();
+    const res = makeRes();
+
+    await handler(req, res);
+
+    expect(res.headers['Cache-Control']).toContain('no-store');
+    expect(res.headers.Pragma).toBe('no-cache');
+    expect(res.headers.Expires).toBe('0');
+  });
+
+  it('uses an explicit `today` query param (the browser\'s local date) instead of the server clock, fixing the UTC-vs-local-timezone offset', async () => {
+    // Server clock says 2026-07-20 (e.g. still UTC-side of midnight), but the
+    // caller (uploadView.js, using the browser's local date) says it's
+    // already 2026-07-21 locally - `today` must win.
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-07-20T20:00:00Z'));
+
+    const events = [
+      { id: 1, name: '0720 ride', start_date_local: '2026-07-20T06:00:00' },
+      { id: 2, name: '0721 ride', start_date_local: '2026-07-21T06:00:00' },
+    ];
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => events }));
+
+    const req = makeReq({ query: { today: '2026-07-21' } });
+    const res = makeRes();
+
+    await handler(req, res);
+
+    expect(res.body.today).toBe('2026-07-21');
+    // The server-clock-only default (2026-07-20) would have wrongly kept
+    // event 1 and picked it as `nearest`; with the client's local date it's
+    // correctly excluded as already past.
+    expect(res.body.events.map((e) => e.id)).toEqual([2]);
+    expect(res.body.nearest.id).toBe(2);
+
+    const [calledUrl] = vi.mocked(fetch).mock.calls[0];
+    expect(calledUrl).toContain('oldest=2026-07-21'); // default oldest also derives from `today`, not the server clock
+  });
+
+  it('rejects a malformed `today` query param', async () => {
+    const req = makeReq({ query: { today: '21-07-2026' } });
+    const res = makeRes();
+
+    await handler(req, res);
+
+    expect(res.statusCode).toBe(400);
+  });
+
   it('honors an explicit oldest query param for the upstream request, but still filters the response to today-or-later', async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-07-21T12:00:00Z'));

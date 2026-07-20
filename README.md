@@ -54,6 +54,12 @@ https://<你的 Vercel 網域>/api/intervals-events
 - `events` 依日期由近到遠排序；`nearest` 是離今天最近、還沒發生的那一筆
   （週期性排課、同一週有多天課表時，這個欄位就是你要的那一筆），找不到就是
   `null`
+- **「今天」是哪一天，以使用者瀏覽器的本地日期為準，不是 Vercel 伺服器的
+  時區**：App 裡的查詢連結會自動帶上 `?today=YYYY-MM-DD`（瀏覽器本地日期）；
+  直接用瀏覽器打開這支 API 網址、沒帶 `today` 的話，才會退回用伺服器的 UTC
+  日期（跟你的當地時間可能差到一天，僅供 best-effort 使用）
 
 跟 `download.zwo` 那支 proxy 一樣，Athlete ID／API Key 只留在伺服器端，不會
-出現在回應裡。
+出現在回應裡；兩支 proxy 的回應都帶了 `Cache-Control: no-store`／`Pragma:
+no-cache`／`Expires: 0`，確保不會被瀏覽器或中間的快取層擋掉，回傳過期或
+其他 event ID 的內容。

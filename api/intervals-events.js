@@ -5,9 +5,18 @@
  *
  * 直接在瀏覽器打開 /api/intervals-events 就會用預設區間（今天到未來 30 天）
  * 查詢；也可以自己帶 ?oldest=YYYY-MM-DD&newest=YYYY-MM-DD 覆蓋範圍。不管
- * oldest 帶了什麼，回應永遠只列出今天（含）以後的事件，已經過去的日期一律
- * 濾掉；`events` 依日期由近到遠排序，`nearest` 是其中離今天最近、還沒發生的
- * 那一筆（找不到就是 null）——這就是「查詢最近一筆行事曆訓練代碼」要用的欄位。
+ * oldest 帶了什麼，回應永遠只列出「今天」（含）以後的事件，已經過去的日期
+ * 一律濾掉；`events` 依日期由近到遠排序，`nearest` 是其中離今天最近、還沒
+ * 發生的那一筆（找不到就是 null）——這就是「查詢最近一筆行事曆訓練代碼」
+ * 要用的欄位。
+ *
+ * 「今天」是哪一天：Vercel Serverless Function 跑在伺服器的時區（通常是
+ * UTC），跟使用者實際所在的時區不一定一樣——UTC+8 的使用者在當地已經跨到
+ * 隔天、UTC 卻還沒跨日的那幾小時內，用伺服器時間當「今天」會整整差一天。
+ * 所以「今天」以使用者瀏覽器算出來的本地日期為準：前端呼叫這支 API 時會帶
+ * `?today=YYYY-MM-DD`（瀏覽器本地日期，見 src/ui/uploadView.js）；只有在
+ * 沒有帶這個參數的情況下（例如有人直接打開這支 API 的網址，繞過前端），才
+ * 退回用伺服器的 UTC 日期當「今天」，僅供 best-effort 使用。
  */
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -27,9 +36,10 @@ export default async function handler(req, res) {
 
   const oldestParam = Array.isArray(req.query.oldest) ? req.query.oldest[0] : req.query.oldest;
   const newestParam = Array.isArray(req.query.newest) ? req.query.newest[0] : req.query.newest;
-  const range = resolveDateRange(oldestParam, newestParam);
+  const todayParam = Array.isArray(req.query.today) ? req.query.today[0] : req.query.today;
+  const range = resolveDateRange(oldestParam, newestParam, todayParam);
   if (!range) {
-    res.status(400).json({ error: 'oldest/newest 必須是 YYYY-MM-DD 格式的日期' });
+    res.status(400).json({ error: 'oldest/newest/today 必須是 YYYY-MM-DD 格式的日期' });
     return;
   }
 
@@ -59,7 +69,9 @@ export default async function handler(req, res) {
   const upcoming = keepTodayOrLaterSortedAscending(rawEvents, range.today);
 
   res.setHeader('Content-Type', 'application/json; charset=utf-8');
-  res.setHeader('Cache-Control', 'no-store');
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
   res.status(200).json({
     today: range.today,
     oldest: range.oldest,
@@ -83,16 +95,20 @@ function keepTodayOrLaterSortedAscending(events, todayDateStr) {
     .sort((a, b) => a.start_date_local.localeCompare(b.start_date_local));
 }
 
-function resolveDateRange(oldestParam, newestParam) {
-  const today = formatDate(new Date());
+function resolveDateRange(oldestParam, newestParam, todayParam) {
+  // todayParam 是前端算出來的瀏覽器本地日期；沒帶的話才退回伺服器的 UTC 日期。
+  const today = todayParam || formatDate(new Date());
+  if (!DATE_RE.test(today)) return null;
+
   const oldest = oldestParam || today;
-  const newest = newestParam || formatDate(daysFromNow(30));
+  const newest = newestParam || formatDate(daysFromNowFrom(today, 30));
   if (!DATE_RE.test(oldest) || !DATE_RE.test(newest)) return null;
   return { oldest, newest, today };
 }
 
-function daysFromNow(deltaDays) {
-  const d = new Date();
+/** 從一個 YYYY-MM-DD 字串往後推 deltaDays 天，用 UTC 午夜避免日光節約時間之類的偏移 */
+function daysFromNowFrom(dateStr, deltaDays) {
+  const d = new Date(`${dateStr}T00:00:00Z`);
   d.setUTCDate(d.getUTCDate() + deltaDays);
   return d;
 }

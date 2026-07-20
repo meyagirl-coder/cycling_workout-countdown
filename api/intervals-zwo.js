@@ -57,6 +57,8 @@ export default async function handler(req, res) {
 
   const zwoText = await upstreamRes.text();
   res.setHeader('Content-Type', 'application/xml; charset=utf-8');
-  res.setHeader('Cache-Control', 'no-store');
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
   res.status(200).send(zwoText);
 }
