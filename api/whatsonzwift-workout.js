@@ -10,6 +10,7 @@
  * 被當成任意網址的 SSRF 跳板。
  */
 import { extractWhatsOnZwiftTextFromHtml } from '../src/parser/extractWhatsOnZwiftTextFromHtml.js';
+import { BROWSER_LIKE_HEADERS } from '../src/utils/httpFetchHeaders.js';
 
 const ALLOWED_HOSTS = new Set(['whatsonzwift.com', 'www.whatsonzwift.com']);
 
@@ -42,9 +43,7 @@ export default async function handler(req, res) {
 
   let upstreamRes;
   try {
-    upstreamRes = await fetch(targetUrl.toString(), {
-      headers: { 'User-Agent': 'Mozilla/5.0 (compatible; cycling-workout-countdown/1.0)' },
-    });
+    upstreamRes = await fetch(targetUrl.toString(), { headers: BROWSER_LIKE_HEADERS });
   } catch {
     res.status(502).json({ error: '連線 WhatsOnZwift 失敗，請稍後再試，或改用「貼上課表文字內容」' });
     return;
@@ -53,6 +52,10 @@ export default async function handler(req, res) {
   if (!upstreamRes.ok) {
     if (upstreamRes.status === 404) {
       res.status(404).json({ error: '在 WhatsOnZwift 上找不到這份課表，請確認網址是否正確，或改用「貼上課表文字內容」' });
+      return;
+    }
+    if (upstreamRes.status === 403) {
+      res.status(502).json({ error: 'WhatsOnZwift 拒絕了這個抓取請求（可能有反爬蟲防護），請改用「貼上課表文字內容」' });
       return;
     }
     res.status(502).json({ error: `WhatsOnZwift 回傳錯誤（HTTP ${upstreamRes.status}），請改用「貼上課表文字內容」` });

@@ -169,6 +169,32 @@ describe('api/trainerday-workout handler', () => {
     expect(res.body.error).toContain('500');
   });
 
+  it('maps a 403 from TrainerDay to a 502 with an anti-bot-specific message (not the generic HTTP 403 message)', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 403 }));
+    const req = makeReq({ url: VALID_URL });
+    const res = makeRes();
+
+    await handler(req, res);
+
+    expect(res.statusCode).toBe(502);
+    expect(res.body.error).toMatch(/反爬蟲/);
+    expect(res.body.error).toMatch(/貼上課表文字內容/);
+  });
+
+  it('sends a realistic browser User-Agent instead of a bot-like one, to avoid tripping anti-scraping filters', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200, text: async () => '<div>10 min @ 53w</div>' });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const req = makeReq({ url: VALID_URL });
+    const res = makeRes();
+
+    await handler(req, res);
+
+    const requestInit = fetchMock.mock.calls[0][1];
+    expect(requestInit.headers['User-Agent']).toMatch(/Mozilla\/5\.0/);
+    expect(requestInit.headers['User-Agent']).not.toMatch(/compatible/);
+  });
+
   it('extracts and relays a "Nx" repeat block from the fetched HTML unchanged', async () => {
     const html = '<div>3x</div><div>1 min @ 150w</div><div>1 min @ 50w</div>';
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, status: 200, text: async () => html }));
