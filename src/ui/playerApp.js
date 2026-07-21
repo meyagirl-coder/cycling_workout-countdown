@@ -1,5 +1,6 @@
 import { extractEventId } from '../integrations/intervalsIcu.js';
 import { parsePasteText } from '../parser/pasteTextParser.js';
+import { parseWhatsOnZwiftText } from '../parser/whatsOnZwiftParser.js';
 import { parseZwoXml } from '../parser/zwoParser.js';
 import { createTimerWorkerClient } from '../worker/timerWorkerClient.js';
 import { createAppBanner } from './appBanner.js';
@@ -10,6 +11,7 @@ import { createUploadView } from './uploadView.js';
 
 const INTERVALS_ICU_PROXY_URL = '/api/intervals-zwo';
 const TRAINERDAY_PROXY_URL = '/api/trainerday-workout';
+const WHATSONZWIFT_PROXY_URL = '/api/whatsonzwift-workout';
 
 /**
  * 執行頁的組裝入口：先顯示上傳畫面，使用者可以選 .zwo 檔案、貼 intervals.icu
@@ -43,6 +45,7 @@ export function initPlayerApp(rootEl) {
     onIntervalsIcuSubmit: (rawText) => handleIntervalsIcuSubmit(rawText),
     onPasteTextSubmit: (rawText) => handlePasteTextSubmit(rawText),
     onTrainerDayUrlSubmit: (url) => handleTrainerDayUrlSubmit(url),
+    onWhatsOnZwiftUrlSubmit: (url) => handleWhatsOnZwiftUrlSubmit(url),
     onFtpChange: (ftp) => {
       currentFtp = ftp;
       saveFtp(ftp);
@@ -129,14 +132,19 @@ export function initPlayerApp(rootEl) {
     loadWorkout(() => parsePasteText(rawText), '無法解析貼上的課表內容：');
   }
 
-  /** 貼的是網址：透過 /api/trainerday-workout 代理抓取，拿回課表文字後照樣走 parsePasteText() */
-  async function handleTrainerDayUrlSubmit(url) {
+  /**
+   * 貼的是課表網址：透過對應的代理抓取，拿回課表文字後用對應的 parser 解析。
+   * TrainerDay／WhatsOnZwift 走同一套流程，只有 proxy 網址、parser、錯誤訊息
+   * 用的服務名稱不同，抽成共用函式避免兩邊各自維護一份幾乎一樣的 fetch／
+   * 錯誤處理邏輯。
+   */
+  async function handleRemoteWorkoutUrlSubmit(url, { proxyUrl, parseText, serviceName, errorPrefix }) {
     uploadView.clearError();
     uploadView.setPasteLoading(true);
     try {
       let response;
       try {
-        response = await fetch(`${TRAINERDAY_PROXY_URL}?url=${encodeURIComponent(url)}&_t=${Date.now()}`, {
+        response = await fetch(`${proxyUrl}?url=${encodeURIComponent(url)}&_t=${Date.now()}`, {
           cache: 'no-store',
         });
       } catch {
@@ -145,16 +153,34 @@ export function initPlayerApp(rootEl) {
       }
 
       if (!response.ok) {
-        const message = await extractProxyErrorMessage(response, 'TrainerDay');
+        const message = await extractProxyErrorMessage(response, serviceName);
         uploadView.showError(message);
         return;
       }
 
       const extractedText = await response.text();
-      loadWorkout(() => parsePasteText(extractedText), '無法解析 TrainerDay 課表內容：');
+      loadWorkout(() => parseText(extractedText), errorPrefix);
     } finally {
       uploadView.setPasteLoading(false);
     }
+  }
+
+  function handleTrainerDayUrlSubmit(url) {
+    return handleRemoteWorkoutUrlSubmit(url, {
+      proxyUrl: TRAINERDAY_PROXY_URL,
+      parseText: parsePasteText,
+      serviceName: 'TrainerDay',
+      errorPrefix: '無法解析 TrainerDay 課表內容：',
+    });
+  }
+
+  function handleWhatsOnZwiftUrlSubmit(url) {
+    return handleRemoteWorkoutUrlSubmit(url, {
+      proxyUrl: WHATSONZWIFT_PROXY_URL,
+      parseText: parseWhatsOnZwiftText,
+      serviceName: 'WhatsOnZwift',
+      errorPrefix: '無法解析 WhatsOnZwift 課表內容：',
+    });
   }
 
   async function handleIntervalsIcuSubmit(rawText) {

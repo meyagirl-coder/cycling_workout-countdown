@@ -141,11 +141,11 @@ function parsePasteText(text) -> Workout
 
 ### 3.3 貼上 TrainerDay 課表網址（自動抓取）
 
-除了手動複製貼上文字，「貼上課表文字」欄位也接受直接貼上 TrainerDay 公開課表
-網址（例如 `https://app.trainerday.com/workouts/20260714-ramp-up-5`）——
-偵測到輸入以 `http` 開頭就當網址處理，呼叫 `/api/trainerday-workout` 這個
-Vercel Serverless Function 代理抓取（伺服器端抓取，不受瀏覽器 CORS 限制，
-不需要登入或 API key）。
+除了手動複製貼上文字，「貼上課表文字或網址」欄位也接受直接貼上 TrainerDay
+公開課表網址（例如 `https://app.trainerday.com/workouts/20260714-ramp-up-5`）
+——偵測到輸入以 `http` 開頭且網域是 `app.trainerday.com` 就呼叫
+`/api/trainerday-workout` 這個 Vercel Serverless Function 代理抓取（伺服器
+端抓取，不受瀏覽器 CORS 限制，不需要登入或 API key）。
 
 流程：
 1. Proxy 只允許抓取 `app.trainerday.com` 底下的網址（避免被當成任意網址的
@@ -163,6 +163,48 @@ Vercel Serverless Function 代理抓取（伺服器端抓取，不受瀏覽器 C
 > class／id，改用文字模式擷取，對頁面標記結構的變化有一定容忍度——但如果
 > 部署後發現抓到的課表跟頁面顯示的不同，請改用「直接複製貼上文字內容」，
 > 並回報實際的頁面結構以便調整擷取邏輯。
+
+### 3.4 貼上 WhatsOnZwift 課表網址（自動抓取，另一套文法）
+
+同一個「貼上課表文字或網址」欄位也接受 WhatsOnZwift 公開課表網址（例如
+`https://whatsonzwift.com/workouts/...`）——偵測到網域是 `whatsonzwift.com`
+（含 `www` 子網域）就呼叫 `/api/whatsonzwift-workout` 代理抓取。
+
+WhatsOnZwift 的課表文字格式跟 TrainerDay 完全不同，所以另外寫了一份
+`parseWhatsOnZwiftText()`，不是擴充 `parsePasteText()`：
+
+- `Xmin from A to B% FTP` → ramp 段，A／B **直接就是 %FTP**（頁面上明確寫了
+  「FTP」字樣，不是像 TrainerDay 用瓦數代表 FTP=100 時的百分比，兩者的數字
+  意義不同，不能套用同一套換算假設）
+- `Xmin @ Y% FTP` → steady 段，Y 直接就是 %FTP
+- `Nx Xmin @ Y% FTP, Zmin @ W% FTP` → 複合重複組：兩段寫在**同一行、用逗號
+  分隔**，合起來重複 N 次——跟 §3.2 的「Nx」換行展開語法不一樣（那邊重複
+  次數獨立一行、接下來連續幾行才算內容），這裡的兩段內容跟重複次數本來就
+  在同一行寫完
+
+流程跟 §3.3 一樣（proxy 抓 HTML → `extractWhatsOnZwiftTextFromHtml()` 擷取
+→ 前端用 `parseWhatsOnZwiftText()` 解析），只是擷取沒有寬鬆模式備援：複合
+重複組格式比 TrainerDay 單純的「X min @ Yw」複雜很多，如果不要求整行完全
+符合格式、只在一大段文字裡搜尋片段，很容易把不相關的內容誤組成一個「看起來
+合理但其實是錯的」複合重複組——這種安靜算錯比直接擷取失敗、提示改用手動
+貼上更危險，所以嚴格模式沒比對到任何整行格式就直接視為擷取失敗。
+
+驗收案例（Over-Unders 課表）：
+
+```
+5min from 40 to 105% FTP
+2min @ 50% FTP
+3x 2min @ 105% FTP, 1min @ 90% FTP
+3min @ 51% FTP
+3x 2min @ 105% FTP, 1min @ 91% FTP
+5min from 70 to 40% FTP
+```
+
+解析結果：16 組、總時長 33 分鐘，跟頁面顯示的「Duration: 33m」一致。
+
+> 跟 §3.3 一樣，這個擷取邏輯是在沒有即時 HTML 結構可以核對的情況下寫的
+> （開發環境的網路政策也擋掉了 whatsonzwift.com），部署後發現抓到的課表跟
+> 頁面顯示的不同，請改用「直接複製貼上文字內容」，並回報實際的頁面結構。
 
 ---
 
@@ -282,14 +324,17 @@ App 一打開，使用者第一眼看到的畫面：
 - **本機檔案上傳（次要情境，畫面排在 intervals.icu 區塊下方，中間用「或」分
   隔）**：選一份 `.zwo` 課表檔案，讀出內容後用 `parseZwoXml()` 解析
 - **貼上純文字課表或網址（第三種情境，畫面排在檔案上傳下方，中間用「或」分
-  隔）**：同一個 textarea 同時支援兩種輸入——貼上從公開課表頁面複製的純文字
-  （見 §3.2），或直接貼上 TrainerDay 課表網址（見 §3.3）。送出時偵測輸入是
-  否以 `http` 開頭：是網址就呼叫 `/api/trainerday-workout` 代理抓取，抓回來
-  再用 `parsePasteText()` 解析；不是網址就直接把輸入內容送進
-  `parsePasteText()` 解析
-- 解析失敗（檔案、intervals.icu 回傳的內容、貼上的純文字、或 TrainerDay 網址
-  抓取都一樣）要有清楚的錯誤訊息，並留在首頁讓使用者重試，不能整個畫面壞掉；
-  TrainerDay 網址抓取失敗時要額外提示可以改用「直接複製貼上文字內容」
+  隔）**：同一個 textarea 同時支援三種輸入——貼上從公開課表頁面複製的純文字
+  （見 §3.2），或直接貼上 TrainerDay 課表網址（見 §3.3），或直接貼上
+  WhatsOnZwift 課表網址（見 §3.4）。送出時依序判斷：不是 `http` 開頭就直接
+  當純文字送進 `parsePasteText()`；是網址就再判斷網域——`app.trainerday.com`
+  呼叫 `/api/trainerday-workout` 抓回來用 `parsePasteText()` 解析、
+  `whatsonzwift.com`（含 `www`）呼叫 `/api/whatsonzwift-workout` 抓回來用
+  `parseWhatsOnZwiftText()` 解析；網域不是這兩者之一，直接在畫面上顯示「目前
+  只支援 TrainerDay 或 WhatsOnZwift 的課表網址」，不會呼叫任何 proxy
+- 解析失敗（檔案、intervals.icu 回傳的內容、貼上的純文字、或任一網址抓取都
+  一樣）要有清楚的錯誤訊息，並留在首頁讓使用者重試，不能整個畫面壞掉；網址
+  抓取失敗時要額外提示可以改用「直接複製貼上文字內容」
 
 #### 5.1.1 找 event ID：`/api/intervals-events`
 
