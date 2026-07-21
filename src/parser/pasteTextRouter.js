@@ -1,8 +1,8 @@
 /**
  * 「貼上課表文字內容」欄位收到的純文字可能是三種已知格式之一：
  *   - TrainerDay 格式：`X min @ Yw` + 獨立一行的「Nx」換行重複
- *   - WhatsOnZwift 格式：`Xmin @ Y% FTP`／`Xmin from A to B% FTP`／
- *     `Nx Xmin @ Y% FTP, Zmin @ W% FTP`（複合重複寫在同一行）
+ *   - WhatsOnZwift 格式：`Xmin @ Y% FTP`／`Xmin from A to B% FTP`／複合
+ *     重複組寫成兩行（`Nx Xmin @ Y% FTP,` 接著下一行 `Zmin @ W% FTP`）
  *   - 「時長 百分比」格式：`Xm Y%`／`Xs Y%` + 獨立一行的「Nx」換行重複
  *
  * parseAutoDetectedPasteText() 只做「判斷是哪一種格式，交給對應的 parser
@@ -16,7 +16,7 @@
 import { INTERVAL_LINE_RE, parsePasteText } from './pasteTextParser.js';
 import { REPEAT_LINE_RE } from './newlineRepeatTextParser.js';
 import { SPACE_PERCENT_LINE_RE, parseSpacePercentText } from './spacePercentTextParser.js';
-import { WOZ_RAMP_LINE_RE, WOZ_REPEAT_LINE_RE, WOZ_STEADY_LINE_RE, parseWhatsOnZwiftText } from './whatsOnZwiftParser.js';
+import { WOZ_RAMP_LINE_RE, WOZ_REPEAT_FIRST_LINE_RE, WOZ_STEADY_LINE_RE, parseWhatsOnZwiftText } from './whatsOnZwiftParser.js';
 
 /**
  * @param {string} text - 使用者貼上的純文字
@@ -35,7 +35,7 @@ export function parseAutoDetectedPasteText(text) {
     if (
       WOZ_STEADY_LINE_RE.test(firstContentLine) ||
       WOZ_RAMP_LINE_RE.test(firstContentLine) ||
-      WOZ_REPEAT_LINE_RE.test(firstContentLine)
+      WOZ_REPEAT_FIRST_LINE_RE.test(firstContentLine)
     ) {
       return parseWhatsOnZwiftText(text);
     }

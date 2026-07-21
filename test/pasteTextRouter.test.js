@@ -27,8 +27,8 @@ describe('parseAutoDetectedPasteText', () => {
     expect(workout.intervals[0].type).toBe('ramp');
   });
 
-  it('detects and routes a WhatsOnZwift compound repeat line', () => {
-    const workout = parseAutoDetectedPasteText('3x 2min @ 105% FTP, 1min @ 90% FTP');
+  it('detects and routes a WhatsOnZwift two-line compound repeat block', () => {
+    const workout = parseAutoDetectedPasteText(['3x 2min @ 105% FTP,', '1min @ 90% FTP'].join('\n'));
     expect(workout.source).toBe('whatsonzwift');
     expect(workout.intervals).toHaveLength(6);
   });
