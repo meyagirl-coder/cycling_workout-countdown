@@ -151,6 +151,66 @@
     color: #f8fafc;
   }
 
+  .upload-divider {
+    display: flex;
+    align-items: center;
+    width: 100%;
+    color: #64748b;
+    font-size: 0.85rem;
+  }
+
+  .upload-divider::before,
+  .upload-divider::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: #1e293b;
+  }
+
+  .upload-divider span {
+    padding: 0 0.75rem;
+  }
+
+  .upload-paste-form {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  .upload-paste-label {
+    font-size: 1.25rem;
+    font-weight: 800;
+    text-align: center;
+  }
+
+  .upload-paste-textarea {
+    width: 100%;
+    padding: 0.75rem 1rem;
+    border-radius: 0.75rem;
+    border: 1px solid #334155;
+    background: #0f172a;
+    color: #f8fafc;
+    font-size: 0.9rem;
+    font-family: inherit;
+    resize: vertical;
+  }
+
+  .upload-paste-textarea:focus {
+    outline: none;
+    border-color: #60a5fa;
+  }
+
+  .upload-paste-submit {
+    padding: 0.75rem 1.25rem;
+    border: none;
+    border-radius: 0.75rem;
+    background: #2563eb;
+    color: #f8fafc;
+    font-weight: 700;
+    cursor: pointer;
+  }
+
   .upload-input {
     position: absolute;
     width: 1px;
@@ -581,6 +641,87 @@
     });
   }
 
+  // ---- src/parser/pasteTextParser.js ----
+  const PASTE_INTERVAL_LINE_RE = /^(\d+(?:\.\d+)?)\s*min\s*@\s*(\d+(?:\.\d+)?)\s*w$/i;
+  const PASTE_REPEAT_LINE_RE = /^(\d+)\s*x$/i;
+
+  function parsePasteText(text) {
+    if (typeof text !== 'string' || text.trim() === '') {
+      throw new Error('Invalid workout text: input must be a non-empty string');
+    }
+
+    const intervals = [];
+    let pendingRepeat = null;
+
+    function flushPendingRepeat() {
+      if (!pendingRepeat) return;
+      if (pendingRepeat.lines.length === 0) {
+        throw new Error(
+          `Invalid workout text: line ${pendingRepeat.lineNumber} ("${pendingRepeat.raw.trim()}") declares a repeat but no "X min @ Yw" lines follow it`
+        );
+      }
+      for (let i = 0; i < pendingRepeat.count; i++) {
+        intervals.push(...pendingRepeat.lines);
+      }
+      pendingRepeat = null;
+    }
+
+    const rawLines = text.split(/\r\n|\r|\n/);
+    rawLines.forEach((rawLine, index) => {
+      const lineNumber = index + 1;
+      const line = rawLine.trim();
+
+      if (line === '') {
+        flushPendingRepeat();
+        return;
+      }
+
+      const repeatMatch = line.match(PASTE_REPEAT_LINE_RE);
+      if (repeatMatch) {
+        flushPendingRepeat();
+        const count = Number(repeatMatch[1]);
+        if (count <= 0) {
+          throw new Error(`Invalid workout text: line ${lineNumber} ("${line}") has an invalid repeat count`);
+        }
+        pendingRepeat = { count, lineNumber, raw: rawLine, lines: [] };
+        return;
+      }
+
+      const interval = parsePasteIntervalLine(line);
+      if (!interval) {
+        throw new Error(`Invalid workout text: line ${lineNumber} ("${line}") does not match the expected "X min @ Yw" format`);
+      }
+
+      if (pendingRepeat) {
+        pendingRepeat.lines.push(interval);
+      } else {
+        intervals.push(interval);
+      }
+    });
+
+    flushPendingRepeat();
+
+    if (intervals.length === 0) {
+      throw new Error('Invalid workout text: no valid "X min @ Yw" lines found');
+    }
+
+    const totalDuration = intervals.reduce((sum, iv) => sum + iv.duration, 0);
+
+    return { id: generateWorkoutId(), name: 'Untitled Workout', source: 'paste', totalDuration, intervals };
+  }
+
+  function parsePasteIntervalLine(line) {
+    const match = line.match(PASTE_INTERVAL_LINE_RE);
+    if (!match) return null;
+
+    const minutes = Number(match[1]);
+    const watts = Number(match[2]); // FTP=100 基準換算，Yw 直接等於 Y% FTP
+    const duration = Math.round(minutes * 60);
+    const powerPct = Math.round(watts);
+
+    return { type: 'steady', duration, powerStart: powerPct, powerEnd: powerPct, cadence: null };
+  }
+
   // ---- src/ui/appBanner.js ----
   function createAppBanner(rootEl) {
     rootEl.innerHTML = `
@@ -619,6 +760,21 @@
           <input type="file" accept=".zwo,application/xml,text/xml" class="upload-input" />
           <span>點一下選擇 .zwo 檔案</span>
         </label>
+
+        <div class="upload-divider"><span>或</span></div>
+
+        <form class="upload-paste-form">
+          <label class="upload-paste-label" for="upload-paste-textarea">貼上課表文字</label>
+          <p class="upload-hint">從公開課表頁面複製的純文字（例如「10 min @ 53w」每行一組），不需要帳號或檔案</p>
+          <textarea
+            id="upload-paste-textarea"
+            class="upload-paste-textarea"
+            rows="6"
+            placeholder="10 min @ 53w&#10;20 min @ 68w&#10;15 min @ 85w"
+          ></textarea>
+          <button type="submit" class="upload-paste-submit">載入</button>
+        </form>
+
         <p class="upload-error hidden"></p>
       </div>
     `;
@@ -626,6 +782,8 @@
     const input = rootEl.querySelector('.upload-input');
     const errorEl = rootEl.querySelector('.upload-error');
     const ftpInput = rootEl.querySelector('.upload-ftp-input');
+    const pasteForm = rootEl.querySelector('.upload-paste-form');
+    const pasteTextarea = rootEl.querySelector('.upload-paste-textarea');
 
     ftpInput.addEventListener('input', () => {
       const value = Number(ftpInput.value);
@@ -636,6 +794,12 @@
       const file = input.files && input.files[0];
       input.value = '';
       if (file) handlers.onFileSelected(file);
+    });
+
+    pasteForm.addEventListener('submit', (event) => {
+      event.preventDefault();
+      const value = pasteTextarea.value;
+      if (value.trim()) handlers.onPasteTextSubmit(value);
     });
 
     return {
@@ -1150,6 +1314,7 @@
 
   const uploadView = createUploadView(uploadMount, {
     onFileSelected: (file) => handleFileSelected(file),
+    onPasteTextSubmit: (rawText) => handlePasteTextSubmit(rawText),
     onFtpChange: (ftp) => {
       currentFtp = ftp;
       saveFtp(ftp);
@@ -1193,6 +1358,23 @@
     },
   });
 
+  function loadWorkout(parseFn, errorPrefix) {
+    let workout;
+    try {
+      workout = parseFn();
+    } catch (err) {
+      uploadView.showError(`${errorPrefix}${err.message}`);
+      return;
+    }
+
+    currentWorkout = workout;
+    engine = createTimerEngine(workout);
+    appBanner.hide();
+    uploadMount.classList.add('hidden');
+    playerMount.classList.remove('hidden');
+    render();
+  }
+
   async function handleFileSelected(file) {
     uploadView.clearError();
 
@@ -1204,20 +1386,12 @@
       return;
     }
 
-    let workout;
-    try {
-      workout = parseZwoXml(xmlText);
-    } catch (err) {
-      uploadView.showError(`無法解析這份 .zwo 檔案：${err.message}`);
-      return;
-    }
+    loadWorkout(() => parseZwoXml(xmlText), '無法解析這份 .zwo 檔案：');
+  }
 
-    currentWorkout = workout;
-    engine = createTimerEngine(workout);
-    appBanner.hide();
-    uploadMount.classList.add('hidden');
-    playerMount.classList.remove('hidden');
-    render();
+  function handlePasteTextSubmit(rawText) {
+    uploadView.clearError();
+    loadWorkout(() => parsePasteText(rawText), '無法解析貼上的課表內容：');
   }
 
   function startLoop() {

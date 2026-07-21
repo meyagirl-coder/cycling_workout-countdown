@@ -7,7 +7,13 @@ function selectFile(input, file) {
 }
 
 function makeHandlers(overrides = {}) {
-  return { onFileSelected: vi.fn(), onIntervalsIcuSubmit: vi.fn(), onFtpChange: vi.fn(), ...overrides };
+  return {
+    onFileSelected: vi.fn(),
+    onIntervalsIcuSubmit: vi.fn(),
+    onPasteTextSubmit: vi.fn(),
+    onFtpChange: vi.fn(),
+    ...overrides,
+  };
 }
 
 describe('createUploadView', () => {
@@ -206,5 +212,38 @@ describe('createUploadView', () => {
     ftpInput.dispatchEvent(new Event('input'));
 
     expect(handlers.onFtpChange).toHaveBeenCalledWith(200);
+  });
+
+  it('renders a paste-text textarea and submits its full (untrimmed-internally) value', () => {
+    document.body.innerHTML = '<div id="root"></div>';
+    const root = document.getElementById('root');
+    const handlers = makeHandlers();
+    createUploadView(root, handlers);
+
+    const textarea = root.querySelector('.upload-paste-textarea');
+    const form = root.querySelector('.upload-paste-form');
+    expect(textarea).not.toBeNull();
+
+    const pasted = '10 min @ 53w\n20 min @ 68w\n';
+    textarea.value = pasted;
+    form.dispatchEvent(new Event('submit', { cancelable: true }));
+
+    expect(handlers.onPasteTextSubmit).toHaveBeenCalledTimes(1);
+    expect(handlers.onPasteTextSubmit).toHaveBeenCalledWith(pasted);
+  });
+
+  it('does not submit the paste-text form when the textarea is blank/whitespace-only', () => {
+    document.body.innerHTML = '<div id="root"></div>';
+    const root = document.getElementById('root');
+    const handlers = makeHandlers();
+    createUploadView(root, handlers);
+
+    const textarea = root.querySelector('.upload-paste-textarea');
+    const form = root.querySelector('.upload-paste-form');
+
+    textarea.value = '   \n  ';
+    form.dispatchEvent(new Event('submit', { cancelable: true }));
+
+    expect(handlers.onPasteTextSubmit).not.toHaveBeenCalled();
   });
 });

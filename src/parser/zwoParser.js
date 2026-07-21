@@ -4,6 +4,7 @@
  * parseZwoXml() 是純函式：輸入 XML 字串，輸出統一的 Workout JSON（見
  * src/schema/workoutSchema.js），不碰 UI、不碰 localStorage，方便單獨測試。
  */
+import { generateId } from '../utils/generateId.js';
 
 /** ZWO 標籤名稱（小寫比對）→ 統一 schema 的 interval type */
 const TAG_TYPE_MAP = {
@@ -165,14 +166,3 @@ function parsePowerAttr(el, attrName) {
   return Math.round(value * 100);
 }
 
-function generateId() {
-  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
-    return crypto.randomUUID();
-  }
-  // Fallback for environments without crypto.randomUUID (older browsers/runtimes)
-  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
-    const r = (Math.random() * 16) | 0;
-    const v = c === 'x' ? r : (r & 0x3) | 0x8;
-    return v.toString(16);
-  });
-}

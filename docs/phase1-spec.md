@@ -87,7 +87,9 @@
 
 ---
 
-## 3. .zwo 檔解析（Phase 1 唯一輸入來源）
+## 3. 課表輸入來源與解析
+
+### 3.1 .zwo 檔解析
 
 .zwo 是 XML 格式（Zwift workout file），常見標籤：
 - `<SteadyState Duration="720" Power="0.88"/>` → `type: steady`
@@ -105,6 +107,37 @@ function parseZwoXml(xmlString) -> Workout
 ```
 
 純函式，輸入 XML 字串，輸出上面的 Workout JSON，不碰 UI、不碰 localStorage。方便單獨寫測試。
+
+### 3.2 貼上純文字課表解析
+
+不需要上傳檔案或串接帳號，讓使用者直接貼上從公開課表頁面（例如 TrainerDay
+未登入狀態）複製的純文字。已知格式，每行一組：
+
+```
+10 min @ 53w
+20 min @ 68w
+```
+
+這種公開頁面在未登入狀態下，瓦數是以 FTP=100 為基準換算的，所以「Yw」數字
+直接等於「Y% FTP」，不需要額外換算；每行轉成一個 `type: steady` 的組別
+（`powerStart`／`powerEnd` 都等於 Y）。
+
+也支援「重複組」寫法：單獨一行的「Nx」（例如 `3x`）宣告接下來連續的
+`X min @ Yw` 行要重複 N 次，直到遇到空行、下一個「Nx」宣告、或文字結束為止，
+展開成實際的組別數量塞進 intervals 陣列。
+
+貼上的文字如果有解析不出來的行（格式跟預期不同），parser 要拋出清楚指出是
+第幾行、內容是什麼的錯誤，不能默默略過或整份解析失敗卻講不出原因。
+
+漸變段（例如 `53-68w`）目前不支援，留待之後擴充。
+
+**Parser 函式簽名：**
+
+```js
+function parsePasteText(text) -> Workout
+```
+
+純函式，跟 `parseZwoXml()` 同樣不碰 UI、不碰 localStorage。
 
 ---
 
@@ -223,8 +256,11 @@ App 一打開，使用者第一眼看到的畫面：
   置中對齊，視覺上兩個載入方式權重相同。
 - **本機檔案上傳（次要情境，畫面排在 intervals.icu 區塊下方，中間用「或」分
   隔）**：選一份 `.zwo` 課表檔案，讀出內容後用 `parseZwoXml()` 解析
-- 解析失敗（檔案或 intervals.icu 回傳的內容都一樣）要有清楚的錯誤訊息，並
-  留在首頁讓使用者重試，不能整個畫面壞掉
+- **貼上純文字課表（第三種情境，畫面排在檔案上傳下方，中間用「或」分隔）**：
+  一個 textarea，貼上從公開課表頁面複製的純文字（見 §3.2），送出後用
+  `parsePasteText()` 解析
+- 解析失敗（檔案、intervals.icu 回傳的內容、或貼上的純文字都一樣）要有清楚
+  的錯誤訊息，並留在首頁讓使用者重試，不能整個畫面壞掉
 
 #### 5.1.1 找 event ID：`/api/intervals-events`
 
