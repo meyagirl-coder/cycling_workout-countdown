@@ -12,13 +12,15 @@ const ZONE_BOUNDARIES = [55, 75, 90, 105, 120, 150];
  */
 function sliceIntervalByZone(iv) {
   if (iv.type === 'freeride' || iv.powerStart === null || iv.powerEnd === null) {
-    return [{ startOffset: 0, endOffset: iv.duration, color: null }];
+    return [{ startOffset: 0, endOffset: iv.duration, color: null, startPowerPct: null, endPowerPct: null }];
   }
 
   const { duration, powerStart, powerEnd } = iv;
 
   if (duration <= 0 || powerStart === powerEnd) {
-    return [{ startOffset: 0, endOffset: duration, color: getZoneColor(powerStart).color }];
+    return [
+      { startOffset: 0, endOffset: duration, color: getZoneColor(powerStart).color, startPowerPct: powerStart, endPowerPct: powerStart },
+    ];
   }
 
   const lo = Math.min(powerStart, powerEnd);
@@ -37,9 +39,10 @@ function sliceIntervalByZone(iv) {
   for (let i = 0; i < sorted.length - 1; i++) {
     const startOffset = sorted[i];
     const endOffset = sorted[i + 1];
-    const midRatio = (startOffset + endOffset) / 2 / duration;
-    const midPct = powerStart + (powerEnd - powerStart) * midRatio;
-    slices.push({ startOffset, endOffset, color: getZoneColor(midPct).color });
+    const startPowerPct = powerStart + (powerEnd - powerStart) * (startOffset / duration);
+    const endPowerPct = powerStart + (powerEnd - powerStart) * (endOffset / duration);
+    const midPct = (startPowerPct + endPowerPct) / 2;
+    slices.push({ startOffset, endOffset, color: getZoneColor(midPct).color, startPowerPct, endPowerPct });
   }
   return slices;
 }
@@ -66,12 +69,36 @@ export function buildTimelineSegments(workout, adjustPct = 0) {
     for (const slice of sliceIntervalByZone(shifted)) {
       const startPct = total > 0 ? ((acc + slice.startOffset) / total) * 100 : 0;
       const widthPct = total > 0 ? ((slice.endOffset - slice.startOffset) / total) * 100 : 0;
-      segments.push({ type: iv.type, intervalIndex, startPct, widthPct, color: slice.color });
+      segments.push({
+        type: iv.type,
+        intervalIndex,
+        startPct,
+        widthPct,
+        color: slice.color,
+        startPowerPct: slice.startPowerPct,
+        endPowerPct: slice.endPowerPct,
+      });
     }
     acc += iv.duration;
   });
 
   return segments;
+}
+
+/**
+ * 柱狀圖表的縮放上限（%FTP）：圖表容器的最頂端對應這個值，不是 100%——這樣
+ * 100% FTP 的參考線落在容器中段偏上、150% 這類超標值才有視覺空間可以「超過
+ * 參考線」，而不是直接頂到容器邊緣。
+ */
+export const CHART_SCALE_MAX_PCT = 160;
+
+/** 圖表上畫出「100% FTP」參考線的位置（%FTP），對應規格截圖裡的「標準高度線」 */
+export const CHART_REFERENCE_LINE_PCT = 100;
+
+/** %FTP -> 圖表柱狀高度（容器高度的百分比，0-100），跟 CHART_SCALE_MAX_PCT 線性對應 */
+export function computeBarHeightPct(powerPct) {
+  if (powerPct === null || powerPct === undefined) return 0;
+  return Math.min(100, Math.max(0, (powerPct / CHART_SCALE_MAX_PCT) * 100));
 }
 
 /** 每個組別交界處在時間軸上的位置（百分比），用來畫組別分隔線——跟顏色是否相同無關 */

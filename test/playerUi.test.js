@@ -1,6 +1,12 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { formatDurationLabel, formatMMSS } from '../src/ui/formatTime.js';
-import { buildIntervalBoundaries, buildTimelineSegments, computeCursorPct } from '../src/ui/timelineSegments.js';
+import {
+  buildIntervalBoundaries,
+  buildTimelineSegments,
+  CHART_SCALE_MAX_PCT,
+  computeBarHeightPct,
+  computeCursorPct,
+} from '../src/ui/timelineSegments.js';
 import { createPlayerView } from '../src/ui/renderPlayer.js';
 
 function makeWorkout() {
@@ -73,7 +79,42 @@ describe('formatDurationLabel', () => {
   });
 });
 
+describe('computeBarHeightPct', () => {
+  it('maps 50% FTP to half of the chart\'s standard (100% FTP) height', () => {
+    expect(computeBarHeightPct(50)).toBeCloseTo(computeBarHeightPct(100) / 2);
+  });
+
+  it('maps 100% FTP under the container\'s top edge, leaving headroom for values above it', () => {
+    expect(computeBarHeightPct(100)).toBeCloseTo((100 / CHART_SCALE_MAX_PCT) * 100);
+    expect(computeBarHeightPct(100)).toBeLessThan(100);
+  });
+
+  it('150% FTP renders taller than the 100% FTP reference height, but ramps up linearly', () => {
+    expect(computeBarHeightPct(150)).toBeGreaterThan(computeBarHeightPct(100));
+    expect(computeBarHeightPct(150)).toBeCloseTo(computeBarHeightPct(50) * 3);
+  });
+
+  it('returns 0 for null/undefined (freeride has no target power)', () => {
+    expect(computeBarHeightPct(null)).toBe(0);
+    expect(computeBarHeightPct(undefined)).toBe(0);
+  });
+});
+
 describe('buildTimelineSegments', () => {
+  it('attaches the instantaneous start/end %FTP to every slice, for bar-chart heights', () => {
+    const segments = buildTimelineSegments(makeZoneCrossingWorkout());
+    const rampSlices = segments.filter((seg) => seg.type === 'ramp' && seg.intervalIndex === 0);
+
+    // 40->80% FTP ramp: first slice starts at 40%, last slice ends at 80%.
+    expect(rampSlices[0].startPowerPct).toBeCloseTo(40);
+    expect(rampSlices.at(-1).endPowerPct).toBeCloseTo(80);
+
+    const steadySlice = segments.find((seg) => seg.type === 'steady');
+    expect(steadySlice.startPowerPct).toBeCloseTo(88);
+    expect(steadySlice.endPowerPct).toBeCloseTo(88);
+  });
+
+
   it('splits a ramp into one slice per zone it climbs through, colored by the instantaneous %FTP, not a flat average', () => {
     const segments = buildTimelineSegments(makeZoneCrossingWorkout());
     const rampSlices = segments.filter((seg) => seg.type === 'ramp');
@@ -101,7 +142,17 @@ describe('buildTimelineSegments', () => {
     expect(steadySlices[0].color).toBe('green'); // 88% FTP -> Z3
 
     const freerideSlices = segments.filter((seg) => seg.type === 'freeride');
-    expect(freerideSlices).toEqual([{ type: 'freeride', intervalIndex: 2, startPct: expect.any(Number), widthPct: expect.any(Number), color: null }]);
+    expect(freerideSlices).toEqual([
+      {
+        type: 'freeride',
+        intervalIndex: 2,
+        startPct: expect.any(Number),
+        widthPct: expect.any(Number),
+        color: null,
+        startPowerPct: null,
+        endPowerPct: null,
+      },
+    ]);
   });
 
   it('slices are contiguous and cover exactly 0-100% of the timeline with no gaps or overlaps', () => {
@@ -188,6 +239,8 @@ describe('createPlayerView', () => {
     expect(root.querySelector('.countdown-number').textContent).toBe('0:06'); // 10 - 4
     expect(root.querySelector('.target-watt').textContent).toBe('176 W'); // 200 * 0.88
     expect(root.querySelector('.target-pct').textContent).toBe('88% FTP');
+    expect(root.querySelector('.elapsed-time').textContent).toBe('經過時間 0:16');
+    expect(root.querySelector('.countdown-label')).toBeNull(); // regression: label removed, replaced by elapsed-time
     expect(root.querySelector('.play-pause-btn')).toBeNull(); // sanity: no stray selector typo
     expect(root.querySelector('.btn-play-pause').textContent).toContain('暫停');
   });
@@ -238,6 +291,31 @@ describe('createPlayerView', () => {
     expect(warmupSegments).toHaveLength(2);
     expect(warmupSegments[0].className).toContain('zone-gray');
     expect(warmupSegments[1].className).toContain('zone-blue');
+  });
+
+  it('gives each timeline segment a clip-path bar height proportional to its %FTP (regression: bar-chart redesign)', () => {
+    document.body.innerHTML = '<div id="root"></div>';
+    const root = document.getElementById('root');
+    const view = createPlayerView(root, { onPlayPause: vi.fn(), onSkip: vi.fn(), onRedo: vi.fn(), onStop: vi.fn() });
+
+    view.update(makeWorkout(), makeIdleState(), 200);
+
+    const segments = root.querySelectorAll('.timeline-segment');
+    for (const el of segments) {
+      expect(el.style.clipPath).toMatch(/^polygon\(/);
+    }
+
+    // steady (88% FTP) should sit taller in the chart than the low warmup slice (50->55%).
+    const steadyEl = Array.from(segments).find((el) => el.title === '穩定');
+    const warmupFirstEl = Array.from(segments).find((el) => el.title === '熱身');
+    const heightFromClipPath = (el) => {
+      const match = el.style.clipPath.match(/0% (\d+(?:\.\d+)?)%/);
+      return 100 - parseFloat(match[1]);
+    };
+    expect(heightFromClipPath(steadyEl)).toBeGreaterThan(heightFromClipPath(warmupFirstEl));
+
+    // 100% FTP reference line is positioned once, independent of the workout.
+    expect(root.querySelector('.timeline-reference-line').style.top).not.toBe('');
   });
 
   it('keeps the timeline zone colors in sync with the status-panel background as powerAdjustPct changes', () => {
