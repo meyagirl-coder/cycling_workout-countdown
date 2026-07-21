@@ -17,9 +17,8 @@ export const POWER_ZONES = [
  * @returns {{key: string, label: string, color: string}}
  */
 export function getZoneColor(pct) {
-  if (pct < 55) return zoneInfo(POWER_ZONES[0]);
-  for (let i = 1; i < POWER_ZONES.length; i++) {
-    if (pct <= POWER_ZONES[i].maxPct) return zoneInfo(POWER_ZONES[i]);
+  for (const zone of POWER_ZONES) {
+    if (pct <= zone.maxPct) return zoneInfo(zone);
   }
   return zoneInfo(POWER_ZONES[POWER_ZONES.length - 1]);
 }

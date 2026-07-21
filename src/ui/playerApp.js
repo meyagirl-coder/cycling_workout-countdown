@@ -1,5 +1,6 @@
 import { extractEventId } from '../integrations/intervalsIcu.js';
 import { parsePasteText } from '../parser/pasteTextParser.js';
+import { parseAutoDetectedPasteText } from '../parser/pasteTextRouter.js';
 import { parseWhatsOnZwiftText } from '../parser/whatsOnZwiftParser.js';
 import { parseZwoXml } from '../parser/zwoParser.js';
 import { createTimerWorkerClient } from '../worker/timerWorkerClient.js';
@@ -129,7 +130,7 @@ export function initPlayerApp(rootEl) {
 
   function handlePasteTextSubmit(rawText) {
     uploadView.clearError();
-    loadWorkout(() => parsePasteText(rawText), '無法解析貼上的課表內容：');
+    loadWorkout(() => parseAutoDetectedPasteText(rawText), '無法解析貼上的課表內容：');
   }
 
   /**
