@@ -12,6 +12,17 @@ npm run test:watch
 `index.html` 是純前端頁面，直接用任何靜態伺服器打開即可本機預覽（例如
 `python3 -m http.server`）；`.zwo` 檔案上傳不需要後端。
 
+### 靜態檔案的快取設定（`vercel.json`）
+
+`vercel.json` 把除了 `/api/*`（Serverless Function 自己已經在程式碼裡設定
+`Cache-Control: no-store` 了，不需要這裡再管）以外的所有靜態檔案都設成
+`Cache-Control: no-cache, must-revalidate`——這個專案沒有 build 步驟、每個
+`.js` 檔案的網址每次部署都不會變（沒有內容雜湊當版本號），如果瀏覽器（尤其
+是 iOS Safari）把某個 `.js` 檔案快取太久，部署新版之後使用者可能還在跑舊的
+程式碼、卻看起來像是「這個功能沒有真的上線」。`no-cache` 不是完全不快取，
+是每次都跟伺服器確認內容有沒有變（用 ETag／Last-Modified），沒變才用快取，
+確保部署後使用者下一次載入頁面一定拿到最新程式碼。
+
 ## intervals.icu 課表載入（需要部署在 Vercel）
 
 `api/intervals-zwo.js` 是一個 Vercel Serverless Function，代理呼叫

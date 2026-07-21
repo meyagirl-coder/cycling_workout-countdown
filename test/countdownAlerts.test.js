@@ -2,6 +2,9 @@ import { describe, expect, it, vi } from 'vitest';
 import { TIMER_EVENTS } from '../src/engine/timerEngine.js';
 import { COUNTDOWN_FINISHING_SOON_TEXT, handleTimerEvents } from '../src/ui/countdownAlerts.js';
 
+/** 倒數預告 banner 要撐過完整的 10 秒倒數，比 renderPlayer.js 預設的 5 秒久（見 countdownAlerts.js） */
+const COUNTDOWN_PREVIEW_BANNER_MS = 11000;
+
 function makeWorkout() {
   return {
     id: 'alerts-test-workout',
@@ -42,9 +45,18 @@ describe('handleTimerEvents: countdownWarning (10 seconds before the CURRENT int
 
     expect(deps.playBeep).toHaveBeenCalledTimes(1);
     expect(deps.showNextIntervalBanner).toHaveBeenCalledTimes(1);
-    expect(deps.showNextIntervalBanner).toHaveBeenCalledWith('下一組：20 秒 · 88% FTP');
+    expect(deps.showNextIntervalBanner).toHaveBeenCalledWith('下一組：20 秒 · 88% FTP', COUNTDOWN_PREVIEW_BANNER_MS);
     expect(deps.speak).toHaveBeenCalledTimes(1);
     expect(deps.speak).toHaveBeenCalledWith('10 秒後進入下一組，88% FTP，持續 20 秒');
+  });
+
+  it('shows/speaks the preview banner for at least the full 10-second countdown window (regression: the default 5s auto-hide left a blank gap for half the countdown)', () => {
+    const deps = makeDeps();
+    const state = makeState({ currentIntervalIndex: 0 });
+    handleTimerEvents([TIMER_EVENTS.COUNTDOWN_WARNING], { workout: makeWorkout(), state, ftp: 200, ...deps });
+
+    const durationArg = deps.showNextIntervalBanner.mock.calls[0][1];
+    expect(durationArg).toBeGreaterThanOrEqual(10000);
   });
 
   it('matches the "下一組：5 分鐘 · 75% FTP" example format for a minute-scale steady interval', () => {
@@ -59,7 +71,7 @@ describe('handleTimerEvents: countdownWarning (10 seconds before the CURRENT int
     const state = makeState({ currentIntervalIndex: 0 });
     handleTimerEvents([TIMER_EVENTS.COUNTDOWN_WARNING], { workout, state, ftp: 200, ...deps });
 
-    expect(deps.showNextIntervalBanner).toHaveBeenCalledWith('下一組：5 分鐘 · 75% FTP');
+    expect(deps.showNextIntervalBanner).toHaveBeenCalledWith('下一組：5 分鐘 · 75% FTP', COUNTDOWN_PREVIEW_BANNER_MS);
   });
 
   it('shows a "XX% -> YY% FTP" range (not a single number) when the upcoming interval ramps', () => {
@@ -68,7 +80,7 @@ describe('handleTimerEvents: countdownWarning (10 seconds before the CURRENT int
     const state = makeState({ currentIntervalIndex: 2 });
     handleTimerEvents([TIMER_EVENTS.COUNTDOWN_WARNING], { workout: makeWorkout(), state, ftp: 200, ...deps });
 
-    expect(deps.showNextIntervalBanner).toHaveBeenCalledWith('下一組：15 秒 · 60% → 40% FTP');
+    expect(deps.showNextIntervalBanner).toHaveBeenCalledWith('下一組：15 秒 · 60% → 40% FTP', COUNTDOWN_PREVIEW_BANNER_MS);
     expect(deps.speak).toHaveBeenCalledWith('10 秒後進入下一組，60% 到 40% FTP，持續 15 秒');
   });
 
@@ -77,7 +89,7 @@ describe('handleTimerEvents: countdownWarning (10 seconds before the CURRENT int
     const state = makeState({ currentIntervalIndex: 0, powerAdjustPct: 5 });
     handleTimerEvents([TIMER_EVENTS.COUNTDOWN_WARNING], { workout: makeWorkout(), state, ftp: 200, ...deps });
 
-    expect(deps.showNextIntervalBanner).toHaveBeenCalledWith('下一組：20 秒 · 93% FTP');
+    expect(deps.showNextIntervalBanner).toHaveBeenCalledWith('下一組：20 秒 · 93% FTP', COUNTDOWN_PREVIEW_BANNER_MS);
   });
 
   it('shows "自由騎乘" with no percentage when the upcoming interval is freeride', () => {
@@ -86,7 +98,7 @@ describe('handleTimerEvents: countdownWarning (10 seconds before the CURRENT int
     const state = makeState({ currentIntervalIndex: 1 });
     handleTimerEvents([TIMER_EVENTS.COUNTDOWN_WARNING], { workout: makeWorkout(), state, ftp: 200, ...deps });
 
-    expect(deps.showNextIntervalBanner).toHaveBeenCalledWith('下一組：自由騎乘 · 10 秒');
+    expect(deps.showNextIntervalBanner).toHaveBeenCalledWith('下一組：自由騎乘 · 10 秒', COUNTDOWN_PREVIEW_BANNER_MS);
     expect(deps.speak).toHaveBeenCalledWith('10 秒後進入下一組，自由騎乘，持續 10 秒');
   });
 
@@ -96,13 +108,13 @@ describe('handleTimerEvents: countdownWarning (10 seconds before the CURRENT int
     const state = makeState({ currentIntervalIndex: 3 });
     handleTimerEvents([TIMER_EVENTS.COUNTDOWN_WARNING], { workout: makeWorkout(), state, ftp: 200, ...deps });
 
-    expect(deps.showNextIntervalBanner).toHaveBeenCalledWith(COUNTDOWN_FINISHING_SOON_TEXT);
-    expect(deps.showNextIntervalBanner).toHaveBeenCalledWith('即將完成');
+    expect(deps.showNextIntervalBanner).toHaveBeenCalledWith(COUNTDOWN_FINISHING_SOON_TEXT, COUNTDOWN_PREVIEW_BANNER_MS);
+    expect(deps.showNextIntervalBanner).toHaveBeenCalledWith('即將完成', COUNTDOWN_PREVIEW_BANNER_MS);
     expect(deps.speak).toHaveBeenCalledWith('10 秒後即將完成');
   });
 });
 
-describe('handleTimerEvents: intervalChanged (unchanged existing format: mm:ss + watts)', () => {
+describe('handleTimerEvents: intervalChanged (unchanged existing format: mm:ss + watts, default banner duration)', () => {
   it('shows the next-interval banner with duration/%FTP/watts on intervalChanged', () => {
     const deps = makeDeps();
     const state = makeState({ currentIntervalIndex: 1, elapsedInInterval: 0, elapsedTotal: 12 });

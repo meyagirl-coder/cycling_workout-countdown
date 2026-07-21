@@ -191,8 +191,16 @@ export function createPlayerView(rootEl, handlers) {
     els.finishedBanner.classList.toggle('hidden', !isFinished);
   }
 
-  /** 切組瞬間顯示下一組資訊（時間/%FTP/瓦數），幾秒後自動收起（規格 §4.4） */
-  function showNextIntervalBanner(text) {
+  /**
+   * 顯示下一組資訊，幾秒後自動收起（規格 §4.4）。切組瞬間呼叫時用預設的
+   * 5 秒；倒數 10 秒預告呼叫時（見 countdownAlerts.js）會傳更長的
+   * durationMs，讓 banner 一路撐到實際切組為止，不會在 10 秒倒數途中就
+   * 提早收起、中間留一段空白看不到任何預告。
+   *
+   * @param {string} text
+   * @param {number} [durationMs]
+   */
+  function showNextIntervalBanner(text, durationMs = NEXT_INTERVAL_BANNER_MS) {
     els.nextIntervalBanner.textContent = text;
     els.nextIntervalBanner.classList.remove('hidden');
 
@@ -200,7 +208,7 @@ export function createPlayerView(rootEl, handlers) {
     nextIntervalBannerTimeoutId = setTimeout(() => {
       nextIntervalBannerTimeoutId = null;
       els.nextIntervalBanner.classList.add('hidden');
-    }, NEXT_INTERVAL_BANNER_MS);
+    }, durationMs);
   }
 
   return { update, showNextIntervalBanner, elements: els };

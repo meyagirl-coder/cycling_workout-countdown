@@ -470,4 +470,24 @@ describe('createPlayerView', () => {
     vi.advanceTimersByTime(2000);
     expect(banner.classList.contains('hidden')).toBe(true);
   });
+
+  it('showNextIntervalBanner accepts a custom auto-hide duration (used by the countdown-warning preview to outlast the default 5s)', () => {
+    vi.useFakeTimers();
+    document.body.innerHTML = '<div id="root"></div>';
+    const root = document.getElementById('root');
+    const view = createPlayerView(root, { onPlayPause: vi.fn(), onSkip: vi.fn(), onRedo: vi.fn(), onStop: vi.fn() });
+    const banner = root.querySelector('.next-interval-banner');
+
+    view.showNextIntervalBanner('下一組：5 分鐘 · 75% FTP', 11000);
+
+    // still visible well past the default 5s duration
+    vi.advanceTimersByTime(5000);
+    expect(banner.classList.contains('hidden')).toBe(false);
+
+    vi.advanceTimersByTime(5999);
+    expect(banner.classList.contains('hidden')).toBe(false);
+
+    vi.advanceTimersByTime(1);
+    expect(banner.classList.contains('hidden')).toBe(true);
+  });
 });
