@@ -136,6 +136,13 @@ function parseZwoXml(xmlString) -> Workout
 
 漸變段（例如 `53-68w`）目前不支援，留待之後擴充。
 
+**容錯處理**：實際從網頁複製貼上的內容常常會帶著清單項目符號（例如
+「`* 10 min@ 53w`」），比對格式前會先用 `stripBulletPrefix()` 去掉常見的
+符號（`*`／`-`／`•`／`‣`／`◦`）；`min` 跟 `@` 之間有沒有空格（`min@`／
+`min @`）兩種寫法都接受。這兩個容錯規則跟 §3.4／§3.5 共用同一套正則／
+去除符號的邏輯（見 `newlineRepeatTextParser.js` 的 `stripBulletPrefix()`），
+不是只在其中一個地方處理、其他地方漏掉。
+
 **Parser 函式簽名：**
 
 ```js

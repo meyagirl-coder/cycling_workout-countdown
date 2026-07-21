@@ -229,6 +229,15 @@ describe('createUploadView: block 1 - 貼課表網址 (URL only)', () => {
 });
 
 describe('createUploadView: block 2 - 貼上課表文字內容 (text only, no url detection)', () => {
+  it('shows a placeholder using %FTP-style examples, with no "w" watt-based example anywhere (avoids implying watts are required)', () => {
+    const { root } = setup();
+    const textarea = root.querySelector('.upload-paste-textarea');
+    const placeholder = textarea.getAttribute('placeholder');
+
+    expect(placeholder).toContain('%');
+    expect(placeholder.toLowerCase()).not.toMatch(/\d+w\b/); // no "Nw" watt-style token anywhere
+  });
+
   it('submits the raw (untrimmed-internally) textarea value to onPasteTextSubmit', () => {
     const { root, handlers } = setup();
     const textarea = root.querySelector('.upload-paste-textarea');

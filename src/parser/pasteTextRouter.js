@@ -6,15 +6,17 @@
  *   - 「時長 百分比」格式：`Xm Y%`／`Xs Y%` + 獨立一行的「Nx」換行重複
  *
  * parseAutoDetectedPasteText() 只做「判斷是哪一種格式，交給對應的 parser
- * 處理」，不重複實作任何解析邏輯：找第一個看起來像課表內容的行（略過空行
- * 跟單獨的「Nx」宣告——那種行在 TrainerDay 格式跟「時長 百分比」格式裡都
- * 可能出現，不能用來判斷是哪一種格式），依它符合哪個格式的正則決定要用
- * 哪個 parser 解析「整份」文字。三種格式的行形狀差異夠大（有沒有 `@`、有
- * 沒有 `w` 字尾、有沒有 `FTP` 字樣、還是「純數字＋單位＋百分比」），不會
- * 互相誤判。
+ * 處理」，不重複實作任何解析邏輯：找第一個看起來像課表內容的行（先去掉常見
+ * 的清單項目符號前綴，例如從網頁清單複製貼上時常帶著的「‧ 」「* 」，不然
+ * 這幾個符號會讓下面的格式判斷全部落空；再略過空行跟單獨的「Nx」宣告——
+ * 那種行在 TrainerDay 格式跟「時長 百分比」格式裡都可能出現，不能用來判斷
+ * 是哪一種格式），依它符合哪個格式的正則決定要用哪個 parser 解析「整份」
+ * 文字（各 parser 內部也會做同樣的符號去除，不是只有這裡判斷格式時去除、
+ * 實際解析時又漏掉）。三種格式的行形狀差異夠大（有沒有 `@`、有沒有 `w`
+ * 字尾、有沒有 `FTP` 字樣、還是「純數字＋單位＋百分比」），不會互相誤判。
  */
 import { INTERVAL_LINE_RE, parsePasteText } from './pasteTextParser.js';
-import { REPEAT_LINE_RE } from './newlineRepeatTextParser.js';
+import { REPEAT_LINE_RE, stripBulletPrefix } from './newlineRepeatTextParser.js';
 import { SPACE_PERCENT_LINE_RE, parseSpacePercentText } from './spacePercentTextParser.js';
 import { WOZ_RAMP_LINE_RE, WOZ_REPEAT_FIRST_LINE_RE, WOZ_STEADY_LINE_RE, parseWhatsOnZwiftText } from './whatsOnZwiftParser.js';
 
@@ -27,7 +29,7 @@ export function parseAutoDetectedPasteText(text) {
     throw new Error('Invalid workout text: input must be a non-empty string');
   }
 
-  const lines = text.split(/\r\n|\r|\n/).map((line) => line.trim());
+  const lines = text.split(/\r\n|\r|\n/).map((line) => stripBulletPrefix(line.trim()));
   const firstContentLine = lines.find((line) => line !== '' && !REPEAT_LINE_RE.test(line));
 
   if (firstContentLine) {

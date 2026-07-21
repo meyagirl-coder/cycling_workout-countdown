@@ -9,6 +9,13 @@ describe('parseAutoDetectedPasteText', () => {
     expect(workout.intervals[0]).toEqual({ type: 'steady', duration: 600, powerStart: 53, powerEnd: 53, cadence: null });
   });
 
+  it('detects and routes TrainerDay-style text with bullet-list prefixes and no space before "@" (regression)', () => {
+    const text = ['* 10 min@ 53w', '* 20 min@ 68w', '* 15 min@ 85w', '* 10 min@ 98w', '* 5 min@ 50w'].join('\n');
+    const workout = parseAutoDetectedPasteText(text);
+    expect(workout.source).toBe('paste');
+    expect(workout.intervals.map((iv) => iv.powerStart)).toEqual([53, 68, 85, 98, 50]);
+  });
+
   it('detects and routes TrainerDay-style "Nx" newline-repeat text', () => {
     const workout = parseAutoDetectedPasteText(['3x', '1 min @ 150w', '1 min @ 50w'].join('\n'));
     expect(workout.source).toBe('paste');

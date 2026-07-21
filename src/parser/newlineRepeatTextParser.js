@@ -11,6 +11,17 @@
 export const REPEAT_LINE_RE = /^(\d+)\s*x$/i;
 
 /**
+ * 使用者從課表頁面複製貼上時，常常會連著清單的項目符號一起複製（例如
+ * 「‧ 10 min @ 53w」），這個符號會讓原本合法的格式行判斷失敗——比對格式前
+ * 先去掉。跟 pasteTextRouter.js（判斷貼上的文字是哪一種格式）、
+ * whatsOnZwiftParser.js 共用同一份，不然只有部分地方去掉符號、其他地方沒去
+ * 掉，還是會判斷失敗。
+ */
+export function stripBulletPrefix(line) {
+  return line.replace(/^[-*•‣◦]\s*/, '');
+}
+
+/**
  * @param {string} text
  * @param {(line: string) => object|null} parseLine - 把一行（已 trim、確認
  *   不是空行/Nx 宣告）轉成 interval 物件；不是合法格式回傳 null
@@ -42,7 +53,7 @@ export function parseNewlineRepeatText(text, parseLine, formatDescription) {
   const rawLines = text.split(/\r\n|\r|\n/);
   rawLines.forEach((rawLine, index) => {
     const lineNumber = index + 1;
-    const line = rawLine.trim();
+    const line = stripBulletPrefix(rawLine.trim());
 
     if (line === '') {
       flushPendingRepeat();

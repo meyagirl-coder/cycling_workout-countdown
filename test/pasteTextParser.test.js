@@ -1,5 +1,6 @@
 import Ajv from 'ajv';
 import { describe, expect, it } from 'vitest';
+import { computeCurrentTarget } from '../src/engine/timerEngine.js';
 import { parsePasteText } from '../src/parser/pasteTextParser.js';
 import { workoutSchema } from '../src/schema/workoutSchema.js';
 
@@ -42,6 +43,42 @@ describe('parsePasteText', () => {
       { type: 'steady', duration: 600, powerStart: 53, powerEnd: 53, cadence: null },
       { type: 'steady', duration: 1200, powerStart: 68, powerEnd: 68, cadence: null },
     ]);
+  });
+
+  it('handles a real-world copy/paste with bullet-prefixed lines and no space between "min" and "@" (regression)', () => {
+    // Verbatim example reported as failing: each line prefixed with "* " (list bullet)
+    // and no space in "min@" - both must be tolerated, and the number before "w" must
+    // still map directly to %FTP (TrainerDay's FTP=100 baseline convention).
+    const text = ['* 10 min@ 53w', '* 20 min@ 68w', '* 15 min@ 85w', '* 10 min@ 98w', '* 5 min@ 50w'].join('\n');
+
+    const workout = parsePasteText(text);
+    expectValidWorkout(workout);
+
+    expect(workout.intervals.map((iv) => iv.powerStart)).toEqual([53, 68, 85, 98, 50]);
+    expect(workout.intervals).toEqual([
+      { type: 'steady', duration: 600, powerStart: 53, powerEnd: 53, cadence: null },
+      { type: 'steady', duration: 1200, powerStart: 68, powerEnd: 68, cadence: null },
+      { type: 'steady', duration: 900, powerStart: 85, powerEnd: 85, cadence: null },
+      { type: 'steady', duration: 600, powerStart: 98, powerEnd: 98, cadence: null },
+      { type: 'steady', duration: 300, powerStart: 50, powerEnd: 50, cadence: null },
+    ]);
+  });
+
+  it('strips other common bullet markers too ("-", "•")', () => {
+    const text = ['- 10 min @ 53w', '• 20 min @ 68w'].join('\n');
+    const workout = parsePasteText(text);
+    expect(workout.intervals.map((iv) => iv.powerStart)).toEqual([53, 68]);
+  });
+
+  it('the "Yw" value is stored as %FTP, not watts - displayed watts always come from %FTP × the user\'s real FTP, never the raw "w" number', () => {
+    // Regression: "53w" must NOT be shown to the user as "53 W" - it's 53% of
+    // whatever FTP the user configured, e.g. 106W at FTP=200 (200 * 0.53), not 53W.
+    const text = ['* 10 min@ 53w', '* 20 min@ 68w', '* 15 min@ 85w', '* 10 min@ 98w', '* 5 min@ 50w'].join('\n');
+    const workout = parsePasteText(text);
+    const ftp = 200;
+
+    const displayedWatts = workout.intervals.map((_, i) => computeCurrentTarget(workout, i, 0, ftp).watts);
+    expect(displayedWatts).toEqual([106, 136, 170, 196, 100]);
   });
 
   it('rounds fractional minutes to the nearest second', () => {
