@@ -80,6 +80,69 @@ describe('parseAutoDetectedPasteText', () => {
     expect(workout.intervals).toHaveLength(14);
   });
 
+  describe('TrainerDay "full copy-paste" format (priority format)', () => {
+    it('detects and routes text with a "持续时间: 59m" duration header, even though the rest looks like the older manual-entry format', () => {
+      const workout = parseAutoDetectedPasteText(['持续时间: 59m', '5 min @ 50w', '10 min @ 75w'].join('\n'));
+      expect(workout.source).toBe('paste-trainerday-full');
+      expect(workout.intervals).toHaveLength(2);
+    });
+
+    it('detects and routes text with an inline "NX (segment | segment)" repeat block, even with no duration header', () => {
+      const workout = parseAutoDetectedPasteText('2X (8 min @ 64w | 2 min @ 90w | 1 min @ 110w)');
+      expect(workout.source).toBe('paste-trainerday-full');
+      expect(workout.intervals).toHaveLength(6);
+    });
+
+    it('takes priority over the older TrainerDay manual-entry format when a duration header is present, not just falls back to it', () => {
+      // Without the header this text would be ambiguous with the older "X min @ Yw" format;
+      // the header must force routing to the new parser.
+      const workout = parseAutoDetectedPasteText(['持续时间: 10m', '5 min @ 50w', '5 min @ 60w'].join('\n'));
+      expect(workout.source).toBe('paste-trainerday-full');
+    });
+
+    it('falls back to the new parser for a "X sec @ Yw" line with no header/repeat markers (the older format has no "sec" support)', () => {
+      const workout = parseAutoDetectedPasteText('30 sec @ 110w');
+      expect(workout.source).toBe('paste-trainerday-full');
+      expect(workout.intervals).toEqual([{ type: 'steady', duration: 30, powerStart: 110, powerEnd: 110, cadence: null }]);
+    });
+
+    it('still routes a plain "X min @ Yw"-only paste (no header, no inline repeat, no "sec") to the older format unchanged (backward compatible)', () => {
+      const workout = parseAutoDetectedPasteText('10 min @ 53w\n20 min @ 68w');
+      expect(workout.source).toBe('paste');
+    });
+
+    it('parses the full user-provided example end to end (25 intervals, matching the "持续时间: 59m" header)', () => {
+      const text = [
+        '持续时间: 59m',
+        '5 min @ 50w',
+        '5 min @ 80w',
+        '3 min @ 50w',
+        '1 min @ 70w',
+        '1 min @ 90w',
+        '30 sec @ 110w',
+        '3 min @ 50w',
+        '1 min @ 70w',
+        '1 min @ 90w',
+        '30 sec @ 110w',
+        '3 min @ 50w',
+        '1 min @ 70w',
+        '1 min @ 90w',
+        '30 sec @ 110w',
+        '3 min @ 50w',
+        '1 min @ 70w',
+        '1 min @ 90w',
+        '30 sec @ 110w',
+        '2X (8 min @ 64w | 2 min @ 90w | 1 min @ 110w)',
+        '5 min @ 50w',
+      ].join('\n');
+
+      const workout = parseAutoDetectedPasteText(text);
+      expect(workout.source).toBe('paste-trainerday-full');
+      expect(workout.intervals).toHaveLength(25);
+      expect(workout.totalDuration).toBe(59 * 60);
+    });
+  });
+
   it('throws when the input is empty or blank', () => {
     expect(() => parseAutoDetectedPasteText('')).toThrow(/non-empty string/);
     expect(() => parseAutoDetectedPasteText('   \n  ')).toThrow(/non-empty string/);
