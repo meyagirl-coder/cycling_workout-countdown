@@ -12,6 +12,7 @@ function makeHandlers(overrides = {}) {
     onIntervalsIcuSubmit: vi.fn(),
     onPasteTextSubmit: vi.fn(),
     onTrainerDayUrlSubmit: vi.fn(),
+    onWhatsOnZwiftUrlSubmit: vi.fn(),
     onFtpChange: vi.fn(),
     ...overrides,
   };
@@ -279,6 +280,59 @@ describe('createUploadView', () => {
 
     expect(handlers.onTrainerDayUrlSubmit).toHaveBeenCalledTimes(1);
     expect(handlers.onPasteTextSubmit).not.toHaveBeenCalled();
+  });
+
+  it('routes a whatsonzwift.com url to onWhatsOnZwiftUrlSubmit', () => {
+    document.body.innerHTML = '<div id="root"></div>';
+    const root = document.getElementById('root');
+    const handlers = makeHandlers();
+    createUploadView(root, handlers);
+
+    const textarea = root.querySelector('.upload-paste-textarea');
+    const form = root.querySelector('.upload-paste-form');
+
+    textarea.value = 'https://whatsonzwift.com/workouts/over-unders';
+    form.dispatchEvent(new Event('submit', { cancelable: true }));
+
+    expect(handlers.onWhatsOnZwiftUrlSubmit).toHaveBeenCalledTimes(1);
+    expect(handlers.onWhatsOnZwiftUrlSubmit).toHaveBeenCalledWith('https://whatsonzwift.com/workouts/over-unders');
+    expect(handlers.onTrainerDayUrlSubmit).not.toHaveBeenCalled();
+    expect(handlers.onPasteTextSubmit).not.toHaveBeenCalled();
+  });
+
+  it('also accepts the www.whatsonzwift.com subdomain', () => {
+    document.body.innerHTML = '<div id="root"></div>';
+    const root = document.getElementById('root');
+    const handlers = makeHandlers();
+    createUploadView(root, handlers);
+
+    const textarea = root.querySelector('.upload-paste-textarea');
+    const form = root.querySelector('.upload-paste-form');
+
+    textarea.value = 'https://www.whatsonzwift.com/workouts/over-unders';
+    form.dispatchEvent(new Event('submit', { cancelable: true }));
+
+    expect(handlers.onWhatsOnZwiftUrlSubmit).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows an inline error (not any handler call) for a url from an unsupported host', () => {
+    document.body.innerHTML = '<div id="root"></div>';
+    const root = document.getElementById('root');
+    const handlers = makeHandlers();
+    createUploadView(root, handlers);
+
+    const textarea = root.querySelector('.upload-paste-textarea');
+    const form = root.querySelector('.upload-paste-form');
+    const errorEl = root.querySelector('.upload-error');
+
+    textarea.value = 'https://example.com/some-other-workout-site';
+    form.dispatchEvent(new Event('submit', { cancelable: true }));
+
+    expect(handlers.onTrainerDayUrlSubmit).not.toHaveBeenCalled();
+    expect(handlers.onWhatsOnZwiftUrlSubmit).not.toHaveBeenCalled();
+    expect(handlers.onPasteTextSubmit).not.toHaveBeenCalled();
+    expect(errorEl.classList.contains('hidden')).toBe(false);
+    expect(errorEl.textContent).toMatch(/TrainerDay.*WhatsOnZwift|WhatsOnZwift.*TrainerDay/);
   });
 
   it('treats text that merely mentions "http" mid-line (not starting with it) as plain paste text, not a url', () => {
