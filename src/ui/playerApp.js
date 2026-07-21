@@ -9,6 +9,7 @@ import { createPlayerView } from './renderPlayer.js';
 import { createUploadView } from './uploadView.js';
 
 const INTERVALS_ICU_PROXY_URL = '/api/intervals-zwo';
+const TRAINERDAY_PROXY_URL = '/api/trainerday-workout';
 
 /**
  * 執行頁的組裝入口：先顯示上傳畫面，使用者可以選 .zwo 檔案、貼 intervals.icu
@@ -41,6 +42,7 @@ export function initPlayerApp(rootEl) {
     onFileSelected: (file) => handleFileSelected(file),
     onIntervalsIcuSubmit: (rawText) => handleIntervalsIcuSubmit(rawText),
     onPasteTextSubmit: (rawText) => handlePasteTextSubmit(rawText),
+    onTrainerDayUrlSubmit: (url) => handleTrainerDayUrlSubmit(url),
     onFtpChange: (ftp) => {
       currentFtp = ftp;
       saveFtp(ftp);
@@ -127,6 +129,34 @@ export function initPlayerApp(rootEl) {
     loadWorkout(() => parsePasteText(rawText), '無法解析貼上的課表內容：');
   }
 
+  /** 貼的是網址：透過 /api/trainerday-workout 代理抓取，拿回課表文字後照樣走 parsePasteText() */
+  async function handleTrainerDayUrlSubmit(url) {
+    uploadView.clearError();
+    uploadView.setPasteLoading(true);
+    try {
+      let response;
+      try {
+        response = await fetch(`${TRAINERDAY_PROXY_URL}?url=${encodeURIComponent(url)}&_t=${Date.now()}`, {
+          cache: 'no-store',
+        });
+      } catch {
+        uploadView.showError('連線代理服務失敗，請確認網路連線後再試一次，或改用「直接複製貼上文字內容」。');
+        return;
+      }
+
+      if (!response.ok) {
+        const message = await extractProxyErrorMessage(response, 'TrainerDay');
+        uploadView.showError(message);
+        return;
+      }
+
+      const extractedText = await response.text();
+      loadWorkout(() => parsePasteText(extractedText), '無法解析 TrainerDay 課表內容：');
+    } finally {
+      uploadView.setPasteLoading(false);
+    }
+  }
+
   async function handleIntervalsIcuSubmit(rawText) {
     uploadView.clearError();
 
@@ -167,12 +197,12 @@ export function initPlayerApp(rootEl) {
   return { client };
 }
 
-async function extractProxyErrorMessage(response) {
+async function extractProxyErrorMessage(response, serviceName = 'intervals.icu') {
   try {
     const body = await response.json();
     if (body && typeof body.error === 'string') return body.error;
   } catch {
     // response body wasn't JSON - fall through to the generic message below
   }
-  return `intervals.icu 代理服務回傳錯誤（HTTP ${response.status}）`;
+  return `${serviceName} 代理服務回傳錯誤（HTTP ${response.status}）`;
 }
