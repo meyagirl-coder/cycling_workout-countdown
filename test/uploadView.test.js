@@ -7,7 +7,7 @@ function selectFile(input, file) {
 }
 
 function makeHandlers(overrides = {}) {
-  return { onFileSelected: vi.fn(), onIntervalsIcuSubmit: vi.fn(), ...overrides };
+  return { onFileSelected: vi.fn(), onIntervalsIcuSubmit: vi.fn(), onFtpChange: vi.fn(), ...overrides };
 }
 
 describe('createUploadView', () => {
@@ -151,5 +151,60 @@ describe('createUploadView', () => {
     const intervalsForm = root.querySelector('.upload-intervals-form');
     const uploadTitle = root.querySelector('.upload-title');
     expect(intervalsForm.compareDocumentPosition(uploadTitle) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('renders an FTP input, settable via setFtpValue', () => {
+    document.body.innerHTML = '<div id="root"></div>';
+    const root = document.getElementById('root');
+    const view = createUploadView(root, makeHandlers());
+    const ftpInput = root.querySelector('.upload-ftp-input');
+
+    expect(ftpInput).not.toBeNull();
+    expect(ftpInput.getAttribute('type')).toBe('number');
+
+    view.setFtpValue(215);
+    expect(ftpInput.value).toBe('215');
+  });
+
+  it('calls onFtpChange as soon as the FTP input holds a valid positive number', () => {
+    document.body.innerHTML = '<div id="root"></div>';
+    const root = document.getElementById('root');
+    const handlers = makeHandlers();
+    createUploadView(root, handlers);
+    const ftpInput = root.querySelector('.upload-ftp-input');
+
+    ftpInput.value = '230';
+    ftpInput.dispatchEvent(new Event('input'));
+
+    expect(handlers.onFtpChange).toHaveBeenCalledTimes(1);
+    expect(handlers.onFtpChange).toHaveBeenCalledWith(230);
+  });
+
+  it('does not call onFtpChange for a blank, zero, or negative FTP value (still mid-edit)', () => {
+    document.body.innerHTML = '<div id="root"></div>';
+    const root = document.getElementById('root');
+    const handlers = makeHandlers();
+    createUploadView(root, handlers);
+    const ftpInput = root.querySelector('.upload-ftp-input');
+
+    for (const value of ['', '0', '-5']) {
+      ftpInput.value = value;
+      ftpInput.dispatchEvent(new Event('input'));
+    }
+
+    expect(handlers.onFtpChange).not.toHaveBeenCalled();
+  });
+
+  it('rounds a fractional FTP input before passing it to onFtpChange', () => {
+    document.body.innerHTML = '<div id="root"></div>';
+    const root = document.getElementById('root');
+    const handlers = makeHandlers();
+    createUploadView(root, handlers);
+    const ftpInput = root.querySelector('.upload-ftp-input');
+
+    ftpInput.value = '199.6';
+    ftpInput.dispatchEvent(new Event('input'));
+
+    expect(handlers.onFtpChange).toHaveBeenCalledWith(200);
   });
 });
