@@ -1,7 +1,13 @@
 import { computeCurrentTarget } from '../engine/timerEngine.js';
 import { formatDurationLabel, formatMMSS } from './formatTime.js';
 import { INTERVAL_TYPE_LABELS } from './intervalLabels.js';
-import { buildIntervalBoundaries, buildTimelineSegments, computeCursorPct } from './timelineSegments.js';
+import {
+  buildIntervalBoundaries,
+  buildTimelineSegments,
+  CHART_REFERENCE_LINE_PCT,
+  computeBarHeightPct,
+  computeCursorPct,
+} from './timelineSegments.js';
 
 const STATUS_LABELS = {
   idle: '尚未開始',
@@ -15,6 +21,9 @@ const COUNTDOWN_URGENT_SECONDS = 10;
 
 /** 「下一組」提示 banner 顯示多久後自動收起 */
 const NEXT_INTERVAL_BANNER_MS = 5000;
+
+/** freeride 沒有目標瓦數，柱狀圖用固定的低矮高度顯示，不代表任何實際瓦數比例 */
+const FREERIDE_BAR_HEIGHT_PCT = 12;
 
 /**
  * 建立執行頁 UI（規格 §5）：課表名稱/總時長/目前組別、時間軸圖、大數字倒數、
@@ -37,6 +46,7 @@ export function createPlayerView(rootEl, handlers) {
       </header>
 
       <div class="timeline">
+        <div class="timeline-reference-line"></div>
         <div class="timeline-track"></div>
         <div class="timeline-cursor"></div>
       </div>
@@ -46,7 +56,7 @@ export function createPlayerView(rootEl, handlers) {
       <div class="status-panel">
         <div class="countdown-block">
           <div class="countdown-number">0:00</div>
-          <div class="countdown-label">本組剩餘</div>
+          <div class="elapsed-time"></div>
         </div>
         <div class="target-block">
           <div class="target-watt">--</div>
@@ -75,10 +85,11 @@ export function createPlayerView(rootEl, handlers) {
     intervalProgress: rootEl.querySelector('.interval-progress'),
     timelineTrack: rootEl.querySelector('.timeline-track'),
     timelineCursor: rootEl.querySelector('.timeline-cursor'),
+    timelineReferenceLine: rootEl.querySelector('.timeline-reference-line'),
     nextIntervalBanner: rootEl.querySelector('.next-interval-banner'),
     statusPanel: rootEl.querySelector('.status-panel'),
     countdownNumber: rootEl.querySelector('.countdown-number'),
-    countdownLabel: rootEl.querySelector('.countdown-label'),
+    elapsedTime: rootEl.querySelector('.elapsed-time'),
     targetWatt: rootEl.querySelector('.target-watt'),
     targetPct: rootEl.querySelector('.target-pct'),
     playPauseBtn: rootEl.querySelector('.btn-play-pause'),
@@ -95,6 +106,9 @@ export function createPlayerView(rootEl, handlers) {
   els.stopBtn.addEventListener('click', () => handlers.onStop());
   els.returnHomeBtn.addEventListener('click', () => handlers.onReturnHome());
 
+  // 100% FTP 參考線的位置是固定值（跟課表無關），畫一次就好
+  els.timelineReferenceLine.style.top = `${100 - computeBarHeightPct(CHART_REFERENCE_LINE_PCT)}%`;
+
   let renderedTimelineKey = null;
 
   function renderTimelineIfNeeded(workout, adjustPct) {
@@ -102,14 +116,19 @@ export function createPlayerView(rootEl, handlers) {
     if (renderedTimelineKey === key) return;
     renderedTimelineKey = key;
 
-    // 顏色分段用瞬時功率區間（跟大字卡片背景色同一套 getZoneColor 邏輯）；
-    // 分隔線另外疊在上面，不管相鄰顏色是否相同都要看得出組別交界。
+    // 顏色分段用瞬時功率區間（跟大字卡片背景色同一套 getZoneColor 邏輯）；柱狀
+    // 高度用同一段的起訖 %FTP 算出梯形 clip-path，穩定（steady）段起訖相同時
+    // 自然退化成一個矩形，不必特別處理。分隔線另外疊在上面，不管相鄰顏色是否
+    // 相同都要看得出組別交界。
     const segments = buildTimelineSegments(workout, adjustPct);
     const segmentsHtml = segments
-      .map(
-        (seg) =>
-          `<div class="timeline-segment ${seg.color ? `zone-${seg.color}` : 'zone-none'}" style="left:${seg.startPct}%;width:${seg.widthPct}%" title="${INTERVAL_TYPE_LABELS[seg.type]}"></div>`
-      )
+      .map((seg) => {
+        const isFreeride = seg.color === null;
+        const startHeightPct = isFreeride ? FREERIDE_BAR_HEIGHT_PCT : computeBarHeightPct(seg.startPowerPct);
+        const endHeightPct = isFreeride ? FREERIDE_BAR_HEIGHT_PCT : computeBarHeightPct(seg.endPowerPct);
+        const clipPath = `polygon(0% ${100 - startHeightPct}%, 100% ${100 - endHeightPct}%, 100% 100%, 0% 100%)`;
+        return `<div class="timeline-segment ${isFreeride ? 'zone-none' : `zone-${seg.color}`}" style="left:${seg.startPct}%;width:${seg.widthPct}%;clip-path:${clipPath}" title="${INTERVAL_TYPE_LABELS[seg.type]}"></div>`;
+      })
       .join('');
 
     const dividersHtml = buildIntervalBoundaries(workout)
@@ -145,7 +164,7 @@ export function createPlayerView(rootEl, handlers) {
     const currentInterval = workout.intervals[state.currentIntervalIndex];
     const remaining = currentInterval.duration - state.elapsedInInterval;
     els.countdownNumber.textContent = formatMMSS(remaining);
-    els.countdownLabel.textContent = `本組剩餘 · ${INTERVAL_TYPE_LABELS[currentInterval.type]}`;
+    els.elapsedTime.textContent = `經過時間 ${formatDurationLabel(state.elapsedTotal)}`;
 
     // 剩餘 <=10 秒且本組時長 >10 秒才進入倒數提示視覺狀態，避免短組被誤判（規格 §4.4）
     const isCountdownUrgent = currentInterval.duration > COUNTDOWN_URGENT_SECONDS && remaining > 0 && remaining <= COUNTDOWN_URGENT_SECONDS;
