@@ -33,6 +33,19 @@ describe('parseSpacePercentText', () => {
     expect(workout.intervals).toEqual([{ type: 'steady', duration: 300, powerStart: 50, powerEnd: 50, cadence: null }]);
   });
 
+  it('terminates a "Nx" repeat block strictly at the blank line, not by line count (regression case from user report)', () => {
+    // "2x" repeats "3m 50%" + "30s 120%" (2 lines), the blank line ends the block,
+    // and "5m 90%" afterwards is an independent line - not part of the repeat.
+    const text = ['2x', '3m 50%', '30s 120%', '', '5m 90%'].join('\n');
+    const workout = parseSpacePercentText(text);
+
+    const on = { type: 'steady', duration: 180, powerStart: 50, powerEnd: 50, cadence: null };
+    const off = { type: 'steady', duration: 30, powerStart: 120, powerEnd: 120, cadence: null };
+    const standalone = { type: 'steady', duration: 300, powerStart: 90, powerEnd: 90, cadence: null };
+
+    expect(workout.intervals).toEqual([on, off, on, off, standalone]);
+  });
+
   it('expands a "Nx" newline-repeat block the same way as pasteTextParser.js', () => {
     const workout = parseSpacePercentText(['3x', '3m 50%', '30s 120%'].join('\n'));
     const a = { type: 'steady', duration: 180, powerStart: 50, powerEnd: 50, cadence: null };
