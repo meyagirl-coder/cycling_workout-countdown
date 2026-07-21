@@ -408,7 +408,14 @@
 
     const intervals = [];
     for (const el of Array.from(workoutEl.children)) {
-      const type = ZWO_TAG_TYPE_MAP[el.tagName.toLowerCase()];
+      const tag = el.tagName.toLowerCase();
+
+      if (tag === 'intervalst') {
+        intervals.push(...parseZwoIntervalsTElement(el));
+        continue;
+      }
+
+      const type = ZWO_TAG_TYPE_MAP[tag];
       if (!type) continue;
       intervals.push(parseZwoIntervalElement(el, type));
     }
@@ -429,25 +436,59 @@
     }
 
     const cadence = parseZwoIntAttr(el, 'Cadence');
-    let powerStart = null;
-    let powerEnd = null;
 
     if (type === 'steady') {
       const power = parseZwoPowerAttr(el, 'Power');
-      if (power === null) {
-        throw new Error(`Invalid ZWO XML: <${el.tagName}> is missing a required Power attribute`);
+      if (power !== null) {
+        return { type: 'steady', duration, powerStart: power, powerEnd: power, cadence };
       }
-      powerStart = power;
-      powerEnd = power;
-    } else if (type === 'warmup' || type === 'ramp' || type === 'cooldown') {
-      powerStart = parseZwoPowerAttr(el, 'PowerLow');
-      powerEnd = parseZwoPowerAttr(el, 'PowerHigh');
+      const powerLow = parseZwoPowerAttr(el, 'PowerLow');
+      const powerHigh = parseZwoPowerAttr(el, 'PowerHigh');
+      if (powerLow === null || powerHigh === null) {
+        throw new Error(`Invalid ZWO XML: <${el.tagName}> is missing a required Power attribute (or PowerLow/PowerHigh)`);
+      }
+      return { type: 'ramp', duration, powerStart: powerLow, powerEnd: powerHigh, cadence };
+    }
+
+    if (type === 'warmup' || type === 'ramp' || type === 'cooldown') {
+      const powerStart = parseZwoPowerAttr(el, 'PowerLow');
+      const powerEnd = parseZwoPowerAttr(el, 'PowerHigh');
       if (powerStart === null || powerEnd === null) {
         throw new Error(`Invalid ZWO XML: <${el.tagName}> is missing PowerLow/PowerHigh attributes`);
       }
+      return { type, duration, powerStart, powerEnd, cadence };
     }
 
-    return { type, duration, powerStart, powerEnd, cadence };
+    return { type, duration, powerStart: null, powerEnd: null, cadence };
+  }
+
+  function parseZwoIntervalsTElement(el) {
+    const repeat = parseZwoIntAttr(el, 'Repeat');
+    if (repeat === null || repeat <= 0) {
+      throw new Error(`Invalid ZWO XML: <${el.tagName}> is missing a required Repeat attribute`);
+    }
+
+    const onDuration = parseZwoIntAttr(el, 'OnDuration');
+    const offDuration = parseZwoIntAttr(el, 'OffDuration');
+    if (onDuration === null || offDuration === null) {
+      throw new Error(`Invalid ZWO XML: <${el.tagName}> is missing OnDuration/OffDuration attributes`);
+    }
+
+    const onPower = parseZwoPowerAttr(el, 'OnPower');
+    const offPower = parseZwoPowerAttr(el, 'OffPower');
+    if (onPower === null || offPower === null) {
+      throw new Error(`Invalid ZWO XML: <${el.tagName}> is missing OnPower/OffPower attributes`);
+    }
+
+    const onCadence = parseZwoIntAttr(el, 'Cadence');
+    const offCadence = parseZwoIntAttr(el, 'CadenceResting');
+
+    const expanded = [];
+    for (let i = 0; i < repeat; i++) {
+      expanded.push({ type: 'steady', duration: onDuration, powerStart: onPower, powerEnd: onPower, cadence: onCadence });
+      expanded.push({ type: 'steady', duration: offDuration, powerStart: offPower, powerEnd: offPower, cadence: offCadence });
+    }
+    return expanded;
   }
 
   function parseZwoIntAttr(el, attrName) {
