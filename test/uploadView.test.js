@@ -162,10 +162,15 @@ describe('createUploadView: block 1 - 貼上課表文字內容 (text only, no ur
 });
 
 describe('createUploadView: block 2 - 上傳 ZWO 檔案', () => {
-  it('renders the dropzone with the .zwo file input', () => {
+  it('renders the dropzone with the file input', () => {
     const { root } = setup();
     expect(root.querySelector('.upload-dropzone')).not.toBeNull();
-    expect(root.querySelector('.upload-input').getAttribute('accept')).toContain('.zwo');
+    expect(root.querySelector('.upload-input')).not.toBeNull();
+  });
+
+  it('does not set an "accept" attribute on the file input (regression: iOS grays out every file in cloud-drive pickers when accept is set to a non-standard extension like .zwo)', () => {
+    const { root } = setup();
+    expect(root.querySelector('.upload-input').hasAttribute('accept')).toBe(false);
   });
 
   it('calls onFileSelected with the chosen file and resets the input', () => {
