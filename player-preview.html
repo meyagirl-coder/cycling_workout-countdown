@@ -76,6 +76,56 @@
     font-weight: 800;
   }
 
+  .upload-ftp-row {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+  }
+
+  .upload-ftp-label {
+    font-size: 1rem;
+    font-weight: 700;
+  }
+
+  .upload-ftp-input-wrap {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.45rem 0.7rem;
+    border-radius: 0.75rem;
+    border: 1px solid #334155;
+    background: #0f172a;
+  }
+
+  .upload-ftp-input {
+    width: 4rem;
+    border: none;
+    background: transparent;
+    color: #f8fafc;
+    font-size: 1rem;
+    font-weight: 700;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .upload-ftp-input:focus {
+    outline: none;
+  }
+
+  .upload-ftp-unit {
+    color: #94a3b8;
+    font-weight: 700;
+  }
+
+  .upload-ftp-hint {
+    margin: -0.35rem 0 0;
+    color: #64748b;
+    font-size: 0.75rem;
+    text-align: center;
+  }
+
   .upload-hint {
     margin: 0;
     color: #94a3b8;
@@ -241,18 +291,24 @@
     }
   }
 
-  .elapsed-time,
-  .target-pct {
+  .elapsed-time {
     margin-top: 0.5rem;
     font-size: 1rem;
     opacity: 0.85;
   }
 
-  .target-watt {
-    font-size: 2.5rem;
+  /* 瓦數跟 %FTP 兩行文字要同一個字級,不能一個明顯比另一個大或小 */
+  .target-watt,
+  .target-pct {
+    font-size: 1.75rem;
     font-weight: 900;
     line-height: 1;
     font-variant-numeric: tabular-nums;
+  }
+
+  .target-pct {
+    margin-top: 0.35rem;
+    opacity: 0.85;
   }
 
   .controls {
@@ -548,6 +604,15 @@
   function createUploadView(rootEl, handlers) {
     rootEl.innerHTML = `
       <div class="upload-screen">
+        <div class="upload-ftp-row">
+          <label class="upload-ftp-label" for="upload-ftp-input">你的 FTP</label>
+          <div class="upload-ftp-input-wrap">
+            <input type="number" id="upload-ftp-input" class="upload-ftp-input" min="1" step="1" inputmode="numeric" />
+            <span class="upload-ftp-unit">W</span>
+          </div>
+        </div>
+        <p class="upload-ftp-hint">之後可以隨時回來這裡修改，瓦數會立即依新的 FTP 重新計算</p>
+
         <h1 class="upload-title">上傳課表</h1>
         <p class="upload-hint">選擇一份 .zwo 課表檔案（Zwift workout file）開始訓練</p>
         <label class="upload-dropzone">
@@ -560,6 +625,12 @@
 
     const input = rootEl.querySelector('.upload-input');
     const errorEl = rootEl.querySelector('.upload-error');
+    const ftpInput = rootEl.querySelector('.upload-ftp-input');
+
+    ftpInput.addEventListener('input', () => {
+      const value = Number(ftpInput.value);
+      if (Number.isFinite(value) && value > 0) handlers.onFtpChange(Math.round(value));
+    });
 
     input.addEventListener('change', () => {
       const file = input.files && input.files[0];
@@ -575,6 +646,9 @@
       clearError() {
         errorEl.textContent = '';
         errorEl.classList.add('hidden');
+      },
+      setFtpValue(ftp) {
+        ftpInput.value = ftp;
       },
     };
   }
@@ -1046,8 +1120,23 @@
     window.speechSynthesis.speak(utterance);
   }
 
-  // ---- driver (same role as src/ui/playerApp.js, single-thread for this preview instead of a Web Worker) ----
+  // ---- src/ui/ftpStore.js ----
+  const FTP_STORAGE_KEY = 'user_ftp';
   const DEFAULT_FTP = 200;
+
+  function loadFtp(storage = window.localStorage) {
+    const raw = storage.getItem(FTP_STORAGE_KEY);
+    if (raw === null) return null;
+    const value = Number(raw);
+    if (!Number.isFinite(value) || value <= 0) return null;
+    return Math.round(value);
+  }
+
+  function saveFtp(ftp, storage = window.localStorage) {
+    storage.setItem(FTP_STORAGE_KEY, String(Math.round(ftp)));
+  }
+
+  // ---- driver (same role as src/ui/playerApp.js, single-thread for this preview instead of a Web Worker) ----
   const bannerMount = document.querySelector('.app-banner-mount');
   const uploadMount = document.querySelector('.upload-mount');
   const playerMount = document.querySelector('.player-mount');
@@ -1057,10 +1146,17 @@
   let engine = null;
   let currentWorkout = null;
   let intervalId = null;
+  let currentFtp = loadFtp() ?? DEFAULT_FTP;
 
   const uploadView = createUploadView(uploadMount, {
     onFileSelected: (file) => handleFileSelected(file),
+    onFtpChange: (ftp) => {
+      currentFtp = ftp;
+      saveFtp(ftp);
+      if (currentWorkout) render();
+    },
   });
+  uploadView.setFtpValue(currentFtp);
 
   const playerView = createPlayerView(playerMount, {
     onPlayPause: () => {
@@ -1145,7 +1241,7 @@
   }
 
   function render() {
-    if (currentWorkout) playerView.update(currentWorkout, engine.getState(), DEFAULT_FTP);
+    if (currentWorkout) playerView.update(currentWorkout, engine.getState(), currentFtp);
   }
 
   /** 每次 engine 動作（tick 或按鈕）後統一重繪＋處理倒數提示事件（規格 §4.4） */
@@ -1155,7 +1251,7 @@
     handleTimerEvents(events, {
       workout: currentWorkout,
       state: engine.getState(),
-      ftp: DEFAULT_FTP,
+      ftp: currentFtp,
       playBeep: playCountdownBeep,
       speak: speakCountdownWarning,
       showNextIntervalBanner: playerView.showNextIntervalBanner,

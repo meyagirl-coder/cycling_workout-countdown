@@ -4,13 +4,23 @@
  * 對應的 handler 丟給呼叫端處理：
  *   onFileSelected(file)          選了本機 .zwo 檔案
  *   onIntervalsIcuSubmit(rawText) 送出 intervals.icu 網址／ID 表單
+ *   onFtpChange(ftp)              FTP 欄位改成一個合法的正數（呼叫端負責存 localStorage）
  *
  * @param {HTMLElement} rootEl
- * @param {{onFileSelected: (file: File) => void, onIntervalsIcuSubmit: (rawText: string) => void}} handlers
+ * @param {{onFileSelected: (file: File) => void, onIntervalsIcuSubmit: (rawText: string) => void, onFtpChange: (ftp: number) => void}} handlers
  */
 export function createUploadView(rootEl, handlers) {
   rootEl.innerHTML = `
     <div class="upload-screen">
+      <div class="upload-ftp-row">
+        <label class="upload-ftp-label" for="upload-ftp-input">你的 FTP</label>
+        <div class="upload-ftp-input-wrap">
+          <input type="number" id="upload-ftp-input" class="upload-ftp-input" min="1" step="1" inputmode="numeric" />
+          <span class="upload-ftp-unit">W</span>
+        </div>
+      </div>
+      <p class="upload-ftp-hint">之後可以隨時回來這裡修改，瓦數會立即依新的 FTP 重新計算</p>
+
       <form class="upload-intervals-form">
         <label class="upload-intervals-label" for="upload-intervals-input">從 intervals.icu 載入</label>
         <div class="upload-intervals-row">
@@ -50,6 +60,7 @@ export function createUploadView(rootEl, handlers) {
   const intervalsInput = rootEl.querySelector('.upload-intervals-input');
   const intervalsSubmitBtn = rootEl.querySelector('.upload-intervals-submit');
   const lookupLink = rootEl.querySelector('.upload-intervals-lookup-link');
+  const ftpInput = rootEl.querySelector('.upload-ftp-input');
 
   // 「今天」要用使用者瀏覽器的本地日期，不是 Vercel 伺服器的時區（見
   // api/intervals-events.js 的說明）——伺服器多半是 UTC，UTC+8 的使用者在
@@ -68,6 +79,13 @@ export function createUploadView(rootEl, handlers) {
     if (value) handlers.onIntervalsIcuSubmit(value);
   });
 
+  // 即時反映：只要是合法的正數就馬上通知呼叫端（存 localStorage／更新執行頁瓦數），
+  // 打字打到一半的空字串／0／負數先不通知，等使用者輸入出合法值再說。
+  ftpInput.addEventListener('input', () => {
+    const value = Number(ftpInput.value);
+    if (Number.isFinite(value) && value > 0) handlers.onFtpChange(Math.round(value));
+  });
+
   return {
     showError(message) {
       errorEl.textContent = message;
@@ -81,6 +99,9 @@ export function createUploadView(rootEl, handlers) {
       intervalsSubmitBtn.disabled = isLoading;
       intervalsSubmitBtn.textContent = isLoading ? '載入中…' : '載入';
       intervalsInput.disabled = isLoading;
+    },
+    setFtpValue(ftp) {
+      ftpInput.value = ftp;
     },
   };
 }

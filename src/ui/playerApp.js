@@ -3,11 +3,9 @@ import { parseZwoXml } from '../parser/zwoParser.js';
 import { createTimerWorkerClient } from '../worker/timerWorkerClient.js';
 import { createAppBanner } from './appBanner.js';
 import { handleTimerEvents, playCountdownBeep, speakCountdownWarning } from './countdownAlerts.js';
+import { DEFAULT_FTP, loadFtp, saveFtp } from './ftpStore.js';
 import { createPlayerView } from './renderPlayer.js';
 import { createUploadView } from './uploadView.js';
-
-// TODO(Phase 1 步驟 7): 改讀 localStorage 的 user_ftp，目前先寫死方便先跑通上傳流程。
-const DEFAULT_FTP = 200;
 
 const INTERVALS_ICU_PROXY_URL = '/api/intervals-zwo';
 
@@ -34,10 +32,23 @@ export function initPlayerApp(rootEl) {
   let latestState = null;
   let currentWorkout = null;
 
+  // 規格 §6：App 啟動時讀 localStorage 的 user_ftp；沒設定過就先用預設值，
+  // 畫面上（FTP 輸入欄位）會清楚顯示這個數字，使用者隨時可以改。
+  let currentFtp = loadFtp() ?? DEFAULT_FTP;
+
   const uploadView = createUploadView(uploadMount, {
     onFileSelected: (file) => handleFileSelected(file),
     onIntervalsIcuSubmit: (rawText) => handleIntervalsIcuSubmit(rawText),
+    onFtpChange: (ftp) => {
+      currentFtp = ftp;
+      saveFtp(ftp);
+      // 執行頁如果已經在跑，瓦數要立即用新的 FTP 重繪，不用等下一次 timer tick。
+      if (currentWorkout && latestState) {
+        playerView.update(currentWorkout, latestState, currentFtp);
+      }
+    },
   });
+  uploadView.setFtpValue(currentFtp);
 
   const playerView = createPlayerView(playerMount, {
     onPlayPause: () => {
@@ -66,11 +77,11 @@ export function initPlayerApp(rootEl) {
     latestState = state;
     if (!currentWorkout) return;
 
-    playerView.update(currentWorkout, state, DEFAULT_FTP);
+    playerView.update(currentWorkout, state, currentFtp);
     handleTimerEvents(events, {
       workout: currentWorkout,
       state,
-      ftp: DEFAULT_FTP,
+      ftp: currentFtp,
       playBeep: playCountdownBeep,
       speak: speakCountdownWarning,
       showNextIntervalBanner: playerView.showNextIntervalBanner,

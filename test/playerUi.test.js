@@ -341,6 +341,21 @@ describe('createPlayerView', () => {
     expect(root.querySelector('.status-panel').className).toContain('zone-gray');
   });
 
+  it('recalculates target watt immediately when the same state is re-rendered with a different FTP (regression: user-configurable FTP)', () => {
+    document.body.innerHTML = '<div id="root"></div>';
+    const root = document.getElementById('root');
+    const view = createPlayerView(root, { onPlayPause: vi.fn(), onSkip: vi.fn(), onRedo: vi.fn(), onStop: vi.fn() });
+
+    const state = makeIdleState({ status: 'running', currentIntervalIndex: 1, elapsedInInterval: 4, elapsedTotal: 16 });
+    view.update(makeWorkout(), state, 200);
+    expect(root.querySelector('.target-watt').textContent).toBe('176 W'); // 200 * 0.88
+
+    // Same state, only the FTP changed - as if the user just edited their FTP setting.
+    view.update(makeWorkout(), state, 250);
+    expect(root.querySelector('.target-watt').textContent).toBe('220 W'); // 250 * 0.88
+    expect(root.querySelector('.target-pct').textContent).toBe('88% FTP'); // %FTP itself doesn't depend on the FTP value
+  });
+
   it('wires button clicks to the provided handlers', () => {
     document.body.innerHTML = '<div id="root"></div>';
     const root = document.getElementById('root');
