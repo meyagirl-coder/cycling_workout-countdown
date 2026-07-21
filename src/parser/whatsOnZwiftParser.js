@@ -6,10 +6,13 @@
  *     「FTP」字樣，不是像 TrainerDay 那樣用瓦數代表 FTP=100 時的百分比，
  *     不能套用「瓦數＝百分比」那個假設）
  *   - `Xmin @ Y% FTP` -> steady 段，Y 直接就是 %FTP
- *   - `Nx Xmin @ Y% FTP, Zmin @ W% FTP` -> 複合重複組：兩段寫在同一行、用
- *     逗號分隔，合起來重複 N 次——跟 pasteTextParser.js 的「Nx」換行展開是
- *     不同的寫法（那邊是重複次數獨立一行、接下來連續幾行都算），這裡的兩段
- *     內容跟重複次數本來就在同一行，不需要「往下收集到哪裡結束」的邏輯。
+ *   - 複合重複組寫成兩行，不是同一行逗號分隔：
+ *       `Nx Xmin @ Y% FTP,`   <- 第一段，句尾逗號代表「還沒結束，下一行接著」
+ *       `Zmin @ W% FTP`       <- 第二段，沒有逗號結尾，代表這個重複區塊結束
+ *     這兩行合起來代表「Xmin @ Y% FTP」跟「Zmin @ W% FTP」合起來重複 N 次。
+ *     跟 pasteTextParser.js 的「Nx」換行展開是不同的寫法（那邊重複次數獨立
+ *     一行、接下來連續幾行都算內容），這裡「Nx」本身就帶著第一段內容，只
+ *     需要再往下找一行完成第二段就好，不需要「收集到哪裡結束」的邏輯。
  *
  * parseWhatsOnZwiftText() 是純函式，跟其他 parser 一樣輸出統一的 Workout
  * JSON（見 src/schema/workoutSchema.js），不碰 UI。
@@ -20,8 +23,8 @@ import { generateId } from '../utils/generateId.js';
 // 是不是課表內容」，兩邊對「合法格式」的認定不會不小心兜不起來。
 export const WOZ_RAMP_LINE_RE = /^(\d+(?:\.\d+)?)\s*min\s+from\s+(\d+(?:\.\d+)?)\s+to\s+(\d+(?:\.\d+)?)%\s*FTP$/i;
 export const WOZ_STEADY_LINE_RE = /^(\d+(?:\.\d+)?)\s*min\s*@\s*(\d+(?:\.\d+)?)%\s*FTP$/i;
-export const WOZ_REPEAT_LINE_RE =
-  /^(\d+)x\s+(\d+(?:\.\d+)?)\s*min\s*@\s*(\d+(?:\.\d+)?)%\s*FTP\s*,\s*(\d+(?:\.\d+)?)\s*min\s*@\s*(\d+(?:\.\d+)?)%\s*FTP$/i;
+/** 複合重複組的第一行：`Nx Xmin @ Y% FTP,`（句尾逗號） */
+export const WOZ_REPEAT_FIRST_LINE_RE = /^(\d+)x\s+(\d+(?:\.\d+)?)\s*min\s*@\s*(\d+(?:\.\d+)?)%\s*FTP\s*,$/i;
 
 /**
  * @param {string} text - 從 WhatsOnZwift 課表頁面複製（或抓取後擷取出）的純文字
@@ -35,23 +38,37 @@ export function parseWhatsOnZwiftText(text) {
   const intervals = [];
   const rawLines = text.split(/\r\n|\r|\n/);
 
+  // 目前正在等第二段的複合重複組：{ count, first, lineNumber, raw }
+  let pendingRepeat = null;
+
   rawLines.forEach((rawLine, index) => {
     const lineNumber = index + 1;
     const line = rawLine.trim();
-    if (line === '') return;
+    if (line === '') return; // 空行一律忽略，包括正在等重複區塊第二段的時候
 
-    const repeatMatch = line.match(WOZ_REPEAT_LINE_RE);
-    if (repeatMatch) {
-      const [, countStr, dur1, pct1, dur2, pct2] = repeatMatch;
+    if (pendingRepeat) {
+      const steadyMatch = line.match(WOZ_STEADY_LINE_RE);
+      if (!steadyMatch) {
+        throw new Error(
+          `Invalid workout text: line ${lineNumber} ("${line}") was expected to complete the repeat block started at line ${pendingRepeat.lineNumber} ("${pendingRepeat.raw}") with a "Xmin @ Y% FTP" line`
+        );
+      }
+      const second = makeSteady(steadyMatch[1], steadyMatch[2]);
+      for (let i = 0; i < pendingRepeat.count; i++) {
+        intervals.push(pendingRepeat.first, second);
+      }
+      pendingRepeat = null;
+      return;
+    }
+
+    const repeatFirstMatch = line.match(WOZ_REPEAT_FIRST_LINE_RE);
+    if (repeatFirstMatch) {
+      const [, countStr, durStr, pctStr] = repeatFirstMatch;
       const count = Number(countStr);
       if (count <= 0) {
         throw new Error(`Invalid workout text: line ${lineNumber} ("${line}") has an invalid repeat count`);
       }
-      const first = makeSteady(dur1, pct1);
-      const second = makeSteady(dur2, pct2);
-      for (let i = 0; i < count; i++) {
-        intervals.push(first, second);
-      }
+      pendingRepeat = { count, first: makeSteady(durStr, pctStr), lineNumber, raw: line };
       return;
     }
 
@@ -71,6 +88,12 @@ export function parseWhatsOnZwiftText(text) {
 
     throw new Error(`Invalid workout text: line ${lineNumber} ("${line}") does not match a recognized WhatsOnZwift line format`);
   });
+
+  if (pendingRepeat) {
+    throw new Error(
+      `Invalid workout text: line ${pendingRepeat.lineNumber} ("${pendingRepeat.raw}") starts a repeat block but no second line follows it`
+    );
+  }
 
   if (intervals.length === 0) {
     throw new Error('Invalid workout text: no valid workout lines found');

@@ -139,9 +139,11 @@ describe('api/whatsonzwift-workout handler', () => {
     const html = [
       '<div>5min from 40 to 105% FTP</div>',
       '<div>2min @ 50% FTP</div>',
-      '<div>3x 2min @ 105% FTP, 1min @ 90% FTP</div>',
+      '<div>3x 2min @ 105% FTP,</div>',
+      '<div>1min @ 90% FTP</div>',
       '<div>3min @ 51% FTP</div>',
-      '<div>3x 2min @ 105% FTP, 1min @ 91% FTP</div>',
+      '<div>3x 2min @ 105% FTP,</div>',
+      '<div>1min @ 91% FTP</div>',
       '<div>5min from 70 to 40% FTP</div>',
     ].join('');
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, status: 200, text: async () => html }));
@@ -156,9 +158,11 @@ describe('api/whatsonzwift-workout handler', () => {
       [
         '5min from 40 to 105% FTP',
         '2min @ 50% FTP',
-        '3x 2min @ 105% FTP, 1min @ 90% FTP',
+        '3x 2min @ 105% FTP,',
+        '1min @ 90% FTP',
         '3min @ 51% FTP',
-        '3x 2min @ 105% FTP, 1min @ 91% FTP',
+        '3x 2min @ 105% FTP,',
+        '1min @ 91% FTP',
         '5min from 70 to 40% FTP',
       ].join('\n')
     );
