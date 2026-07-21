@@ -19,6 +19,12 @@ import { INTERVAL_TYPE_LABELS } from './intervalLabels.js';
 
 export const COUNTDOWN_FINISHING_SOON_TEXT = '即將完成';
 
+// 倒數預告 banner 顯示的秒數——比實際倒數的 10 秒再多留一點緩衝，讓 banner
+// 一路撐到真正切組（intervalChanged 會用新內容覆蓋掉它），中間不會提早收起、
+// 出現一段看不到任何預告的空白（renderPlayer.js 預設的 5 秒不夠撐完整個 10
+// 秒倒數）。
+const COUNTDOWN_PREVIEW_BANNER_MS = 11000;
+
 /**
  * @param {string[]} events - 這次 tick/action 回傳的事件（TIMER_EVENTS 的值）
  * @param {object} ctx
@@ -27,14 +33,14 @@ export const COUNTDOWN_FINISHING_SOON_TEXT = '即將完成';
  * @param {number} ctx.ftp
  * @param {() => void} ctx.playBeep
  * @param {(text: string) => void} ctx.speak
- * @param {(text: string) => void} ctx.showNextIntervalBanner
+ * @param {(text: string, durationMs?: number) => void} ctx.showNextIntervalBanner
  */
 export function handleTimerEvents(events, { workout, state, ftp, playBeep, speak, showNextIntervalBanner }) {
   if (events.includes(TIMER_EVENTS.COUNTDOWN_WARNING)) {
     playBeep();
     const preview = computeUpcomingIntervalPreview(workout, state, ftp);
     speak(formatCountdownSpeechText(preview));
-    showNextIntervalBanner(formatCountdownBannerText(preview));
+    showNextIntervalBanner(formatCountdownBannerText(preview), COUNTDOWN_PREVIEW_BANNER_MS);
   }
 
   if (events.includes(TIMER_EVENTS.INTERVAL_CHANGED)) {
