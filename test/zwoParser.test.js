@@ -80,6 +80,118 @@ describe('parseZwoXml', () => {
     }
   });
 
+  it('parses a SteadyState with PowerLow/PowerHigh (no Power) as a ramp, not a flat steady', () => {
+    const xml = `<workout_file>
+      <workout>
+        <SteadyState Duration="300" PowerLow="0.65" PowerHigh="0.75" Cadence="85"/>
+      </workout>
+    </workout_file>`;
+
+    const workout = parseZwoXml(xml);
+    expectValidWorkout(workout);
+    expect(workout.intervals).toEqual([{ type: 'ramp', duration: 300, powerStart: 65, powerEnd: 75, cadence: 85 }]);
+  });
+
+  it('a descending SteadyState range (PowerHigh < PowerLow) still maps PowerLow->powerStart, PowerHigh->powerEnd', () => {
+    const xml = `<workout_file>
+      <workout>
+        <SteadyState Duration="120" PowerLow="0.8" PowerHigh="0.6"/>
+      </workout>
+    </workout_file>`;
+
+    const workout = parseZwoXml(xml);
+    expect(workout.intervals).toEqual([{ type: 'ramp', duration: 120, powerStart: 80, powerEnd: 60, cadence: null }]);
+  });
+
+  it('throws when a SteadyState has neither Power nor a full PowerLow/PowerHigh pair', () => {
+    const missingBoth = `<workout_file><workout><SteadyState Duration="60"/></workout></workout_file>`;
+    expect(() => parseZwoXml(missingBoth)).toThrow(/missing a required Power attribute/);
+
+    const onlyLow = `<workout_file><workout><SteadyState Duration="60" PowerLow="0.5"/></workout></workout_file>`;
+    expect(() => parseZwoXml(onlyLow)).toThrow(/missing a required Power attribute/);
+
+    const onlyHigh = `<workout_file><workout><SteadyState Duration="60" PowerHigh="0.5"/></workout></workout_file>`;
+    expect(() => parseZwoXml(onlyHigh)).toThrow(/missing a required Power attribute/);
+  });
+
+  it('expands <IntervalsT> into Repeat on/off steady pairs with the right power and cadence for each side', () => {
+    const xml = `<workout_file>
+      <workout>
+        <IntervalsT Repeat="3" OnDuration="30" OffDuration="15" OnPower="1.2" OffPower="0.5" Cadence="100" CadenceResting="80"/>
+      </workout>
+    </workout_file>`;
+
+    const workout = parseZwoXml(xml);
+    expectValidWorkout(workout);
+    expect(workout.intervals).toHaveLength(6);
+    expect(workout.totalDuration).toBe(3 * (30 + 15));
+
+    const onInterval = { type: 'steady', duration: 30, powerStart: 120, powerEnd: 120, cadence: 100 };
+    const offInterval = { type: 'steady', duration: 15, powerStart: 50, powerEnd: 50, cadence: 80 };
+    expect(workout.intervals).toEqual([onInterval, offInterval, onInterval, offInterval, onInterval, offInterval]);
+  });
+
+  it('<IntervalsT> works without Cadence/CadenceResting (both default to null)', () => {
+    const xml = `<workout_file>
+      <workout>
+        <IntervalsT Repeat="1" OnDuration="30" OffDuration="15" OnPower="1.2" OffPower="0.5"/>
+      </workout>
+    </workout_file>`;
+
+    const workout = parseZwoXml(xml);
+    expect(workout.intervals).toEqual([
+      { type: 'steady', duration: 30, powerStart: 120, powerEnd: 120, cadence: null },
+      { type: 'steady', duration: 15, powerStart: 50, powerEnd: 50, cadence: null },
+    ]);
+  });
+
+  it('throws when <IntervalsT> is missing Repeat, OnDuration/OffDuration, or OnPower/OffPower', () => {
+    const missingRepeat = `<workout_file><workout><IntervalsT OnDuration="30" OffDuration="15" OnPower="1.2" OffPower="0.5"/></workout></workout_file>`;
+    expect(() => parseZwoXml(missingRepeat)).toThrow(/missing a required Repeat attribute/);
+
+    const missingDurations = `<workout_file><workout><IntervalsT Repeat="2" OnPower="1.2" OffPower="0.5"/></workout></workout_file>`;
+    expect(() => parseZwoXml(missingDurations)).toThrow(/missing OnDuration\/OffDuration/);
+
+    const missingPowers = `<workout_file><workout><IntervalsT Repeat="2" OnDuration="30" OffDuration="15"/></workout></workout_file>`;
+    expect(() => parseZwoXml(missingPowers)).toThrow(/missing OnPower\/OffPower/);
+  });
+
+  it('parses a real-world intervals.icu export mixing SteadyState ranges and <IntervalsT> (IntervalCoach VO2max)', () => {
+    const workout = parseZwoXml(loadFixture('IntervalCoach_VO2max_Intervals.zwo'));
+
+    expectValidWorkout(workout);
+    expect(workout.name).toBe('IntervalCoach - VO2max Intervals');
+    expect(workout.intervals).toHaveLength(16);
+    expect(workout.totalDuration).toBe(3900);
+
+    const warmup = { type: 'warmup', duration: 360, powerStart: 45, powerEnd: 75, cadence: 85 };
+    const primerOn = { type: 'steady', duration: 60, powerStart: 115, powerEnd: 115, cadence: 90 };
+    const primerRecovery = { type: 'steady', duration: 30, powerStart: 55, powerEnd: 55, cadence: 85 };
+    const endurance = { type: 'ramp', duration: 300, powerStart: 65, powerEnd: 75, cadence: 85 };
+    const vo2On = { type: 'steady', duration: 300, powerStart: 115, powerEnd: 115, cadence: 95 };
+    const vo2Off = { type: 'steady', duration: 300, powerStart: 55, powerEnd: 55, cadence: 80 };
+    const cooldown = { type: 'cooldown', duration: 360, powerStart: 65, powerEnd: 45, cadence: 85 };
+
+    expect(workout.intervals).toEqual([
+      warmup,
+      primerOn,
+      primerRecovery,
+      primerOn,
+      primerRecovery,
+      endurance,
+      vo2On,
+      vo2Off,
+      vo2On,
+      vo2Off,
+      vo2On,
+      vo2Off,
+      vo2On,
+      vo2Off,
+      endurance,
+      cooldown,
+    ]);
+  });
+
   it('generates a unique id on every parse', () => {
     const xml = loadFixture('basic_warmup_steady_cooldown.zwo');
     const first = parseZwoXml(xml);

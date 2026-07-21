@@ -45,7 +45,14 @@ export function parseZwoXml(xmlString) {
 
   const intervals = [];
   for (const el of Array.from(workoutEl.children)) {
-    const type = TAG_TYPE_MAP[el.tagName.toLowerCase()];
+    const tag = el.tagName.toLowerCase();
+
+    if (tag === 'intervalst') {
+      intervals.push(...parseIntervalsTElement(el));
+      continue;
+    }
+
+    const type = TAG_TYPE_MAP[tag];
     if (!type) continue; // 略過不支援的標籤（例如 textnotifications）
 
     intervals.push(parseIntervalElement(el, type));
@@ -73,26 +80,72 @@ function parseIntervalElement(el, type) {
   }
 
   const cadence = parseIntAttr(el, 'Cadence');
-  let powerStart = null;
-  let powerEnd = null;
 
   if (type === 'steady') {
     const power = parsePowerAttr(el, 'Power');
-    if (power === null) {
-      throw new Error(`Invalid ZWO XML: <${el.tagName}> is missing a required Power attribute`);
+    if (power !== null) {
+      return { type: 'steady', duration, powerStart: power, powerEnd: power, cadence };
     }
-    powerStart = power;
-    powerEnd = power;
-  } else if (type === 'warmup' || type === 'ramp' || type === 'cooldown') {
-    powerStart = parsePowerAttr(el, 'PowerLow');
-    powerEnd = parsePowerAttr(el, 'PowerHigh');
+
+    // 有些工具（例如 intervals.icu 的課表產生器）匯出的 SteadyState 不是單一
+    // Power，而是用 PowerLow/PowerHigh 表示一個範圍。跟 Warmup/Ramp/Cooldown
+    // 一樣線性內插處理；但既然瓦數會變化、不是真的「穩定」，schema 的 type
+    // 歸類成 ramp，避免畫面上標成「穩定」卻其實在變動，造成誤導。
+    const powerLow = parsePowerAttr(el, 'PowerLow');
+    const powerHigh = parsePowerAttr(el, 'PowerHigh');
+    if (powerLow === null || powerHigh === null) {
+      throw new Error(`Invalid ZWO XML: <${el.tagName}> is missing a required Power attribute (or PowerLow/PowerHigh)`);
+    }
+    return { type: 'ramp', duration, powerStart: powerLow, powerEnd: powerHigh, cadence };
+  }
+
+  if (type === 'warmup' || type === 'ramp' || type === 'cooldown') {
+    const powerStart = parsePowerAttr(el, 'PowerLow');
+    const powerEnd = parsePowerAttr(el, 'PowerHigh');
     if (powerStart === null || powerEnd === null) {
       throw new Error(`Invalid ZWO XML: <${el.tagName}> is missing PowerLow/PowerHigh attributes`);
     }
+    return { type, duration, powerStart, powerEnd, cadence };
   }
-  // freeride: 沒有目標瓦數，powerStart/powerEnd 維持 null
 
-  return { type, duration, powerStart, powerEnd, cadence };
+  // freeride: 沒有目標瓦數，powerStart/powerEnd 維持 null
+  return { type, duration, powerStart: null, powerEnd: null, cadence };
+}
+
+/**
+ * <IntervalsT> 是「開／關間歇」的標準寫法：把它展開成 Repeat 次的
+ * 高強度（OnPower/OnDuration/Cadence）+ 恢復（OffPower/OffDuration/
+ * CadenceResting）交替組別，各自當作一個 steady 組別塞進 intervals 陣列——
+ * schema 本身沒有「重複區塊」的概念，展開成一般組別是唯一能讓計時引擎正確
+ * 逐組播放的方式。
+ */
+function parseIntervalsTElement(el) {
+  const repeat = parseIntAttr(el, 'Repeat');
+  if (repeat === null || repeat <= 0) {
+    throw new Error(`Invalid ZWO XML: <${el.tagName}> is missing a required Repeat attribute`);
+  }
+
+  const onDuration = parseIntAttr(el, 'OnDuration');
+  const offDuration = parseIntAttr(el, 'OffDuration');
+  if (onDuration === null || offDuration === null) {
+    throw new Error(`Invalid ZWO XML: <${el.tagName}> is missing OnDuration/OffDuration attributes`);
+  }
+
+  const onPower = parsePowerAttr(el, 'OnPower');
+  const offPower = parsePowerAttr(el, 'OffPower');
+  if (onPower === null || offPower === null) {
+    throw new Error(`Invalid ZWO XML: <${el.tagName}> is missing OnPower/OffPower attributes`);
+  }
+
+  const onCadence = parseIntAttr(el, 'Cadence');
+  const offCadence = parseIntAttr(el, 'CadenceResting');
+
+  const expanded = [];
+  for (let i = 0; i < repeat; i++) {
+    expanded.push({ type: 'steady', duration: onDuration, powerStart: onPower, powerEnd: onPower, cadence: onCadence });
+    expanded.push({ type: 'steady', duration: offDuration, powerStart: offPower, powerEnd: offPower, cadence: offCadence });
+  }
+  return expanded;
 }
 
 function parseIntAttr(el, attrName) {

@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<workout_file>
+    <author>TC LIN</author>
+    <name>IntervalCoach - VO2max Intervals</name>
+    <sportType>bike</sportType>
+    <tags/>
+    <workout>
+        <Warmup PowerHigh="0.75" PowerLow="0.45" Cadence="85" Duration="360">
+            <textevent message="Hey Tc! VO2max Long is here" duration="10"/>
+        </Warmup>
+        <SteadyState show_avg="1" Power="1.15" Cadence="90" Duration="60">
+            <textevent message="Primer 1" duration="10"/>
+        </SteadyState>
+        <SteadyState show_avg="1" Power="0.55" Cadence="85" Duration="30">
+            <textevent message="Primer recovery" duration="10"/>
+        </SteadyState>
+        <SteadyState show_avg="1" Power="1.15" Cadence="90" Duration="60">
+            <textevent message="Primer 2" duration="10"/>
+        </SteadyState>
+        <SteadyState show_avg="1" Power="0.55" Cadence="85" Duration="30">
+            <textevent message="Primer recovery" duration="10"/>
+        </SteadyState>
+        <SteadyState show_avg="1" PowerHigh="0.75" PowerLow="0.65" Cadence="85" Duration="300">
+            <textevent message="Endurance" duration="10"/>
+        </SteadyState>
+        <IntervalsT OnPower="1.15" OffPower="0.55" show_avg="1" Repeat="4" Cadence="95" CadenceResting="80" OffDuration="300" OnDuration="300">
+            <textevent message="VO2max"/>
+        </IntervalsT>
+        <SteadyState show_avg="1" PowerHigh="0.75" PowerLow="0.65" Cadence="85" Duration="300">
+            <textevent message="Endurance" duration="10"/>
+        </SteadyState>
+        <Cooldown PowerHigh="0.45" PowerLow="0.65" Cadence="85" Duration="360">
+            <textevent message="Awesome work Tc! Recover well" duration="10"/>
+        </Cooldown>
+    </workout>
+</workout_file>
