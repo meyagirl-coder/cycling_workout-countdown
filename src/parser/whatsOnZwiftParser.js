@@ -20,8 +20,8 @@
 import { generateId } from '../utils/generateId.js';
 import { stripBulletPrefix } from './newlineRepeatTextParser.js';
 
-// exported so extractWhatsOnZwiftTextFromHtml.js 可以用同一套正則判斷「這行
-// 是不是課表內容」，兩邊對「合法格式」的認定不會不小心兜不起來。
+// exported so pasteTextRouter.js 可以用同一套正則判斷「這行是不是課表內容」，
+// 兩邊對「合法格式」的認定不會不小心兜不起來。
 export const WOZ_RAMP_LINE_RE = /^(\d+(?:\.\d+)?)\s*min\s+from\s+(\d+(?:\.\d+)?)\s+to\s+(\d+(?:\.\d+)?)%\s*FTP$/i;
 export const WOZ_STEADY_LINE_RE = /^(\d+(?:\.\d+)?)\s*min\s*@\s*(\d+(?:\.\d+)?)%\s*FTP$/i;
 /** 複合重複組的第一行：`Nx Xmin @ Y% FTP,`（句尾逗號） */

@@ -19,9 +19,8 @@ import { generateId } from '../utils/generateId.js';
 import { parseNewlineRepeatText, REPEAT_LINE_RE } from './newlineRepeatTextParser.js';
 
 // exported so other modules that need to recognize the same line shapes
-// （例如從網頁 HTML 撈課表文字的 extractWorkoutTextFromHtml()、判斷貼上文字
-// 是哪一種格式的 pasteTextRouter.js）可以重複使用同一套定義，不必自己重寫
-// 一份容易走鐘的正則表達式。
+// （例如判斷貼上文字是哪一種格式的 pasteTextRouter.js）可以重複使用同一套
+// 定義，不必自己重寫一份容易走鐘的正則表達式。
 export const INTERVAL_LINE_RE = /^(\d+(?:\.\d+)?)\s*min\s*@\s*(\d+(?:\.\d+)?)\s*w$/i;
 export { REPEAT_LINE_RE };
 
