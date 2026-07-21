@@ -58,8 +58,9 @@ export function createUploadView(rootEl, handlers) {
       <form class="upload-paste-form">
         <label class="upload-paste-label" for="upload-paste-textarea">貼上課表文字或網址</label>
         <p class="upload-hint">
-          從公開課表頁面複製的純文字（例如「10 min @ 53w」每行一組），或直接貼上
-          TrainerDay／WhatsOnZwift 課表網址——不需要帳號或檔案
+          從公開課表頁面複製的純文字（自動判斷格式，例如「10 min @ 53w」、
+          「2min @ 50% FTP」、或「5m 50%」），或直接貼上 TrainerDay／WhatsOnZwift
+          課表網址——不需要帳號或檔案
         </p>
         <textarea
           id="upload-paste-textarea"

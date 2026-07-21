@@ -26,7 +26,7 @@ export const workoutSchema = {
   properties: {
     id: { type: 'string', minLength: 1 },
     name: { type: 'string', minLength: 1 },
-    source: { type: 'string', enum: ['zwo', 'paste', 'whatsonzwift'] },
+    source: { type: 'string', enum: ['zwo', 'paste', 'whatsonzwift', 'paste-percent'] },
     totalDuration: { type: 'integer', minimum: 0 },
     intervals: {
       type: 'array',

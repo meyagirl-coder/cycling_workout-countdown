@@ -29,20 +29,44 @@ function makeSyntheticWorkout() {
 
 describe('getZoneColor', () => {
   it.each([
+    // 每個區間邊界的兩側都各測一次（規格：Z1 <=55、Z2 56-75、Z3 76-90、
+    // Z4 91-105、Z5 106-120、Z6 121-150、Z7 >150）
+    [0, 'Z1'],
+    [1, 'Z1'],
     [54, 'Z1'],
-    [55, 'Z2'],
+    [55, 'Z1'], // regression: 55% must land in Z1, not Z2
+    [56, 'Z2'],
+    [74, 'Z2'],
     [75, 'Z2'],
     [76, 'Z3'],
+    [89, 'Z3'],
     [90, 'Z3'],
     [91, 'Z4'],
+    [104, 'Z4'],
     [105, 'Z4'],
     [106, 'Z5'],
+    [119, 'Z5'],
     [120, 'Z5'],
     [121, 'Z6'],
+    [149, 'Z6'],
     [150, 'Z6'],
     [151, 'Z7'],
+    [999, 'Z7'],
   ])('classifies %i%% FTP as %s', (pct, expectedZone) => {
     expect(getZoneColor(pct).key).toBe(expectedZone);
+  });
+
+  it.each([
+    ['Z1', 'gray'],
+    ['Z2', 'blue'],
+    ['Z3', 'green'],
+    ['Z4', 'yellow'],
+    ['Z5', 'orange'],
+    ['Z6', 'red'],
+    ['Z7', 'purple'],
+  ])('maps %s to the %s color', (zoneKey, expectedColor) => {
+    const pctByZone = { Z1: 55, Z2: 75, Z3: 90, Z4: 105, Z5: 120, Z6: 150, Z7: 200 };
+    expect(getZoneColor(pctByZone[zoneKey]).color).toBe(expectedColor);
   });
 });
 
