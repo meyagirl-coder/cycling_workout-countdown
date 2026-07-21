@@ -1,5 +1,6 @@
 import Ajv from 'ajv';
 import { describe, expect, it } from 'vitest';
+import { computeCurrentTarget } from '../src/engine/timerEngine.js';
 import { parseWhatsOnZwiftText } from '../src/parser/whatsOnZwiftParser.js';
 import { workoutSchema } from '../src/schema/workoutSchema.js';
 
@@ -115,6 +116,42 @@ describe('parseWhatsOnZwiftText', () => {
       overB,
       underB,
       rampDown,
+    ]);
+  });
+
+  it('assigns the correct power-zone color to every interval of the Over-Unders example (regression: 90/91/105% must not all render as Z5 orange)', () => {
+    const text = [
+      '5min from 40 to 105% FTP',
+      '2min @ 50% FTP',
+      '3x 2min @ 105% FTP,',
+      '1min @ 90% FTP',
+      '3min @ 51% FTP',
+      '3x 2min @ 105% FTP,',
+      '1min @ 91% FTP',
+      '5min from 70 to 40% FTP',
+    ].join('\n');
+
+    const workout = parseWhatsOnZwiftText(text);
+    const zoneKeysAtEachIntervalStart = workout.intervals.map((_, i) => computeCurrentTarget(workout, i, 0, 200).zoneColor.key);
+
+    // 50% -> Z1(gray), 105% -> Z4(yellow), 90% -> Z3(green), 51% -> Z1(gray), 91% -> Z4(yellow)
+    expect(zoneKeysAtEachIntervalStart).toEqual([
+      'Z1', // ramp starts at 40%
+      'Z1', // 50%
+      'Z4', // 105%
+      'Z3', // 90% - must be green, not orange
+      'Z4', // 105%
+      'Z3', // 90%
+      'Z4', // 105%
+      'Z3', // 90%
+      'Z1', // 51%
+      'Z4', // 105%
+      'Z4', // 91% - must be yellow, not orange
+      'Z4', // 105%
+      'Z4', // 91%
+      'Z4', // 105%
+      'Z4', // 91%
+      'Z2', // ramp starts at 70%
     ]);
   });
 

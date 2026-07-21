@@ -33,6 +33,7 @@ describe('getZoneColor', () => {
     // Z4 91-105、Z5 106-120、Z6 121-150、Z7 >150）
     [0, 'Z1'],
     [1, 'Z1'],
+    [50, 'Z1'],
     [54, 'Z1'],
     [55, 'Z1'], // regression: 55% must land in Z1, not Z2
     [56, 'Z2'],
@@ -40,10 +41,10 @@ describe('getZoneColor', () => {
     [75, 'Z2'],
     [76, 'Z3'],
     [89, 'Z3'],
-    [90, 'Z3'],
-    [91, 'Z4'],
+    [90, 'Z3'], // regression: 90% must land in Z3 (green), not Z5 (orange)
+    [91, 'Z4'], // regression: 91% must land in Z4 (yellow), not Z5 (orange)
     [104, 'Z4'],
-    [105, 'Z4'],
+    [105, 'Z4'], // regression: 105% must land in Z4 (yellow), not Z5 (orange)
     [106, 'Z5'],
     [119, 'Z5'],
     [120, 'Z5'],
