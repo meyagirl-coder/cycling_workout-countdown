@@ -170,7 +170,6 @@ body {
   text-align: center;
 }
 
-.upload-url-form,
 .upload-intervals-form {
   width: 100%;
   display: flex;
@@ -178,13 +177,11 @@ body {
   gap: 0.5rem;
 }
 
-.upload-url-row,
 .upload-intervals-row {
   display: flex;
   gap: 0.5rem;
 }
 
-.upload-url-input,
 .upload-intervals-input {
   flex: 1;
   min-width: 0;
@@ -196,18 +193,15 @@ body {
   font-size: 1rem;
 }
 
-.upload-url-input:focus,
 .upload-intervals-input:focus {
   outline: none;
   border-color: #60a5fa;
 }
 
-.upload-url-input:disabled,
 .upload-intervals-input:disabled {
   opacity: 0.6;
 }
 
-.upload-url-submit,
 .upload-intervals-submit {
   padding: 0.75rem 1.25rem;
   border: none;
@@ -219,7 +213,6 @@ body {
   white-space: nowrap;
 }
 
-.upload-url-submit:disabled,
 .upload-intervals-submit:disabled {
   opacity: 0.6;
   cursor: not-allowed;
