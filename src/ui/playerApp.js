@@ -1,4 +1,5 @@
 import { extractEventId } from '../integrations/intervalsIcu.js';
+import { parsePasteText } from '../parser/pasteTextParser.js';
 import { parseZwoXml } from '../parser/zwoParser.js';
 import { createTimerWorkerClient } from '../worker/timerWorkerClient.js';
 import { createAppBanner } from './appBanner.js';
@@ -10,11 +11,11 @@ import { createUploadView } from './uploadView.js';
 const INTERVALS_ICU_PROXY_URL = '/api/intervals-zwo';
 
 /**
- * 執行頁的組裝入口：先顯示上傳畫面，使用者可以選 .zwo 檔案，或貼 intervals.icu
- * 課表網址／ID 透過 /api/intervals-zwo 這個 Vercel Serverless Function 代理下載。
- * 不管哪種來源，拿到 XML 字串後都用同一個 parseZwoXml() 解析成 Workout JSON，
- * 成功才切到執行頁並接上 Web Worker 計時引擎；解析或下載失敗則在上傳畫面顯示
- * 錯誤訊息，讓使用者重試。
+ * 執行頁的組裝入口：先顯示上傳畫面，使用者可以選 .zwo 檔案、貼 intervals.icu
+ * 課表網址／ID（透過 /api/intervals-zwo 這個 Vercel Serverless Function 代理
+ * 下載），或直接貼上純文字課表。不管哪種來源，最後都用對應的 parser 轉成同一份
+ * Workout JSON，成功才切到執行頁並接上 Web Worker 計時引擎；解析或下載失敗則
+ * 在上傳畫面顯示錯誤訊息，讓使用者重試。
  *
  * @param {HTMLElement} rootEl
  * @returns {{ client: ReturnType<typeof createTimerWorkerClient> }}
@@ -39,6 +40,7 @@ export function initPlayerApp(rootEl) {
   const uploadView = createUploadView(uploadMount, {
     onFileSelected: (file) => handleFileSelected(file),
     onIntervalsIcuSubmit: (rawText) => handleIntervalsIcuSubmit(rawText),
+    onPasteTextSubmit: (rawText) => handlePasteTextSubmit(rawText),
     onFtpChange: (ftp) => {
       currentFtp = ftp;
       saveFtp(ftp);
@@ -89,10 +91,10 @@ export function initPlayerApp(rootEl) {
   });
 
   /** 解析成功就切到執行頁；失敗就把訊息顯示在上傳畫面，回傳是否成功 */
-  function loadWorkoutFromXml(xmlText, errorPrefix) {
+  function loadWorkout(parseFn, errorPrefix) {
     let workout;
     try {
-      workout = parseZwoXml(xmlText);
+      workout = parseFn();
     } catch (err) {
       uploadView.showError(`${errorPrefix}${err.message}`);
       return false;
@@ -117,7 +119,12 @@ export function initPlayerApp(rootEl) {
       return;
     }
 
-    loadWorkoutFromXml(xmlText, '無法解析這份 .zwo 檔案：');
+    loadWorkout(() => parseZwoXml(xmlText), '無法解析這份 .zwo 檔案：');
+  }
+
+  function handlePasteTextSubmit(rawText) {
+    uploadView.clearError();
+    loadWorkout(() => parsePasteText(rawText), '無法解析貼上的課表內容：');
   }
 
   async function handleIntervalsIcuSubmit(rawText) {
@@ -151,7 +158,7 @@ export function initPlayerApp(rootEl) {
       }
 
       const xmlText = await response.text();
-      loadWorkoutFromXml(xmlText, '無法解析 intervals.icu 回傳的課表：');
+      loadWorkout(() => parseZwoXml(xmlText), '無法解析 intervals.icu 回傳的課表：');
     } finally {
       uploadView.setIntervalsIcuLoading(false);
     }
