@@ -54,7 +54,7 @@ export function createUploadView(rootEl, handlers) {
               id="upload-paste-textarea"
               class="upload-paste-textarea"
               rows="6"
-              placeholder="10 min @ 53w&#10;20 min @ 68w&#10;15 min @ 85w"
+              placeholder="10m 53%&#10;20m 68%&#10;&#10;3x&#10;1m 150%&#10;1m 50%"
             ></textarea>
             <button type="submit" class="upload-paste-submit">載入</button>
           </form>

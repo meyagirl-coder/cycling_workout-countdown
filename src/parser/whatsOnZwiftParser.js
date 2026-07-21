@@ -18,6 +18,7 @@
  * JSON（見 src/schema/workoutSchema.js），不碰 UI。
  */
 import { generateId } from '../utils/generateId.js';
+import { stripBulletPrefix } from './newlineRepeatTextParser.js';
 
 // exported so extractWhatsOnZwiftTextFromHtml.js 可以用同一套正則判斷「這行
 // 是不是課表內容」，兩邊對「合法格式」的認定不會不小心兜不起來。
@@ -43,7 +44,7 @@ export function parseWhatsOnZwiftText(text) {
 
   rawLines.forEach((rawLine, index) => {
     const lineNumber = index + 1;
-    const line = rawLine.trim();
+    const line = stripBulletPrefix(rawLine.trim());
     if (line === '') return; // 空行一律忽略，包括正在等重複區塊第二段的時候
 
     if (pendingRepeat) {
