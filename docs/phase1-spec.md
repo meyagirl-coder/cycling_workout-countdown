@@ -343,29 +343,33 @@ App 一打開，使用者第一眼看到的畫面：
   - 一句簡短說明副標，例如「上傳課表檔案或連結 intervals.icu，開始你的結構化訓練」
   - 只在首頁（上傳畫面）顯示；進到執行頁後隱藏，把畫面空間讓給倒數計時跟
     target watt，這兩個在騎車時才是使用者真正需要一直盯著看的內容。
-- **intervals.icu 課表載入（主要情境，畫面排最上面）**：貼上課表網址或直接
-  輸入 event ID，透過 `/api/intervals-zwo` 這個 Vercel Serverless Function
-  代理下載 `.zwo` 內容，一樣用 `parseZwoXml()` 解析（只有部署在有 Serverless
-  Function 的平台才會動，純靜態 hosting 只保留檔案上傳）。輸入框下方有「點此
-  查詢最近一筆行事曆訓練代碼」連結，用新分頁打開 `/api/intervals-events`
-  查詢工具（見 §5.1.1），不會離開目前畫面；區塊標題字級跟「上傳課表」一致、
-  置中對齊，視覺上兩個載入方式權重相同。
-- **本機檔案上傳（次要情境，畫面排在 intervals.icu 區塊下方，中間用「或」分
-  隔）**：選一份 `.zwo` 課表檔案，讀出內容後用 `parseZwoXml()` 解析
-- **貼上純文字課表或網址（第三種情境，畫面排在檔案上傳下方，中間用「或」分
-  隔）**：同一個 textarea 同時支援輸入——貼上從公開課表頁面複製的純文字
-  （§3.2 TrainerDay 格式、§3.4 WhatsOnZwift 格式、或 §3.5「時長 百分比」格式
-  三選一，自動偵測），或直接貼上 TrainerDay 課表網址（見 §3.3），或直接貼上
-  WhatsOnZwift 課表網址（見 §3.4）。送出時依序判斷：不是 `http` 開頭就當純
-  文字送進 `parseAutoDetectedPasteText()`（自動判斷是三種文字格式中的哪一種
-  再分流解析）；是網址就再判斷網域——`app.trainerday.com` 呼叫
-  `/api/trainerday-workout` 抓回來用 `parsePasteText()` 解析、
-  `whatsonzwift.com`（含 `www`）呼叫 `/api/whatsonzwift-workout` 抓回來用
-  `parseWhatsOnZwiftText()` 解析；網域不是這兩者之一，直接在畫面上顯示「目前
-  只支援 TrainerDay 或 WhatsOnZwift 的課表網址」，不會呼叫任何 proxy
+- **四個平行的課表載入方式**：FTP 設定列下方是四張視覺上完全對等的卡片
+  （同一套 `.upload-source-card` 樣式：一致的標題字級／字重、一致的提示文字
+  字級、一致的卡片邊框與間距），依序排列，讓使用者一眼看出這是四個平行選項，
+  不是「主功能＋附加說明」的層級關係（不再用「或」分隔線這種暗示 A/B 選一
+  的視覺語言）：
+  1. **貼課表網址**：單行輸入框＋「載入」按鈕，貼上完整網址後判斷網域——
+     `app.trainerday.com` 呼叫 `/api/trainerday-workout` 抓回來用
+     `parsePasteText()` 解析（見 §3.3）、`whatsonzwift.com`（含 `www`）呼叫
+     `/api/whatsonzwift-workout` 抓回來用 `parseWhatsOnZwiftText()` 解析
+     （見 §3.4）；網址格式錯誤或網域不支援，直接在畫面顯示錯誤，不會呼叫
+     任何 proxy。卡片下方提示文字：「目前支援 TrainerDay、Zwift
+     （whatsonzwift.com）」。
+  2. **貼上課表文字內容**：多行 textarea＋「載入」按鈕，只處理文字，**不**
+     判斷輸入是不是網址（網址判斷完全交給上面第 1 張卡片，兩者的邏輯分開，
+     不混在一起）。送出後用 `parseAutoDetectedPasteText()` 自動判斷是
+     §3.2／§3.4／§3.5 三種文字格式中的哪一種再分流解析。
+  3. **上傳 ZWO 檔案**：維持既有的拖曳／點擊上傳樣式（`.upload-dropzone`），
+     選一份 `.zwo` 課表檔案，讀出內容後用 `parseZwoXml()` 解析。
+  4. **使用 intervals 行事曆課表**：單行輸入框（事件 ID）＋「載入」按鈕，
+     透過 `/api/intervals-zwo` 這個 Vercel Serverless Function 代理下載
+     `.zwo` 內容，用 `parseZwoXml()` 解析（只有部署在有 Serverless Function
+     的平台才會動）。卡片下方是「點此查詢最近一筆行事曆訓練代碼」連結，用
+     新分頁打開 `/api/intervals-events` 查詢工具（見 §5.1.1），不會離開目前
+     畫面。
 - 解析失敗（檔案、intervals.icu 回傳的內容、貼上的純文字、或任一網址抓取都
   一樣）要有清楚的錯誤訊息，並留在首頁讓使用者重試，不能整個畫面壞掉；網址
-  抓取失敗時要額外提示可以改用「直接複製貼上文字內容」
+  抓取失敗時要額外提示可以改用「貼上課表文字內容」（第 2 張卡片）
 
 #### 5.1.1 找 event ID：`/api/intervals-events`
 

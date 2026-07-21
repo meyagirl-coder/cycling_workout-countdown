@@ -133,7 +133,7 @@ describe('api/trainerday-workout handler', () => {
     await handler(req, res);
 
     expect(res.statusCode).toBe(422);
-    expect(res.body.error).toMatch(/直接複製貼上文字內容/);
+    expect(res.body.error).toMatch(/貼上課表文字內容/);
   });
 
   it('maps an upstream network failure to a 502 with a fallback hint', async () => {
@@ -144,7 +144,7 @@ describe('api/trainerday-workout handler', () => {
     await handler(req, res);
 
     expect(res.statusCode).toBe(502);
-    expect(res.body.error).toMatch(/直接複製貼上文字內容/);
+    expect(res.body.error).toMatch(/貼上課表文字內容/);
   });
 
   it('maps a 404 from TrainerDay to a 404 with a clear message', async () => {

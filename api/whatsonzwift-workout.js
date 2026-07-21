@@ -46,16 +46,16 @@ export default async function handler(req, res) {
       headers: { 'User-Agent': 'Mozilla/5.0 (compatible; cycling-workout-countdown/1.0)' },
     });
   } catch {
-    res.status(502).json({ error: '連線 WhatsOnZwift 失敗，請稍後再試，或改用「直接複製貼上文字內容」' });
+    res.status(502).json({ error: '連線 WhatsOnZwift 失敗，請稍後再試，或改用「貼上課表文字內容」' });
     return;
   }
 
   if (!upstreamRes.ok) {
     if (upstreamRes.status === 404) {
-      res.status(404).json({ error: '在 WhatsOnZwift 上找不到這份課表，請確認網址是否正確，或改用「直接複製貼上文字內容」' });
+      res.status(404).json({ error: '在 WhatsOnZwift 上找不到這份課表，請確認網址是否正確，或改用「貼上課表文字內容」' });
       return;
     }
-    res.status(502).json({ error: `WhatsOnZwift 回傳錯誤（HTTP ${upstreamRes.status}），請改用「直接複製貼上文字內容」` });
+    res.status(502).json({ error: `WhatsOnZwift 回傳錯誤（HTTP ${upstreamRes.status}），請改用「貼上課表文字內容」` });
     return;
   }
 
@@ -63,7 +63,7 @@ export default async function handler(req, res) {
   const workoutText = extractWhatsOnZwiftTextFromHtml(html);
 
   if (!workoutText) {
-    res.status(422).json({ error: '在這個頁面找不到課表內容，網頁結構可能已改變，請改用「直接複製貼上文字內容」' });
+    res.status(422).json({ error: '在這個頁面找不到課表內容，網頁結構可能已改變，請改用「貼上課表文字內容」' });
     return;
   }
 

@@ -18,14 +18,14 @@
  *      容忍度較高，但也更容易誤判到頁面上剛好長得像的其他文字。
  *
  * 兩種模式都找不到就回傳空字串，呼叫端（api/trainerday-workout.js）視為
- * 擷取失敗，提示使用者改用「直接複製貼上文字內容」。
+ * 擷取失敗，提示使用者改用「貼上課表文字內容」。
  *
  * 已知限制：如果頁面把「Nx」重複組的內容跟後面緊接著的另一組（例如收操）
  * 中間完全沒有任何其他文字或標記隔開，純文字擷取沒辦法分辨兩者的邊界在
  * 哪裡，`parsePasteText()` 會依它原本的規則（空行／下一個 Nx／文字結束才
  * 算重複組結束）把後面那一行也吃進重複組裡——這個模組沒有實際 TrainerDay
  * 頁面的 HTML 可以核對（開發環境網路政策擋掉了 app.trainerday.com），如果
- * 部署後發現抓到的課表跟預期不同，請改用「直接複製貼上文字內容」。
+ * 部署後發現抓到的課表跟預期不同，請改用「貼上課表文字內容」。
  */
 import { INTERVAL_LINE_RE, REPEAT_LINE_RE } from './pasteTextParser.js';
 import { collapseToMatchingLines, htmlToLines } from './htmlTextExtraction.js';

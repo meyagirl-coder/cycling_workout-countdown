@@ -141,7 +141,7 @@ export function initPlayerApp(rootEl) {
    */
   async function handleRemoteWorkoutUrlSubmit(url, { proxyUrl, parseText, serviceName, errorPrefix }) {
     uploadView.clearError();
-    uploadView.setPasteLoading(true);
+    uploadView.setUrlLoading(true);
     try {
       let response;
       try {
@@ -149,7 +149,7 @@ export function initPlayerApp(rootEl) {
           cache: 'no-store',
         });
       } catch {
-        uploadView.showError('連線代理服務失敗，請確認網路連線後再試一次，或改用「直接複製貼上文字內容」。');
+        uploadView.showError('連線代理服務失敗，請確認網路連線後再試一次，或改用「貼上課表文字內容」。');
         return;
       }
 
@@ -162,7 +162,7 @@ export function initPlayerApp(rootEl) {
       const extractedText = await response.text();
       loadWorkout(() => parseText(extractedText), errorPrefix);
     } finally {
-      uploadView.setPasteLoading(false);
+      uploadView.setUrlLoading(false);
     }
   }
 
