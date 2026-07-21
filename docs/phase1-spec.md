@@ -139,6 +139,31 @@ function parsePasteText(text) -> Workout
 
 純函式，跟 `parseZwoXml()` 同樣不碰 UI、不碰 localStorage。
 
+### 3.3 貼上 TrainerDay 課表網址（自動抓取）
+
+除了手動複製貼上文字，「貼上課表文字」欄位也接受直接貼上 TrainerDay 公開課表
+網址（例如 `https://app.trainerday.com/workouts/20260714-ramp-up-5`）——
+偵測到輸入以 `http` 開頭就當網址處理，呼叫 `/api/trainerday-workout` 這個
+Vercel Serverless Function 代理抓取（伺服器端抓取，不受瀏覽器 CORS 限制，
+不需要登入或 API key）。
+
+流程：
+1. Proxy 只允許抓取 `app.trainerday.com` 底下的網址（避免被當成任意網址的
+   SSRF 跳板），伺服器端 fetch 完整 HTML。
+2. 用 `extractWorkoutTextFromHtml()` 從 HTML 裡撈出符合 §3.2 格式的行（跟
+   `parsePasteText()` 共用同一套「什麼樣的行算課表內容」的正則），組成純
+   文字，用 `text/plain` 回傳給前端。
+3. 前端拿到純文字後，直接餵給既有的 `parsePasteText()` 解析——重複使用
+   §3.2 的邏輯，沒有另外寫一份新的解析器。
+4. 抓取或擷取失敗（網址打不開、頁面結構跟預期不同）都要清楚顯示錯誤訊息，
+   並提示使用者可以改用「直接複製貼上文字內容」的備援方式。
+
+> 這個擷取邏輯是在沒有即時 HTML 結構可以核對的情況下寫的（開發環境的網路
+> 政策擋掉了 app.trainerday.com），所以刻意不依賴任何猜測出來的 CSS
+> class／id，改用文字模式擷取，對頁面標記結構的變化有一定容忍度——但如果
+> 部署後發現抓到的課表跟頁面顯示的不同，請改用「直接複製貼上文字內容」，
+> 並回報實際的頁面結構以便調整擷取邏輯。
+
 ---
 
 ## 4. 倒數計時引擎（整個系統的心臟）
@@ -256,11 +281,15 @@ App 一打開，使用者第一眼看到的畫面：
   置中對齊，視覺上兩個載入方式權重相同。
 - **本機檔案上傳（次要情境，畫面排在 intervals.icu 區塊下方，中間用「或」分
   隔）**：選一份 `.zwo` 課表檔案，讀出內容後用 `parseZwoXml()` 解析
-- **貼上純文字課表（第三種情境，畫面排在檔案上傳下方，中間用「或」分隔）**：
-  一個 textarea，貼上從公開課表頁面複製的純文字（見 §3.2），送出後用
+- **貼上純文字課表或網址（第三種情境，畫面排在檔案上傳下方，中間用「或」分
+  隔）**：同一個 textarea 同時支援兩種輸入——貼上從公開課表頁面複製的純文字
+  （見 §3.2），或直接貼上 TrainerDay 課表網址（見 §3.3）。送出時偵測輸入是
+  否以 `http` 開頭：是網址就呼叫 `/api/trainerday-workout` 代理抓取，抓回來
+  再用 `parsePasteText()` 解析；不是網址就直接把輸入內容送進
   `parsePasteText()` 解析
-- 解析失敗（檔案、intervals.icu 回傳的內容、或貼上的純文字都一樣）要有清楚
-  的錯誤訊息，並留在首頁讓使用者重試，不能整個畫面壞掉
+- 解析失敗（檔案、intervals.icu 回傳的內容、貼上的純文字、或 TrainerDay 網址
+  抓取都一樣）要有清楚的錯誤訊息，並留在首頁讓使用者重試，不能整個畫面壞掉；
+  TrainerDay 網址抓取失敗時要額外提示可以改用「直接複製貼上文字內容」
 
 #### 5.1.1 找 event ID：`/api/intervals-events`
 

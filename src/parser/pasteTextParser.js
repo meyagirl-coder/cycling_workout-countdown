@@ -15,8 +15,11 @@
  */
 import { generateId } from '../utils/generateId.js';
 
-const INTERVAL_LINE_RE = /^(\d+(?:\.\d+)?)\s*min\s*@\s*(\d+(?:\.\d+)?)\s*w$/i;
-const REPEAT_LINE_RE = /^(\d+)\s*x$/i;
+// exported so other modules that need to recognize the same line shapes
+// (例如從網頁 HTML 撈課表文字的 extractWorkoutTextFromHtml()）可以重複使用
+// 同一套定義，不必自己重寫一份容易走鐘的正則表達式。
+export const INTERVAL_LINE_RE = /^(\d+(?:\.\d+)?)\s*min\s*@\s*(\d+(?:\.\d+)?)\s*w$/i;
+export const REPEAT_LINE_RE = /^(\d+)\s*x$/i;
 
 /**
  * @param {string} text - 使用者貼上的純文字

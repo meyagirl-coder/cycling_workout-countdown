@@ -4,11 +4,12 @@
  * 對應的 handler 丟給呼叫端處理：
  *   onFileSelected(file)          選了本機 .zwo 檔案
  *   onIntervalsIcuSubmit(rawText) 送出 intervals.icu 網址／ID 表單
- *   onPasteTextSubmit(rawText)    送出貼上的純文字課表（例如 TrainerDay 公開頁面的格式）
+ *   onPasteTextSubmit(rawText)    送出貼上的純文字課表（例如 TrainerDay 公開頁面複製的格式）
+ *   onTrainerDayUrlSubmit(url)    「貼上課表文字」欄位偵測到輸入是網址（http 開頭）時改送這個
  *   onFtpChange(ftp)              FTP 欄位改成一個合法的正數（呼叫端負責存 localStorage）
  *
  * @param {HTMLElement} rootEl
- * @param {{onFileSelected: (file: File) => void, onIntervalsIcuSubmit: (rawText: string) => void, onPasteTextSubmit: (rawText: string) => void, onFtpChange: (ftp: number) => void}} handlers
+ * @param {{onFileSelected: (file: File) => void, onIntervalsIcuSubmit: (rawText: string) => void, onPasteTextSubmit: (rawText: string) => void, onTrainerDayUrlSubmit: (url: string) => void, onFtpChange: (ftp: number) => void}} handlers
  */
 export function createUploadView(rootEl, handlers) {
   rootEl.innerHTML = `
@@ -54,13 +55,16 @@ export function createUploadView(rootEl, handlers) {
       <div class="upload-divider"><span>或</span></div>
 
       <form class="upload-paste-form">
-        <label class="upload-paste-label" for="upload-paste-textarea">貼上課表文字</label>
-        <p class="upload-hint">從公開課表頁面複製的純文字（例如「10 min @ 53w」每行一組），不需要帳號或檔案</p>
+        <label class="upload-paste-label" for="upload-paste-textarea">貼上課表文字或網址</label>
+        <p class="upload-hint">
+          從公開課表頁面複製的純文字（例如「10 min @ 53w」每行一組），或直接貼上
+          TrainerDay 課表網址（例如 app.trainerday.com/workouts/...）——不需要帳號或檔案
+        </p>
         <textarea
           id="upload-paste-textarea"
           class="upload-paste-textarea"
           rows="6"
-          placeholder="10 min @ 53w&#10;20 min @ 68w&#10;15 min @ 85w"
+          placeholder="10 min @ 53w&#10;20 min @ 68w&#10;15 min @ 85w&#10;&#10;或貼上 https://app.trainerday.com/workouts/..."
         ></textarea>
         <button type="submit" class="upload-paste-submit">載入</button>
       </form>
@@ -78,6 +82,7 @@ export function createUploadView(rootEl, handlers) {
   const ftpInput = rootEl.querySelector('.upload-ftp-input');
   const pasteForm = rootEl.querySelector('.upload-paste-form');
   const pasteTextarea = rootEl.querySelector('.upload-paste-textarea');
+  const pasteSubmitBtn = rootEl.querySelector('.upload-paste-submit');
 
   // 「今天」要用使用者瀏覽器的本地日期，不是 Vercel 伺服器的時區（見
   // api/intervals-events.js 的說明）——伺服器多半是 UTC，UTC+8 的使用者在
@@ -98,8 +103,17 @@ export function createUploadView(rootEl, handlers) {
 
   pasteForm.addEventListener('submit', (event) => {
     event.preventDefault();
-    const value = pasteTextarea.value;
-    if (value.trim()) handlers.onPasteTextSubmit(value);
+    const raw = pasteTextarea.value;
+    const trimmed = raw.trim();
+    if (!trimmed) return;
+
+    // 網址格式（http 開頭）交給 TrainerDay 抓取 proxy；其他都當成直接貼上的
+    // 課表文字，兩者共用同一個輸入框（規格要求）。
+    if (/^https?:\/\//i.test(trimmed)) {
+      handlers.onTrainerDayUrlSubmit(trimmed);
+    } else {
+      handlers.onPasteTextSubmit(raw);
+    }
   });
 
   // 即時反映：只要是合法的正數就馬上通知呼叫端（存 localStorage／更新執行頁瓦數），
@@ -122,6 +136,11 @@ export function createUploadView(rootEl, handlers) {
       intervalsSubmitBtn.disabled = isLoading;
       intervalsSubmitBtn.textContent = isLoading ? '載入中…' : '載入';
       intervalsInput.disabled = isLoading;
+    },
+    setPasteLoading(isLoading) {
+      pasteSubmitBtn.disabled = isLoading;
+      pasteSubmitBtn.textContent = isLoading ? '載入中…' : '載入';
+      pasteTextarea.disabled = isLoading;
     },
     setFtpValue(ftp) {
       ftpInput.value = ftp;

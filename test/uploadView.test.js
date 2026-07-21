@@ -11,6 +11,7 @@ function makeHandlers(overrides = {}) {
     onFileSelected: vi.fn(),
     onIntervalsIcuSubmit: vi.fn(),
     onPasteTextSubmit: vi.fn(),
+    onTrainerDayUrlSubmit: vi.fn(),
     onFtpChange: vi.fn(),
     ...overrides,
   };
@@ -245,5 +246,72 @@ describe('createUploadView', () => {
     form.dispatchEvent(new Event('submit', { cancelable: true }));
 
     expect(handlers.onPasteTextSubmit).not.toHaveBeenCalled();
+  });
+
+  it('routes an http(s) url pasted into the same textarea to onTrainerDayUrlSubmit instead of onPasteTextSubmit', () => {
+    document.body.innerHTML = '<div id="root"></div>';
+    const root = document.getElementById('root');
+    const handlers = makeHandlers();
+    createUploadView(root, handlers);
+
+    const textarea = root.querySelector('.upload-paste-textarea');
+    const form = root.querySelector('.upload-paste-form');
+
+    textarea.value = '  https://app.trainerday.com/workouts/20260714-ramp-up-5  ';
+    form.dispatchEvent(new Event('submit', { cancelable: true }));
+
+    expect(handlers.onTrainerDayUrlSubmit).toHaveBeenCalledTimes(1);
+    expect(handlers.onTrainerDayUrlSubmit).toHaveBeenCalledWith('https://app.trainerday.com/workouts/20260714-ramp-up-5');
+    expect(handlers.onPasteTextSubmit).not.toHaveBeenCalled();
+  });
+
+  it('is case-insensitive when detecting a url ("HTTP://...")', () => {
+    document.body.innerHTML = '<div id="root"></div>';
+    const root = document.getElementById('root');
+    const handlers = makeHandlers();
+    createUploadView(root, handlers);
+
+    const textarea = root.querySelector('.upload-paste-textarea');
+    const form = root.querySelector('.upload-paste-form');
+
+    textarea.value = 'HTTP://app.trainerday.com/workouts/foo';
+    form.dispatchEvent(new Event('submit', { cancelable: true }));
+
+    expect(handlers.onTrainerDayUrlSubmit).toHaveBeenCalledTimes(1);
+    expect(handlers.onPasteTextSubmit).not.toHaveBeenCalled();
+  });
+
+  it('treats text that merely mentions "http" mid-line (not starting with it) as plain paste text, not a url', () => {
+    document.body.innerHTML = '<div id="root"></div>';
+    const root = document.getElementById('root');
+    const handlers = makeHandlers();
+    createUploadView(root, handlers);
+
+    const textarea = root.querySelector('.upload-paste-textarea');
+    const form = root.querySelector('.upload-paste-form');
+
+    textarea.value = '10 min @ 53w // see http://example.com for reference';
+    form.dispatchEvent(new Event('submit', { cancelable: true }));
+
+    expect(handlers.onPasteTextSubmit).toHaveBeenCalledTimes(1);
+    expect(handlers.onTrainerDayUrlSubmit).not.toHaveBeenCalled();
+  });
+
+  it('toggles the paste-form loading state on the submit button and textarea', () => {
+    document.body.innerHTML = '<div id="root"></div>';
+    const root = document.getElementById('root');
+    const view = createUploadView(root, makeHandlers());
+    const submitBtn = root.querySelector('.upload-paste-submit');
+    const textarea = root.querySelector('.upload-paste-textarea');
+
+    view.setPasteLoading(true);
+    expect(submitBtn.disabled).toBe(true);
+    expect(submitBtn.textContent).toBe('載入中…');
+    expect(textarea.disabled).toBe(true);
+
+    view.setPasteLoading(false);
+    expect(submitBtn.disabled).toBe(false);
+    expect(submitBtn.textContent).toBe('載入');
+    expect(textarea.disabled).toBe(false);
   });
 });
