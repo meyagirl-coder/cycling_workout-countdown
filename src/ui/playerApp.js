@@ -108,8 +108,17 @@ export function initPlayerApp(rootEl) {
     return true;
   }
 
+  // 檔案選擇輸入框故意不設 accept 屬性（見 uploadView.js 的說明），所以這裡
+  // 選到的可能是任何檔案——先看副檔名是不是 .zwo（不分大小寫），不是的話
+  // 直接給清楚的錯誤訊息，不用浪費一次讀檔／XML 解析才發現選錯檔案。副檔名
+  // 對的話再交給 parseZwoXml() 檢查實際內容是否合法。
   async function handleFileSelected(file) {
     uploadView.clearError();
+
+    if (!/\.zwo$/i.test(file.name)) {
+      uploadView.showError('這不是合法的 zwo 檔案，請選擇副檔名為 .zwo 的課表檔案。');
+      return;
+    }
 
     let xmlText;
     try {

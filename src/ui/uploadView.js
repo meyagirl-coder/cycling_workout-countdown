@@ -4,7 +4,9 @@
  * 看出這是三個平行選項，不是主功能＋附加說明的層級關係。純 DOM 渲染邏輯，
  * 不碰 parser／計時引擎／fetch —— 收到輸入就透過對應的 handler 丟給呼叫端
  * 處理：
- *   onFileSelected(file)          選了本機 .zwo 檔案
+ *   onFileSelected(file)          選了本機 .zwo 檔案——檔案輸入框故意不設
+ *                                 `accept` 屬性（見下方），副檔名／內容格式
+ *                                 檢查交給呼叫端（playerApp.js）處理
  *   onIntervalsIcuSubmit(rawText) 送出 intervals.icu event ID（或網址）
  *   onPasteTextSubmit(rawText)    送出貼上的純文字課表——TrainerDay／
  *                                 WhatsOnZwift／「時長 百分比」三種格式都
@@ -50,8 +52,16 @@ export function createUploadView(rootEl, handlers) {
 
         <div class="upload-source-card">
           <h2 class="upload-source-title">上傳 ZWO 檔案</h2>
+          <!--
+            故意不設 accept 屬性：iOS Safari/Chrome 對雲端硬碟裡的檔案常常判斷
+            不出 .zwo 這種非標準副檔名的 MIME type，只要 accept 限制了副檔名或
+            MIME type，iOS 的檔案選擇器就會把整份清單都鎖成灰色、完全選不到
+            任何檔案（不限 .zwo，所有檔案都選不了）。移除限制讓使用者在檔案
+            選擇畫面一定看得到、選得到檔案，格式是否為合法的 .zwo 交給選檔後
+            的 JavaScript（playerApp.js 的 handleFileSelected）檢查。
+          -->
           <label class="upload-dropzone">
-            <input type="file" accept=".zwo,application/xml,text/xml" class="upload-input" />
+            <input type="file" class="upload-input" />
             <span>點一下選擇 .zwo 檔案</span>
           </label>
         </div>

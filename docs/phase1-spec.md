@@ -371,10 +371,24 @@ if (elapsedInInterval >= currentInterval.duration) {
 - 每組剩餘時間 = `duration - elapsedInInterval`
 - 當剩餘時間 === 10 秒（且該組時長 > 10 秒才觸發，避免短組被誤判）：
   - 播放提示音
-  - 觸發語音（`SpeechSynthesis` API，唸「10 秒後切換下一組」或類似）
   - 畫面大字顯示倒數數字
+  - **顯示下一組預告（新增）**：`countdownAlerts.js` 的
+    `computeUpcomingIntervalPreview()` 算出 `currentIntervalIndex + 1`（現在
+    這組還沒結束，下一組還沒真的開始）長什麼樣子，用口語化的「X 分鐘」／
+    「X 秒」／「X 分 Y 秒」時長格式（`formatMinuteSecondLabel()`）：
+    - 一般組別：`下一組：5 分鐘 · 75% FTP`
+    - 起訖 %FTP 不同（漸變，例如 warmup/ramp/cooldown）：
+      `下一組：5 分鐘 · 40% → 105% FTP`（不是只顯示起始值）
+    - freeride：不顯示百分比，`下一組：自由騎乘 · 5 分鐘`
+    - **目前這組已經是最後一組**（沒有下一組）：顯示「即將完成」，不能顯示
+      不存在的「下一組」
+  - 觸發語音（`SpeechSynthesis` API），把上面同一份預告資訊唸出來，例如
+    「10 秒後進入下一組，75% FTP，持續 5 分鐘」；漸變唸成「A% 到 B% FTP」，
+    freeride 唸「自由騎乘」，最後一組唸「10 秒後即將完成」。
 - 切組瞬間（剩餘時間從 1 變 0）：
-  - 大字顯示下一組資訊（時間／%FTP／瓦數）
+  - 大字顯示下一組資訊（時間／%FTP／瓦數）——這個既有格式（mm:ss，
+    `formatNextIntervalText()`）沒有變動，跟倒數 10 秒預告是兩個獨立的
+    文字格式（後者更口語化，適合唸出來；前者資訊更精確，適合切組當下閱讀）。
 
 ### 4.5 課表完成流程（新增）
 
@@ -419,7 +433,15 @@ App 一打開，使用者第一眼看到的畫面：
      文字，說明支援 TrainerDay、WhatsOnZwift 格式，請到課表網站複製文字貼在
      這裡，不支援直接貼課表網址自動抓取（§3.3 說明了為什麼移除這個功能）。
   2. **上傳 ZWO 檔案**：維持既有的拖曳／點擊上傳樣式（`.upload-dropzone`），
-     選一份 `.zwo` 課表檔案，讀出內容後用 `parseZwoXml()` 解析。
+     選一份 `.zwo` 課表檔案，讀出內容後用 `parseZwoXml()` 解析。檔案輸入框
+     故意不設 `accept` 屬性（regression：iOS Safari／Chrome 對雲端硬碟裡的
+     檔案常常判斷不出 `.zwo` 這種非標準副檔名的 MIME type，只要 `accept`
+     限制了副檔名或 MIME type，iOS 的檔案選擇器就會把整份清單都鎖成灰色、
+     不限 `.zwo`、所有檔案都選不到）——格式驗證改成選檔之後在
+     `playerApp.js` 的 `handleFileSelected()` 用 JavaScript 檢查：先看副檔名
+     是不是 `.zwo`（不分大小寫），不是就直接顯示「這不是合法的 zwo
+     檔案」，不會浪費一次讀檔／解析；副檔名對的話才交給 `parseZwoXml()`
+     檢查實際內容是否合法（副檔名檢查不能取代內容驗證，兩者都要）。
   3. **使用 intervals 行事曆課表**：單行輸入框（事件 ID）＋「載入」按鈕，
      透過 `/api/intervals-zwo` 這個 Vercel Serverless Function 代理下載
      `.zwo` 內容，用 `parseZwoXml()` 解析（只有部署在有 Serverless Function
