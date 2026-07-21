@@ -60,16 +60,37 @@ body {
   text-align: center;
 }
 
-.upload-title {
+/* 四個平行的課表載入方式（貼網址／貼文字／上傳 .zwo／intervals.icu）共用
+   同一套卡片樣式，讓使用者一眼看出這是平行選項，不是主功能＋附加說明 */
+.upload-source-list {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.upload-source-card {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 1.5rem 1.25rem;
+  border-radius: 1.25rem;
+  border: 1px solid #1e293b;
+  background: #0f172a;
+}
+
+.upload-source-title {
   margin: 0;
   font-size: 1.5rem;
   font-weight: 800;
 }
 
-.upload-hint {
+.upload-source-hint {
   margin: 0;
   color: #94a3b8;
-  font-size: 0.95rem;
+  font-size: 0.85rem;
 }
 
 .upload-dropzone {
@@ -149,26 +170,7 @@ body {
   text-align: center;
 }
 
-.upload-divider {
-  display: flex;
-  align-items: center;
-  width: 100%;
-  color: #64748b;
-  font-size: 0.85rem;
-}
-
-.upload-divider::before,
-.upload-divider::after {
-  content: '';
-  flex: 1;
-  height: 1px;
-  background: #1e293b;
-}
-
-.upload-divider span {
-  padding: 0 0.75rem;
-}
-
+.upload-url-form,
 .upload-intervals-form {
   width: 100%;
   display: flex;
@@ -176,37 +178,36 @@ body {
   gap: 0.5rem;
 }
 
-.upload-intervals-label {
-  font-size: 1.5rem;
-  font-weight: 800;
-  text-align: center;
-}
-
+.upload-url-row,
 .upload-intervals-row {
   display: flex;
   gap: 0.5rem;
 }
 
+.upload-url-input,
 .upload-intervals-input {
   flex: 1;
   min-width: 0;
   padding: 0.75rem 1rem;
   border-radius: 0.75rem;
   border: 1px solid #334155;
-  background: #0f172a;
+  background: #020617;
   color: #f8fafc;
   font-size: 1rem;
 }
 
+.upload-url-input:focus,
 .upload-intervals-input:focus {
   outline: none;
   border-color: #60a5fa;
 }
 
+.upload-url-input:disabled,
 .upload-intervals-input:disabled {
   opacity: 0.6;
 }
 
+.upload-url-submit,
 .upload-intervals-submit {
   padding: 0.75rem 1.25rem;
   border: none;
@@ -218,13 +219,14 @@ body {
   white-space: nowrap;
 }
 
+.upload-url-submit:disabled,
 .upload-intervals-submit:disabled {
   opacity: 0.6;
   cursor: not-allowed;
 }
 
 .upload-intervals-lookup-link {
-  align-self: flex-start;
+  align-self: center;
   color: #60a5fa;
   font-size: 0.85rem;
   text-decoration: underline;
@@ -242,18 +244,12 @@ body {
   gap: 0.5rem;
 }
 
-.upload-paste-label {
-  font-size: 1.5rem;
-  font-weight: 800;
-  text-align: center;
-}
-
 .upload-paste-textarea {
   width: 100%;
   padding: 0.75rem 1rem;
   border-radius: 0.75rem;
   border: 1px solid #334155;
-  background: #0f172a;
+  background: #020617;
   color: #f8fafc;
   font-size: 0.95rem;
   font-family: inherit;
