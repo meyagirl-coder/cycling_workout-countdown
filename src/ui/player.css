@@ -1,5 +1,7 @@
 /* 功率區間顏色是 TrainerDay 官方精確色碼（Z1-Z6，直接從網站檢查元素查出來
-   的，不是估計值）；Z7 TrainerDay 沒有定義這個區間的顏色，維持原本的紫色 */
+   的，不是估計值）；Z7 TrainerDay 沒有定義這個區間的顏色，維持原本的紫色。
+   這幾個色碼故意不隨主題切換——它們本身就是高飽和度的色塊（時間軸柱狀圖／
+   執行頁大字卡片背景），不管淺色或深色頁面底色都看得出來，不需要跟著換。 */
 :root {
   --zone-gray: #7f7f7f;
   --zone-blue: #3f8fce;
@@ -9,6 +11,118 @@
   --zone-red: #d6270b;
   --zone-purple: #9333ea;
   --zone-none: #334155;
+
+  /* 大字卡片（.status-panel）背景永遠是高飽和度的區間顏色，裡面的文字固定
+     用淺色，不隨主題切換——深色文字在 Z6 紅／Z7 紫這種本身就偏暗的顏色上
+     對比度會不夠，維持既有設計（淺色文字）比重新設計「每個區間各自配一個
+     文字顏色」風險小，也符合「區間顏色本身要維持辨識度」的實際需求（卡片
+     整塊就是那個顏色，不是靠文字顏色去區分）。*/
+  --on-zone-text: #f8fafc;
+}
+
+/* 深色主題（預設）的顏色變數 */
+:root,
+:root[data-theme='dark'] {
+  --bg-page: #020617;
+  --text-primary: #f8fafc;
+  --text-secondary: #94a3b8;
+  --text-muted: #64748b;
+  --card-bg: #0f172a;
+  --card-border: #1e293b;
+  --input-bg: #020617;
+  --input-bg-soft: #0f172a;
+  --input-border: #334155;
+  --accent: #60a5fa;
+  --accent-strong: #2563eb;
+  --accent-soft-text: #93c5fd;
+  --danger-text: #f87171;
+  --danger-border: #7f1d1d;
+  --dropzone-text: #cbd5e1;
+  --btn-bg: #1e293b;
+  --btn-primary-bg: #f8fafc;
+  --btn-primary-text: #020617;
+  --cursor-color: #f8fafc;
+  --cursor-glow-color: rgba(248, 250, 252, 0.9);
+  --reference-line-color: rgba(248, 250, 252, 0.4);
+  --next-banner-bg: #1e293b;
+  --finished-bg: #14532d;
+  --finished-text: #f8fafc;
+  --warning-border: rgba(251, 191, 36, 0.35);
+  --warning-bg: rgba(251, 191, 36, 0.08);
+  --warning-text: #fbbf24;
+  --zone-none-stripe-a: #1e293b;
+  --zone-none-stripe-b: #0f172a;
+}
+
+/* auto 模式：跟隨系統設定，用 prefers-color-scheme 判斷，不用 JS 自己算——
+   系統設定改變時瀏覽器會自動重新套用 media query，畫面即時反映，不需要
+   重新整理頁面、也不需要監聽事件。只有在使用者沒有明確選 dark／light
+   （沒有 data-theme 屬性，或屬性值是 "auto"）時才生效。 */
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme='dark']):not([data-theme='light']) {
+    --bg-page: #ffffff;
+    --text-primary: #0f172a;
+    --text-secondary: #475569;
+    --text-muted: #64748b;
+    --card-bg: #f8fafc;
+    --card-border: #e2e8f0;
+    --input-bg: #ffffff;
+    --input-bg-soft: #f1f5f9;
+    --input-border: #cbd5e1;
+    --accent: #2563eb;
+    --accent-strong: #2563eb;
+    --accent-soft-text: #1d4ed8;
+    --danger-text: #dc2626;
+    --danger-border: #fecaca;
+    --dropzone-text: #475569;
+    --btn-bg: #e2e8f0;
+    --btn-primary-bg: #0f172a;
+    --btn-primary-text: #ffffff;
+    --cursor-color: #0f172a;
+    --cursor-glow-color: rgba(15, 23, 42, 0.4);
+    --reference-line-color: rgba(15, 23, 42, 0.3);
+    --next-banner-bg: #f1f5f9;
+    --finished-bg: #dcfce7;
+    --finished-text: #14532d;
+    --warning-border: rgba(180, 83, 9, 0.35);
+    --warning-bg: rgba(180, 83, 9, 0.08);
+    --warning-text: #b45309;
+    --zone-none-stripe-a: #e2e8f0;
+    --zone-none-stripe-b: #f8fafc;
+  }
+}
+
+/* 使用者明確選 light：強制套用，不受系統設定影響 */
+:root[data-theme='light'] {
+  --bg-page: #ffffff;
+  --text-primary: #0f172a;
+  --text-secondary: #475569;
+  --text-muted: #64748b;
+  --card-bg: #f8fafc;
+  --card-border: #e2e8f0;
+  --input-bg: #ffffff;
+  --input-bg-soft: #f1f5f9;
+  --input-border: #cbd5e1;
+  --accent: #2563eb;
+  --accent-strong: #2563eb;
+  --accent-soft-text: #1d4ed8;
+  --danger-text: #dc2626;
+  --danger-border: #fecaca;
+  --dropzone-text: #475569;
+  --btn-bg: #e2e8f0;
+  --btn-primary-bg: #0f172a;
+  --btn-primary-text: #ffffff;
+  --cursor-color: #0f172a;
+  --cursor-glow-color: rgba(15, 23, 42, 0.4);
+  --reference-line-color: rgba(15, 23, 42, 0.3);
+  --next-banner-bg: #f1f5f9;
+  --finished-bg: #dcfce7;
+  --finished-text: #14532d;
+  --warning-border: rgba(180, 83, 9, 0.35);
+  --warning-bg: rgba(180, 83, 9, 0.08);
+  --warning-text: #b45309;
+  --zone-none-stripe-a: #e2e8f0;
+  --zone-none-stripe-b: #f8fafc;
 }
 
 * {
@@ -18,15 +132,49 @@
 body {
   margin: 0;
   min-height: 100vh;
-  background: #020617;
-  color: #f8fafc;
+  background: var(--bg-page);
+  color: var(--text-primary);
   font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
   -webkit-user-select: none;
   user-select: none;
+  transition: background-color 0.2s ease, color 0.2s ease;
 }
 
 .hidden {
   display: none;
+}
+
+/* 主題切換（dark／light／auto）：固定在畫面右上角，不屬於任何單一畫面（跟
+   app-banner 只在首頁顯示不同），上傳畫面／等待畫面／執行頁都看得到、都能
+   切換——執行課表途中如果環境光線改變（例如從亮的房間騎到暗的房間），
+   使用者也應該能隨時切換，不用先回首頁。 */
+.theme-toggle {
+  position: fixed;
+  top: 0.75rem;
+  right: 0.75rem;
+  z-index: 50;
+  display: flex;
+  gap: 0.2rem;
+  padding: 0.25rem;
+  border-radius: 999px;
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+}
+
+.theme-toggle-btn {
+  padding: 0.35rem 0.65rem;
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 0.75rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.theme-toggle-btn.is-active {
+  background: var(--accent-strong);
+  color: var(--on-zone-text);
 }
 
 /* App 品牌識別橫幅（規格 §5.1）：整個 App 最上方，只在首頁顯示 */
@@ -46,7 +194,7 @@ body {
 
 .app-banner-subtitle {
   margin: 0;
-  color: #94a3b8;
+  color: var(--text-secondary);
   font-size: 0.95rem;
   text-wrap: balance;
 }
@@ -79,8 +227,8 @@ body {
   gap: 0.75rem;
   padding: 1.5rem 1.25rem;
   border-radius: 1.25rem;
-  border: 1px solid #1e293b;
-  background: #0f172a;
+  border: 1px solid var(--card-border);
+  background: var(--card-bg);
 }
 
 .upload-source-title {
@@ -91,7 +239,7 @@ body {
 
 .upload-source-hint {
   margin: 0;
-  color: #94a3b8;
+  color: var(--text-secondary);
   font-size: 0.85rem;
 }
 
@@ -101,17 +249,17 @@ body {
   justify-content: center;
   width: 100%;
   padding: 2.5rem 1rem;
-  border: 2px dashed #334155;
+  border: 2px dashed var(--input-border);
   border-radius: 1.25rem;
   cursor: pointer;
-  color: #cbd5e1;
+  color: var(--dropzone-text);
   font-weight: 700;
 }
 
 .upload-dropzone:hover,
 .upload-dropzone:focus-within {
-  border-color: #60a5fa;
-  color: #f8fafc;
+  border-color: var(--accent);
+  color: var(--text-primary);
 }
 
 .upload-input {
@@ -141,15 +289,15 @@ body {
   gap: 0.4rem;
   padding: 0.5rem 0.75rem;
   border-radius: 0.75rem;
-  border: 1px solid #334155;
-  background: #0f172a;
+  border: 1px solid var(--input-border);
+  background: var(--input-bg-soft);
 }
 
 .upload-ftp-input {
   width: 4.5rem;
   border: none;
   background: transparent;
-  color: #f8fafc;
+  color: var(--text-primary);
   font-size: 1.1rem;
   font-weight: 700;
   text-align: right;
@@ -161,13 +309,13 @@ body {
 }
 
 .upload-ftp-unit {
-  color: #94a3b8;
+  color: var(--text-secondary);
   font-weight: 700;
 }
 
 .upload-ftp-hint {
   margin: -0.35rem 0 0;
-  color: #64748b;
+  color: var(--text-muted);
   font-size: 0.8rem;
   text-align: center;
 }
@@ -202,9 +350,9 @@ body {
   max-width: 12rem;
   padding: 0.5rem 0.75rem;
   border-radius: 0.75rem;
-  border: 1px solid #334155;
-  background: #0f172a;
-  color: #f8fafc;
+  border: 1px solid var(--input-border);
+  background: var(--input-bg-soft);
+  color: var(--text-primary);
   font-size: 0.95rem;
   text-align: center;
   font-variant-numeric: tabular-nums;
@@ -212,7 +360,7 @@ body {
 
 .upload-schedule-input:focus {
   outline: none;
-  border-color: #60a5fa;
+  border-color: var(--accent);
 }
 
 .upload-schedule-input:disabled {
@@ -223,8 +371,8 @@ body {
   padding: 0.5rem 1rem;
   border: none;
   border-radius: 0.75rem;
-  background: #2563eb;
-  color: #f8fafc;
+  background: var(--accent-strong);
+  color: var(--on-zone-text);
   font-weight: 700;
   cursor: pointer;
   white-space: nowrap;
@@ -237,7 +385,7 @@ body {
 
 .upload-schedule-hint {
   margin: -0.35rem 0 0;
-  color: #64748b;
+  color: var(--text-muted);
   font-size: 0.8rem;
   text-align: center;
 }
@@ -250,16 +398,27 @@ body {
   justify-content: center;
   flex-wrap: wrap;
   gap: 0.5rem;
-  color: #93c5fd;
+  color: var(--accent-soft-text);
   font-size: 0.85rem;
+}
+
+/* 這個元件自己設了 display: flex，跟通用的 .hidden { display: none } 特異度
+   相同、原始碼順序又在它後面，會蓋掉 .hidden——沒設定排程時這行狀態文字會
+   一直顯示著（空的日期＋「取消」按鈕），是這次真人瀏覽器截圖驗證主題切換時
+   意外發現的既有 bug，不是這次主題功能造成的（jsdom 單元測試不會執行真正
+   的 CSS cascade，只檢查 class 名稱有沒有加上去，測不出「加了 class 但視覺
+   上沒真的隱藏」這種問題）。跟 .next-interval-banner.hidden／
+   .finished-banner.hidden 用同一種寫法（用複合選擇器把特異度提高）修正。 */
+.upload-schedule-status.hidden {
+  display: none;
 }
 
 .upload-schedule-cancel {
   padding: 0.2rem 0.6rem;
-  border: 1px solid #334155;
+  border: 1px solid var(--input-border);
   border-radius: 0.5rem;
   background: transparent;
-  color: #f87171;
+  color: var(--danger-text);
   font-size: 0.8rem;
   cursor: pointer;
 }
@@ -284,16 +443,16 @@ body {
   min-width: 0;
   padding: 0.75rem 1rem;
   border-radius: 0.75rem;
-  border: 1px solid #334155;
-  background: #020617;
-  color: #f8fafc;
+  border: 1px solid var(--input-border);
+  background: var(--input-bg);
+  color: var(--text-primary);
   font-size: 1rem;
 }
 
 .upload-url-input:focus,
 .upload-intervals-input:focus {
   outline: none;
-  border-color: #60a5fa;
+  border-color: var(--accent);
 }
 
 .upload-url-input:disabled,
@@ -306,8 +465,8 @@ body {
   padding: 0.75rem 1.25rem;
   border: none;
   border-radius: 0.75rem;
-  background: #2563eb;
-  color: #f8fafc;
+  background: var(--accent-strong);
+  color: var(--on-zone-text);
   font-weight: 700;
   cursor: pointer;
   white-space: nowrap;
@@ -321,14 +480,14 @@ body {
 
 .upload-intervals-lookup-link {
   align-self: center;
-  color: #60a5fa;
+  color: var(--accent);
   font-size: 0.85rem;
   text-decoration: underline;
 }
 
 .upload-intervals-lookup-link:hover,
 .upload-intervals-lookup-link:focus-visible {
-  color: #93c5fd;
+  color: var(--accent-soft-text);
 }
 
 .upload-paste-form {
@@ -342,9 +501,9 @@ body {
   width: 100%;
   padding: 0.75rem 1rem;
   border-radius: 0.75rem;
-  border: 1px solid #334155;
-  background: #020617;
-  color: #f8fafc;
+  border: 1px solid var(--input-border);
+  background: var(--input-bg);
+  color: var(--text-primary);
   font-size: 0.95rem;
   font-family: inherit;
   resize: vertical;
@@ -352,22 +511,22 @@ body {
 
 .upload-paste-textarea:focus {
   outline: none;
-  border-color: #60a5fa;
+  border-color: var(--accent);
 }
 
 .upload-paste-submit {
   padding: 0.75rem 1.25rem;
   border: none;
   border-radius: 0.75rem;
-  background: #2563eb;
-  color: #f8fafc;
+  background: var(--accent-strong);
+  color: var(--on-zone-text);
   font-weight: 700;
   cursor: pointer;
 }
 
 .upload-error {
   margin: 0;
-  color: #f87171;
+  color: var(--danger-text);
   font-size: 0.9rem;
 }
 
@@ -385,7 +544,7 @@ body {
 
 .waiting-label {
   margin: 0;
-  color: #60a5fa;
+  color: var(--accent);
   font-weight: 700;
   letter-spacing: 0.05em;
   text-transform: uppercase;
@@ -400,7 +559,7 @@ body {
 
 .waiting-workout-meta {
   margin: 0;
-  color: #94a3b8;
+  color: var(--text-secondary);
   font-size: 0.95rem;
 }
 
@@ -408,8 +567,8 @@ body {
   width: 100%;
   padding: 1.5rem;
   border-radius: 1.25rem;
-  border: 1px solid #1e293b;
-  background: #0f172a;
+  border: 1px solid var(--card-border);
+  background: var(--card-bg);
   font-size: 1.75rem;
   font-weight: 800;
   font-variant-numeric: tabular-nums;
@@ -419,9 +578,9 @@ body {
   margin: 0;
   padding: 0.85rem 1rem;
   border-radius: 0.75rem;
-  border: 1px solid rgba(251, 191, 36, 0.35);
-  background: rgba(251, 191, 36, 0.08);
-  color: #fbbf24;
+  border: 1px solid var(--warning-border);
+  background: var(--warning-bg);
+  color: var(--warning-text);
   font-size: 0.85rem;
   text-align: left;
 }
@@ -450,13 +609,13 @@ body {
   justify-content: center;
   gap: 1rem;
   font-size: 0.95rem;
-  color: #94a3b8;
+  color: var(--text-secondary);
 }
 
 .timeline {
   position: relative;
   height: 6.5rem;
-  background: #0f172a;
+  background: var(--card-bg);
   border-radius: 0.75rem;
   overflow: hidden;
 }
@@ -472,7 +631,7 @@ body {
   position: absolute;
   left: 0;
   right: 0;
-  border-top: 1px dashed rgba(248, 250, 252, 0.4);
+  border-top: 1px dashed var(--reference-line-color);
 }
 
 .timeline-segment {
@@ -483,7 +642,7 @@ body {
 }
 
 .timeline-segment.zone-none {
-  background: repeating-linear-gradient(45deg, #1e293b, #1e293b 6px, #0f172a 6px, #0f172a 12px);
+  background: repeating-linear-gradient(45deg, var(--zone-none-stripe-a), var(--zone-none-stripe-a) 6px, var(--zone-none-stripe-b) 6px, var(--zone-none-stripe-b) 12px);
 }
 
 /* 組別交界線：跟頁面底色同色，不管兩側區間顏色是否相同都看得出組別邊界 */
@@ -492,7 +651,7 @@ body {
   top: 0;
   bottom: 0;
   width: 2px;
-  background: #020617;
+  background: var(--bg-page);
   transform: translateX(-1px);
 }
 
@@ -501,8 +660,8 @@ body {
   top: 0;
   bottom: 0;
   width: 3px;
-  background: #f8fafc;
-  box-shadow: 0 0 6px rgba(248, 250, 252, 0.9);
+  background: var(--cursor-color);
+  box-shadow: 0 0 6px var(--cursor-glow-color);
   transition: left 0.2s linear;
 }
 
@@ -510,8 +669,8 @@ body {
   text-align: center;
   padding: 0.85rem 1rem;
   border-radius: 1rem;
-  background: #1e293b;
-  border: 1px solid #334155;
+  background: var(--next-banner-bg);
+  border: 1px solid var(--input-border);
   font-weight: 700;
   font-size: 1.05rem;
 }
@@ -527,6 +686,10 @@ body {
   padding: 2rem 1rem;
   border-radius: 1.5rem;
   background: var(--zone-none);
+  /* 卡片背景永遠是高飽和度的區間顏色（見檔案開頭 --on-zone-text 說明），裡面
+     的文字固定用淺色，用繼承的方式讓底下所有子元素（倒數數字、瓦數、%FTP、
+     踏頻、經過時間）都套用，不需要每個子元素各自宣告一次 */
+  color: var(--on-zone-text);
   transition: background-color 0.5s ease;
 }
 
@@ -537,7 +700,10 @@ body {
   line-height: 1;
 }
 
-/* 剩餘 <=10 秒（本組時長 >10 秒）時的倒數視覺提示，規格 §4.4 */
+/* 剩餘 <=10 秒（本組時長 >10 秒）時的倒數視覺提示，規格 §4.4——這個顏色故意
+   不跟著主題變數變（不用 --danger-text），因為這個數字是疊在 .status-panel
+   的區間顏色卡片上，不是頁面底色上，需要的是「跟哪個區間顏色都能對比出來」
+   的固定警示色，不是「淺色主題要變深、深色主題要變淺」的一般文字邏輯。 */
 .countdown-number.countdown-urgent {
   color: #f87171;
   animation: countdown-pulse 1s ease-in-out infinite;
@@ -610,8 +776,8 @@ body {
   font-size: 1.1rem;
   font-weight: 700;
   cursor: pointer;
-  background: #1e293b;
-  color: #f8fafc;
+  background: var(--btn-bg);
+  color: var(--text-primary);
 }
 
 .btn:disabled {
@@ -620,14 +786,14 @@ body {
 }
 
 .btn-primary {
-  background: #f8fafc;
-  color: #020617;
+  background: var(--btn-primary-bg);
+  color: var(--btn-primary-text);
 }
 
 .btn-danger {
   background: transparent;
-  color: #f87171;
-  border: 1px solid #7f1d1d;
+  color: var(--danger-text);
+  border: 1px solid var(--danger-border);
 }
 
 .finished-banner {
@@ -638,7 +804,8 @@ body {
   text-align: center;
   padding: 1.25rem 1rem;
   border-radius: 1rem;
-  background: #14532d;
+  background: var(--finished-bg);
+  color: var(--finished-text);
 }
 
 .finished-banner-text {
@@ -648,8 +815,8 @@ body {
 }
 
 .btn-return-home {
-  background: #f8fafc;
-  color: #14532d;
+  background: var(--btn-primary-bg);
+  color: var(--finished-bg);
 }
 
 .finished-banner.hidden {

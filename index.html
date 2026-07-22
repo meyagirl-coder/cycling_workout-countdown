@@ -5,6 +5,26 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
     <title>自行車課表執行倒數計時器</title>
     <link rel="stylesheet" href="./src/ui/player.css" />
+    <script>
+      // 主題切換的 FOUC（畫面閃一下）防止：這段刻意寫成同步、非 module 的
+      // inline script，放在 CSS 之後、body 之前，確保在瀏覽器第一次畫面繪製
+      // 之前就把上次選過的主題（dark／light，或沒設定過就維持 auto、不設定
+      // 屬性讓 CSS 的 prefers-color-scheme media query 自己判斷）套用到
+      // <html>，不會讓深色模式使用者先看到一瞬間的預設淺色（或反過來）。跟
+      // src/ui/themeToggle.js 的 applyTheme() 邏輯刻意保持一致，但這裡不能
+      // import 那個 module——ES module script 是 deferred 執行，會晚於
+      // CSS 套用/首次繪製，達不到防止閃爍的效果。
+      (function () {
+        try {
+          var saved = window.localStorage.getItem('user_theme');
+          if (saved === 'dark' || saved === 'light') {
+            document.documentElement.setAttribute('data-theme', saved);
+          }
+        } catch (e) {
+          // localStorage 被封鎖（例如隱私模式）時就維持 auto，不影響畫面能不能用
+        }
+      })();
+    </script>
   </head>
   <body>
     <div id="app"></div>
