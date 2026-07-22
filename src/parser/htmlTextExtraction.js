@@ -7,6 +7,18 @@
 const SCRIPT_STYLE_RE = /<(script|style)\b[^>]*>[\s\S]*?<\/\1>/gi;
 const BR_RE = /<br\s*\/?>/gi;
 const BLOCK_CLOSE_RE = /<\/(p|div|li|tr|h[1-6]|section|article|header|footer|ul|ol|table|tbody|thead|button|nav|main|pre)>/gi;
+// 巢狀清單（例如重複組底下用 <ul>/<ol> 列出子項目，中間那個 <li>「4X」自己
+// 沒有先閉合就直接開了下一層清單：`<li>4X<ul><li>...`）：只靠 BLOCK_CLOSE_RE
+// （只認閉合標籤）的話，「4X」跟它底下第一個子項目的文字會被黏在同一行
+// （因為中間沒有任何閉合標籤，只有巢狀清單的開始標籤），導致「4X」這個重複
+// 宣告本身連同底下的內容整行都判斷不出格式、被完全丟棄。這幾個「純容器」
+// 標籤（本身不會直接夾文字，只用來包住其他區塊子元素）的開始標籤也要視為
+// 換行點，才能把「4X」跟它底下的子項目拆成各自獨立的行。故意只加這幾個純
+// 容器標籤，不含 li／div／p 等「本身會直接夾文字」的標籤——那些標籤的開始
+// 標籤如果也觸發換行，會在兩個相鄰、之間什麼都沒有的區塊元素間多插入一個
+// 空行，誤觸發 collapseToMatchingLines() 的「兩個相符行之間夾著別的內容」
+// 判斷，把明明緊接在一起的課表行誤判成中間有缺漏。
+const NESTING_CONTAINER_OPEN_RE = /<(?:ul|ol|table|tbody|thead)(?:\s[^>]*)?>/gi;
 const TAG_RE = /<[^>]+>/g;
 
 const NAMED_ENTITIES = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ' };
@@ -30,7 +42,7 @@ export function htmlToLines(html) {
   // inline 標籤（例如 <span>）拆開的文字（"10 min <span>@</span> 53w"）才不
   // 會被誤判成好幾行——只有下面明確處理的區塊標籤／<br> 才會真的換行。
   text = text.replace(/\s+/g, ' ');
-  text = text.replace(BR_RE, '\n').replace(BLOCK_CLOSE_RE, '\n');
+  text = text.replace(BR_RE, '\n').replace(BLOCK_CLOSE_RE, '\n').replace(NESTING_CONTAINER_OPEN_RE, '\n');
   text = text.replace(TAG_RE, '');
   text = decodeHtmlEntities(text);
 

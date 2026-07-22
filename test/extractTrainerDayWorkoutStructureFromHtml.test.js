@@ -51,6 +51,66 @@ describe('extractTrainerDayWorkoutStructureFromHtml', () => {
     expect(text).toBe('5 min @ 50% (50w)\n3x\n2 min @ 105% (210w)\n1 min @ 50% (100w)\n5 min @ 45% (90w)');
   });
 
+  describe('nested lists (real "4X interval block" page rendering)', () => {
+    it('separates a repeat declaration from its nested <ul> sub-items instead of gluing them onto one line (regression: the <li> holding "4X" never closes before the nested list opens)', () => {
+      // <li><b>4X</b><ul><li>...</li>...</ul></li> - the outer <li> has no closing
+      // tag between "4X" and the nested <ul>, so only BLOCK_CLOSE_RE (closing tags)
+      // can't separate them; the nested <ul>'s own OPENING tag must also count as
+      // a line boundary, or "4X" and the first nested item end up concatenated onto
+      // a single unrecognizable line and get silently dropped by the strict-mode filter.
+      const html = `
+        <ul>
+          <li>Active 5 min @ 50% (50w) 80 rpm</li>
+          <li><b>4X</b>
+            <ul>
+              <li>Active 1 min @ 100% (100w) 90 rpm</li>
+              <li>Rest 4 min @ 90% (90w) 95 rpm</li>
+            </ul>
+          </li>
+          <li>Cooldown 5 min @ 50% (50w) 80 rpm</li>
+        </ul>
+      `;
+      const text = extractTrainerDayWorkoutStructureFromHtml(html);
+      const lines = text.split('\n');
+      expect(lines).toContain('4X');
+      expect(lines).toContain('Active 1 min @ 100% (100w) 90 rpm');
+      expect(lines).toContain('Rest 4 min @ 90% (90w) 95 rpm');
+    });
+
+    it('does not introduce a spurious blank line between sibling block elements that have nothing between them (regression guard for the fix above)', () => {
+      // Must not treat every adjacent pair of block elements as if something was
+      // omitted between them - only genuine nested-list openings should split lines.
+      const html = '<div>5 min @ 50% (50w)</div><div>5 min @ 55% (55w)</div><div>5 min @ 60% (60w)</div>';
+      expect(extractTrainerDayWorkoutStructureFromHtml(html)).toBe('5 min @ 50% (50w)\n5 min @ 55% (55w)\n5 min @ 60% (60w)');
+    });
+
+    it('parses the full user-provided "4X interval block" example end to end straight from realistic nested-<ul> HTML (19 intervals, 58 minutes)', () => {
+      const html = `
+        <ul>
+          <li>Active 5 min @ 50% (50w) 80 rpm</li>
+          <li><b>4X</b>
+            <ul>
+              <li>Active 1 min @ 100% (100w) 90 rpm</li>
+              <li>Rest 4 min @ 90% (90w) 95 rpm</li>
+            </ul>
+          </li>
+          <li>Active 8 min @ 50% (50w) 85 rpm</li>
+          <li><b>4X</b>
+            <ul>
+              <li>Active 1 min @ 100% (100w) 90 rpm</li>
+              <li>Rest 4 min @ 90% (90w) 95 rpm</li>
+            </ul>
+          </li>
+          <li>Cooldown 5 min @ 50% (50w) 80 rpm</li>
+        </ul>
+      `;
+      const text = extractTrainerDayWorkoutStructureFromHtml(html);
+      const workout = parseTrainerDayWorkoutStructureText(text);
+      expect(workout.intervals).toHaveLength(19);
+      expect(workout.totalDuration).toBe(58 * 60);
+    });
+  });
+
   it('strips <script> and <style> content entirely (does not pick up unrelated numbers from JS/CSS)', () => {
     const html = `
       <style>.foo { width: 10px; }</style>
