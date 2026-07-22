@@ -231,6 +231,16 @@ body {
   background: var(--card-bg);
 }
 
+/* 「使用 intervals 行事曆課表」卡片目前先隱藏不顯示給使用者（見
+   uploadView.js 開頭說明，底層程式碼／proxy function 都保留，之後要恢復
+   只要拿掉這個 class）。這個元件自己設了 display: flex，跟共用的
+   .hidden { display: none } 特異度相同、原始碼順序又在後面，需要跟
+   .upload-schedule-status.hidden／.next-interval-banner.hidden／
+   .finished-banner.hidden 一樣用複合選擇器把特異度提高，才能真的隱藏。 */
+.upload-intervals-card.hidden {
+  display: none;
+}
+
 .upload-source-title {
   margin: 0;
   font-size: 1.5rem;

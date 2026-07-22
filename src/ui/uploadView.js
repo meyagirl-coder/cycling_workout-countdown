@@ -9,6 +9,12 @@ import { parseScheduledStartTimeInput } from './scheduledStartTimeParser.js';
  * 等待畫面），不設定就維持原本「載入後手動點開始」的行為。純 DOM 渲染
  * 邏輯，不碰 parser／計時引擎／fetch —— 收到輸入就透過對應的 handler 丟給
  * 呼叫端處理：
+ *
+ * 「intervals.icu 行事曆課表」這張卡片目前用不到，先在畫面上用 `hidden`
+ * class 隱藏（`.upload-intervals-card.hidden`，見 player.css），底下的
+ * DOM／表單／handler／`/api/intervals-zwo`、`/api/intervals-events` 這兩支
+ * proxy function 都完整保留，沒有刪除任何程式碼——之後如果要重新啟用，只要
+ * 把這個 class 拿掉就好，不需要重新開發。
  *   onFileSelected(file)              選了本機 .zwo 檔案——檔案輸入框故意
  *                                     不設 `accept` 屬性（見下方），副檔名／
  *                                     內容格式檢查交給呼叫端（playerApp.js）
@@ -118,7 +124,7 @@ export function createUploadView(rootEl, handlers) {
           </label>
         </div>
 
-        <div class="upload-source-card">
+        <div class="upload-source-card upload-intervals-card hidden">
           <h2 class="upload-source-title">使用 intervals 行事曆課表</h2>
           <form class="upload-intervals-form">
             <div class="upload-intervals-row">

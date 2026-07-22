@@ -35,6 +35,16 @@ describe('createUploadView layout (four parallel source cards)', () => {
     expect(titles).toEqual(['貼課表網址', '貼上課表文字內容', '上傳 ZWO 檔案', '使用 intervals 行事曆課表']);
   });
 
+  it('hides the intervals.icu card from view (temporarily unused) without removing it from the DOM - the underlying form/handlers/elements are all still present and wired up', () => {
+    const { root } = setup();
+    const card = root.querySelector('.upload-intervals-card');
+    expect(card.classList.contains('hidden')).toBe(true);
+    expect(root.querySelector('.upload-intervals-form')).not.toBeNull();
+    expect(root.querySelector('.upload-intervals-input')).not.toBeNull();
+    expect(root.querySelector('.upload-intervals-submit')).not.toBeNull();
+    expect(root.querySelector('.upload-intervals-lookup-link')).not.toBeNull();
+  });
+
   it('gives every source card title the same font-size/weight via one shared class (visual consistency)', () => {
     const { root } = setup();
     const titles = root.querySelectorAll('.upload-source-title');
