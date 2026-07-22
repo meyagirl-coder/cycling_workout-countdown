@@ -143,6 +143,48 @@ describe('parseAutoDetectedPasteText', () => {
     });
   });
 
+  describe('TrainerDay "Workout structure" format ("X min @ Y% (Zw)")', () => {
+    it('detects and routes a basic "X min @ Y% (Zw)" line, distinct from the older "X min @ Yw" format', () => {
+      const workout = parseAutoDetectedPasteText('5 min @ 50% (50w)');
+      expect(workout.source).toBe('paste-trainerday-structure');
+      expect(workout.intervals).toEqual([{ type: 'steady', duration: 300, powerStart: 50, powerEnd: 50, cadence: null }]);
+    });
+
+    it('does not get misrouted to the older TrainerDay manual-entry format ("paste") just because both start with "X min @"', () => {
+      const workout = parseAutoDetectedPasteText('5 min @ 50% (50w)\n5 min @ 55% (55w)');
+      expect(workout.source).toBe('paste-trainerday-structure');
+      expect(workout.source).not.toBe('paste');
+    });
+
+    it('routes an "Nx" newline-repeat block in this format correctly', () => {
+      const workout = parseAutoDetectedPasteText(['3x', '2 min @ 105% (210w)', '1 min @ 50% (100w)'].join('\n'));
+      expect(workout.source).toBe('paste-trainerday-structure');
+      expect(workout.intervals).toHaveLength(6);
+    });
+
+    it('parses the full user-provided 12-line "ramp-up-5" example end to end', () => {
+      const text = [
+        '5 min @ 50% (50w)',
+        '5 min @ 55% (55w)',
+        '5 min @ 60% (60w)',
+        '5 min @ 65% (65w)',
+        '5 min @ 70% (70w)',
+        '5 min @ 75% (75w)',
+        '5 min @ 80% (80w)',
+        '5 min @ 85% (85w)',
+        '5 min @ 90% (90w)',
+        '5 min @ 95% (95w)',
+        '5 min @ 100% (100w)',
+        '5 min @ 50% (50w)',
+      ].join('\n');
+
+      const workout = parseAutoDetectedPasteText(text);
+      expect(workout.source).toBe('paste-trainerday-structure');
+      expect(workout.intervals).toHaveLength(12);
+      expect(workout.intervals.map((iv) => iv.powerStart)).toEqual([50, 55, 60, 65, 70, 75, 80, 85, 90, 95, 100, 50]);
+    });
+  });
+
   it('throws when the input is empty or blank', () => {
     expect(() => parseAutoDetectedPasteText('')).toThrow(/non-empty string/);
     expect(() => parseAutoDetectedPasteText('   \n  ')).toThrow(/non-empty string/);
