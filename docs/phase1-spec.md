@@ -716,12 +716,62 @@ App 一打開，使用者第一眼看到的畫面：
   失效的排程殘留。這個持久化方式**無法保證**分頁被完全關閉或裝置長時間
   背景休眠後還能自動觸發——這正是上面「限制提醒」要明確告知使用者的原因。
 
+### 5.4 主題切換：dark／light／auto（新增）
+
+畫面右上角固定顯示一個三選一的主題切換（`.theme-toggle`，`themeToggle.js`）：
+深色／淺色／自動，不屬於任何單一畫面（跟 App 品牌識別橫幅只在首頁顯示不同），
+上傳畫面／等待畫面／執行頁都看得到、都能切換——執行課表途中如果環境光線
+改變，使用者不用先回首頁才能切換。
+
+- **auto 模式完全交給 CSS 判斷**：用 `prefers-color-scheme` media query，
+  不用 JS 自己算時間或監聽系統設定。系統設定在使用中途改變（例如手機系統
+  排程切換深色模式）時，畫面即時反映、不需要重新整理頁面——這是瀏覽器對
+  media query 的原生行為，不需要額外寫 `matchMedia` 監聽程式碼。
+- **dark／light 是強制套用**：透過 `<html data-theme="dark">` 或
+  `data-theme="light"` 屬性覆蓋 auto 模式的判斷，不受系統設定影響；`auto`
+  模式就是把 `data-theme` 設回字面上的 `"auto"`（不是拿掉屬性——拿掉屬性
+  或設成 `"auto"` 對 CSS 選擇器來說效果一樣，統一用字面值比較好追蹤狀態）。
+- **持久化**：選擇存進 `localStorage`（key `user_theme`，`themeStore.js`），
+  下次開啟網頁記得上次選的模式；預設值（從未選過時）是 `auto`。
+- **FOUC（畫面閃一下）防止**：`index.html` 的 `<head>` 裡有一段同步、非
+  module 的 inline script，在 CSS 套用、首次繪製之前就把已存的 dark／light
+  選擇套到 `<html>` 上（`auto` 或從未設定過的情況本來就不需要處理，交給
+  CSS media query 在第一次繪製時就正確判斷，不會閃爍）。
+- **顏色變數設計**（`player.css`）：全站顏色改用 CSS 變數（`--bg-page`／
+  `--text-primary`／`--card-bg`／`--accent` 等），深色主題的值放在 `:root`
+  當預設，淺色主題的值在兩個地方各定義一次、內容相同：一次包在
+  `@media (prefers-color-scheme: light)` 裡（給 auto 模式用，選擇器用
+  `:not([data-theme='dark']):not([data-theme='light'])` 排除掉使用者已經
+  強制選擇的情況)，一次是 `:root[data-theme='light']`（給使用者強制選
+  light 用，不管系統設定為何都套用)。
+  - **功率區間顏色（`--zone-*`）跟卡片上的文字顏色（`--on-zone-text`）故意
+    不跟著主題變**：時間軸柱狀圖／執行頁大字卡片背景本來就是高飽和度的
+    色塊，不管頁面淺色或深色底色都看得出來；卡片內的文字固定用淺色，因為
+    深色文字在偏暗的區間顏色（例如 Z6 紅、Z7 紫）上對比度不夠，維持固定
+    淺色文字比重新設計「每個區間各自配一個文字顏色」風險小。
+- **驗證方式**：因為這個沙箱環境沒有真的系統深色模式可以切換，用 Playwright
+  的 `context.newContext({ colorScheme })` 模擬系統偏好、`page.emulateMedia()`
+  模擬使用中途系統設定改變，逐一測過 dark／light／auto 三種模式、explicit
+  選擇覆蓋系統設定、auto 模式即時反映系統改變（不重新整理）、選擇存
+  localStorage 並在重新整理後還在——都在真的瀏覽器裡截圖確認過，不只是
+  單元測試。
+  - 這輪順便用真瀏覽器截圖抓到一個既有 bug（不是這次主題功能造成的）：
+    `.upload-schedule-status`（團體訓練排程設定完成後顯示的狀態列，見 5.3
+    節）自己設了 `display: flex`，跟共用的 `.hidden { display: none }`
+    特異度相同、原始碼順序又在後面，蓋掉了 `.hidden`——沒設定排程時這行
+    狀態文字其實一直顯示著（空的日期＋「取消」按鈕）。jsdom 為主的單元
+    測試只檢查 class 名稱有沒有加上去，測不出「加了 class 但視覺上沒真的
+    隱藏」這種問題，所以一直沒被抓到。修法跟 `.next-interval-banner.hidden`
+    ／`.finished-banner.hidden` 一樣，加一個 `.upload-schedule-status.hidden`
+    複合選擇器把特異度提高。
+
 ---
 
 ## 6. 資料儲存
 
 - FTP、體重：`localStorage`，key 建議 `user_ftp`、`user_weight`，App 啟動時讀取，沒有就跳出設定畫面
 - 團體訓練排程（課表＋開始時間）：`localStorage` key `scheduled_workout`，見 5.3 節
+- 主題選擇（dark／light／auto）：`localStorage` key `user_theme`，見 5.4 節
 - 這個 Phase 還不用 IndexedDB（留給 Phase 2 存課表清單／群組用）
 
 ---

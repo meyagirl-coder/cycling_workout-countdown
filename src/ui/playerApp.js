@@ -10,6 +10,7 @@ import { DEFAULT_FTP, loadFtp, saveFtp } from './ftpStore.js';
 import { createPlayerView } from './renderPlayer.js';
 import { createScheduledStartRuntime } from './scheduledStartRuntime.js';
 import { clearSchedule, loadSchedule, saveSchedule } from './scheduleStore.js';
+import { createThemeToggle } from './themeToggle.js';
 import { createUploadView } from './uploadView.js';
 import { createWaitingView } from './waitingView.js';
 
@@ -36,11 +37,17 @@ const WHATSONZWIFT_PROXY_URL = '/api/whatsonzwift-workout';
  */
 export function initPlayerApp(rootEl) {
   rootEl.innerHTML =
-    '<div class="app-banner-mount"></div><div class="upload-mount"></div><div class="waiting-mount hidden"></div><div class="player-mount hidden"></div>';
+    '<div class="theme-toggle-mount"></div><div class="app-banner-mount"></div><div class="upload-mount"></div><div class="waiting-mount hidden"></div><div class="player-mount hidden"></div>';
+  const themeToggleMount = rootEl.querySelector('.theme-toggle-mount');
   const bannerMount = rootEl.querySelector('.app-banner-mount');
   const uploadMount = rootEl.querySelector('.upload-mount');
   const waitingMount = rootEl.querySelector('.waiting-mount');
   const playerMount = rootEl.querySelector('.player-mount');
+
+  // 主題切換不屬於任何單一畫面（跟 app-banner 只在首頁顯示不同），上傳畫面／
+  // 等待畫面／執行頁都要看得到、都能切換，所以掛載在最外層，不放進任何一個
+  // 會被 hidden 的 *-mount 容器裡。
+  createThemeToggle(themeToggleMount);
 
   const appBanner = createAppBanner(bannerMount);
 
