@@ -22,8 +22,9 @@
  * 課表內容的行」的判斷搶順序，使用者要求這個格式優先於舊的手動輸入格式。
  *
  * 其餘格式的判斷邏輯：找第一個看起來像課表內容的行（先去掉常見的清單項目
- * 符號前綴，例如從網頁清單複製貼上時常帶著的「‧ 」「* 」，不然這幾個符號
- * 會讓下面的格式判斷全部落空；再略過空行跟單獨的「Nx」宣告——那種行在多種
+ * 符號前綴，例如從網頁清單複製貼上時常帶著的「‧ 」「* 」，以及 Markdown
+ * 粗體符號（`**`）——不然這些符號會讓下面的格式判斷全部落空；再略過空行跟
+ * 單獨的「Nx」宣告——那種行在多種
  * 格式裡都可能出現，不能用來判斷是哪一種格式），依它符合哪個格式的正則
  * 決定要用哪個 parser 解析「整份」文字（各 parser 內部也會做同樣的符號
  * 去除，不是只有這裡判斷格式時去除、實際解析時又漏掉）。`X min @ Y% (Zw)`
@@ -36,7 +37,7 @@
  * 情況。
  */
 import { INTERVAL_LINE_RE, parsePasteText } from './pasteTextParser.js';
-import { REPEAT_LINE_RE, stripBulletPrefix } from './newlineRepeatTextParser.js';
+import { REPEAT_LINE_RE, stripBulletPrefix, stripMarkdownBold } from './newlineRepeatTextParser.js';
 import { SPACE_PERCENT_LINE_RE, parseSpacePercentText } from './spacePercentTextParser.js';
 import {
   TRAINERDAY_FULL_DURATION_HEADER_RE,
@@ -59,7 +60,7 @@ export function parseAutoDetectedPasteText(text) {
     throw new Error('Invalid workout text: input must be a non-empty string');
   }
 
-  const lines = text.split(/\r\n|\r|\n/).map((line) => stripBulletPrefix(line.trim()));
+  const lines = text.split(/\r\n|\r|\n/).map((line) => stripBulletPrefix(stripMarkdownBold(line.trim())));
 
   const hasTrainerDayFullOnlyMarkers = lines.some(
     (line) => TRAINERDAY_FULL_DURATION_HEADER_RE.test(line) || TRAINERDAY_FULL_REPEAT_RE.test(line)

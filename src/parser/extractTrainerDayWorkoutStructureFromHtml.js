@@ -25,13 +25,23 @@
  */
 import { REPEAT_LINE_RE, TRAINERDAY_STRUCTURE_LINE_RE } from './trainerDayWorkoutStructureParser.js';
 import { collapseToMatchingLines, htmlToLines } from './htmlTextExtraction.js';
+import { stripBulletPrefix, stripMarkdownBold } from './newlineRepeatTextParser.js';
 
 const INTERVAL_SEARCH_RE = /\d+(?:\.\d+)?\s*(?:min|sec)\s*@\s*\d+(?:\.\d+)?%\s*\(\s*\d+(?:\.\d+)?\s*w\s*\)/gi;
 const REPEAT_SEARCH_RE = /(?:^|[^\w])(\d+)\s*x(?=[^\w]|$)/gi;
 
-/** 嚴格模式：只留下整行剛好符合課表格式的行，保留有意義的段落間隔 */
+/**
+ * 嚴格模式：只留下整行剛好符合課表格式的行，保留有意義的段落間隔。判斷前先
+ * 做跟 parseTrainerDayWorkoutStructureText() 一樣的正規化（去項目符號、去
+ * Markdown 粗體）——如果頁面本身用類似 Markdown 的方式渲染課表結構（例如
+ * 重複組宣告字面上就是 `**4X**`），這裡不正規化的話，即使正則本身已經支援
+ * 狀態標籤／踏頻，還是會因為多出來的 `**` 而整行判斷失敗。
+ */
 function extractStrict(lines) {
-  return collapseToMatchingLines(lines, (line) => TRAINERDAY_STRUCTURE_LINE_RE.test(line) || REPEAT_LINE_RE.test(line));
+  return collapseToMatchingLines(lines, (line) => {
+    const normalized = stripBulletPrefix(stripMarkdownBold(line));
+    return TRAINERDAY_STRUCTURE_LINE_RE.test(normalized) || REPEAT_LINE_RE.test(normalized);
+  });
 }
 
 /** 寬鬆模式：不要求整行只有課表內容，直接在合併後的文字裡依出現順序搜尋片段 */
@@ -61,7 +71,11 @@ export function extractTrainerDayWorkoutStructureFromHtml(html) {
   const lines = htmlToLines(html);
 
   const strictLines = extractStrict(lines);
-  if (strictLines.some((line) => TRAINERDAY_STRUCTURE_LINE_RE.test(line))) {
+  // 跟 extractStrict() 內部判斷用的是同一套正規化（去項目符號、去 Markdown
+  // 粗體）——這裡只是再次確認「至少有一行是真的課表內容行，不是只湊到一堆
+  // 空行」，不正規化的話，一份全部是「- Active ...」「- **4X**」這種格式的
+  // 頁面會在這一步整批判斷失敗，回退去用準確度較低的寬鬆模式。
+  if (strictLines.some((line) => TRAINERDAY_STRUCTURE_LINE_RE.test(stripBulletPrefix(stripMarkdownBold(line))))) {
     return strictLines.join('\n');
   }
 
