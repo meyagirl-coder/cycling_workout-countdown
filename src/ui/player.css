@@ -577,6 +577,20 @@ body {
   opacity: 0.85;
 }
 
+.target-watt-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 0.4rem;
+}
+
+/* 建議踏頻是輔助資訊，字級明顯比瓦數小一截，不能跟 .target-watt 搶視覺重量 */
+.target-cadence {
+  font-size: 1.1rem;
+  font-weight: 700;
+  opacity: 0.75;
+}
+
 .controls {
   display: grid;
   grid-template-columns: 1fr 2fr 1fr;

@@ -114,3 +114,48 @@ describe('parseNewlineRepeatText: indentation can also terminate a repeat block 
     expect(result.map((r) => r.label)).toEqual(['A', 'B', 'A', 'B', 'C']);
   });
 });
+
+describe('parseNewlineRepeatText: third repeat form - the self-contained bracket declaration "NX (seg1 | seg2 | ...)"', () => {
+  it('expands a bracket repeat declaration on its own, independent of any blank-line/indent state', () => {
+    const text = ['3x (A | B)'].join('\n');
+    const result = parseNewlineRepeatText(text, parseLabelLine, '"<label>"');
+    expect(result.map((r) => r.label)).toEqual(['A', 'B', 'A', 'B', 'A', 'B']);
+  });
+
+  it('accepts an uppercase "X" and any number of "|"-separated segments (not just 2)', () => {
+    const text = ['2X (A | B | C)'].join('\n');
+    const result = parseNewlineRepeatText(text, parseLabelLine, '"<label>"');
+    expect(result.map((r) => r.label)).toEqual(['A', 'B', 'C', 'A', 'B', 'C']);
+  });
+
+  it('a bracket line surrounded by independent lines (before and after) parses each independently, in order', () => {
+    const text = ['before', '3x (A | B)', 'after'].join('\n');
+    const result = parseNewlineRepeatText(text, parseLabelLine, '"<label>"');
+    expect(result.map((r) => r.label)).toEqual(['before', 'A', 'B', 'A', 'B', 'A', 'B', 'after']);
+  });
+
+  it('a bracket line flushes a still-open newline-style "Nx" block first, acting as an implicit boundary', () => {
+    const text = ['2x', 'A', 'B', '3x (C | D)'].join('\n');
+    const result = parseNewlineRepeatText(text, parseLabelLine, '"<label>"');
+    // "2x" has no blank line before the bracket line, but the bracket line itself must still close it out.
+    expect(result.map((r) => r.label)).toEqual(['A', 'B', 'A', 'B', 'C', 'D', 'C', 'D', 'C', 'D']);
+  });
+
+  it('strips bullet prefixes and Markdown bold from each bracket segment individually', () => {
+    const text = ['2x (- **A** | * B)'].join('\n');
+    const result = parseNewlineRepeatText(text, parseLabelLine, '"<label>"');
+    expect(result.map((r) => r.label)).toEqual(['A', 'B', 'A', 'B']);
+  });
+
+  it('throws a clear, segment-specific error when a bracket segment does not match the expected format', () => {
+    const parseOnlyDigits = (line) => (/^\d+$/.test(line) ? { label: line } : null);
+    const text = ['2x (1 | not-a-digit)'];
+    expect(() => parseNewlineRepeatText(text.join('\n'), parseOnlyDigits, '"<digits>"')).toThrow(
+      /segment \("not-a-digit"\) that does not match the expected "<digits>" format/
+    );
+  });
+
+  it('throws on a zero or negative bracket repeat count', () => {
+    expect(() => parseNewlineRepeatText('0x (A)', parseLabelLine, '"<label>"')).toThrow(/invalid repeat count/);
+  });
+});

@@ -59,7 +59,10 @@ export function createPlayerView(rootEl, handlers) {
           <div class="elapsed-time"></div>
         </div>
         <div class="target-block">
-          <div class="target-watt">--</div>
+          <div class="target-watt-row">
+            <div class="target-watt">--</div>
+            <div class="target-cadence"></div>
+          </div>
           <div class="target-pct"></div>
         </div>
       </div>
@@ -91,6 +94,7 @@ export function createPlayerView(rootEl, handlers) {
     countdownNumber: rootEl.querySelector('.countdown-number'),
     elapsedTime: rootEl.querySelector('.elapsed-time'),
     targetWatt: rootEl.querySelector('.target-watt'),
+    targetCadence: rootEl.querySelector('.target-cadence'),
     targetPct: rootEl.querySelector('.target-pct'),
     playPauseBtn: rootEl.querySelector('.btn-play-pause'),
     skipBtn: rootEl.querySelector('.btn-skip'),
@@ -173,10 +177,15 @@ export function createPlayerView(rootEl, handlers) {
     const target = computeCurrentTarget(workout, state.currentIntervalIndex, state.elapsedInInterval, ftp, state.powerAdjustPct);
     if (target.watts === null) {
       els.targetWatt.textContent = '自由騎乘';
+      els.targetCadence.textContent = '';
       els.targetPct.textContent = '';
       els.statusPanel.className = 'status-panel zone-none';
     } else {
       els.targetWatt.textContent = `${target.watts} W`;
+      // 建議踏頻是課表資料本身的屬性（來源格式裡明寫的 "N rpm"，跟 FTP／微調
+      // 瓦數無關），不是 computeCurrentTarget() 算出來的，直接從目前這組的
+      // interval 資料讀，沒有資料就不顯示（不是顯示 0 rpm 這種誤導的假數字）。
+      els.targetCadence.textContent = currentInterval.cadence != null ? `${currentInterval.cadence} rpm` : '';
       els.targetPct.textContent = `${Math.round(target.pct)}% FTP`;
       els.statusPanel.className = `status-panel zone-${target.zoneColor.color}`;
     }

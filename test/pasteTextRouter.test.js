@@ -209,6 +209,24 @@ describe('parseAutoDetectedPasteText', () => {
       expect(workout.intervals).toHaveLength(19);
       expect(workout.totalDuration).toBe(58 * 60);
     });
+
+    it('routes a "%"-based bracket repeat "NX (X min @ Y% (Zw) | ...)" to this format, not the plain-watts "full copy-paste" format (both use the same bracket syntax - only the percentage sign disambiguates them)', () => {
+      const text = [
+        '- Active 5 min @ 50% (50w) 80 rpm',
+        '4X (Active 1 min @ 100% (100w) 90 rpm | Rest 4 min @ 90% (90w) 95 rpm)',
+        '- Cooldown 5 min @ 50% (50w) 80 rpm',
+      ].join('\n');
+      const workout = parseAutoDetectedPasteText(text);
+      expect(workout.source).toBe('paste-trainerday-structure');
+      expect(workout.intervals).toHaveLength(10);
+      expect(workout.totalDuration).toBe(30 * 60);
+    });
+
+    it('a "%"-free bracket repeat still routes to the plain-watts "full copy-paste" format unchanged (regression)', () => {
+      const workout = parseAutoDetectedPasteText('2X (8 min @ 64w | 2 min @ 90w | 1 min @ 110w)');
+      expect(workout.source).toBe('paste-trainerday-full');
+      expect(workout.intervals).toHaveLength(6);
+    });
   });
 
   it('throws when the input is empty or blank', () => {

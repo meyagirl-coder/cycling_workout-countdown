@@ -157,4 +157,82 @@ describe('parseTrainerDayWorkoutStructureText', () => {
       expect(workout.totalDuration).toBe(durations.reduce((sum, d) => sum + d, 0));
     });
   });
+
+  describe('the full official status-label vocabulary (case-insensitive, leading "-" optional)', () => {
+    const labels = ['warm-up', 'warmup', 'active', 'cooldown', 'interval', 'rest', 'free-ride', 'freeride', 'open-ended'];
+
+    it.each(labels)('accepts "%s" as a leading label, ignoring it', (label) => {
+      const workout = parseTrainerDayWorkoutStructureText(`${label} 5 min @ 50% (50w)`);
+      expect(workout.intervals).toEqual([{ type: 'steady', duration: 300, powerStart: 50, powerEnd: 50, cadence: null }]);
+    });
+
+    it.each(labels)('accepts "%s" in any letter case', (label) => {
+      const workout = parseTrainerDayWorkoutStructureText(`${label.toUpperCase()} 5 min @ 50% (50w)`);
+      expect(workout.intervals[0].powerStart).toBe(50);
+    });
+
+    it('accepts a leading "-" directly in front of the label (bullet dash glued to the word)', () => {
+      const workout = parseTrainerDayWorkoutStructureText('- Active 5 min @ 50% (50w)');
+      expect(workout.intervals[0].powerStart).toBe(50);
+    });
+  });
+
+  describe('tolerant parsing principle: only missing duration/percentage is a real format error - everything else is ignorable', () => {
+    it('still parses correctly when the label is an unrecognized word, not from the official list (extra info is ignored regardless of what it says)', () => {
+      const workout = parseTrainerDayWorkoutStructureText('SomeRandomTag 5 min @ 50% (50w)');
+      expect(workout.intervals).toEqual([{ type: 'steady', duration: 300, powerStart: 50, powerEnd: 50, cadence: null }]);
+    });
+
+    it('still parses correctly with multiple extra words before AND after the core "X min @ Y% (Zw)" segment', () => {
+      const workout = parseTrainerDayWorkoutStructureText('Active Interval 1 min @ 100% (100w) 90 rpm extra trailing note');
+      expect(workout.intervals).toEqual([{ type: 'steady', duration: 60, powerStart: 100, powerEnd: 100, cadence: 90 }]);
+    });
+
+    it('throws a format error only when duration or percentage cannot be found at all', () => {
+      expect(() => parseTrainerDayWorkoutStructureText('Active rest day, no structured content here')).toThrow(
+        /does not match the expected/
+      );
+    });
+
+    it('still throws for the older TrainerDay manual-entry format "X min @ Yw" even with a status label prepended (no % or parens at all)', () => {
+      expect(() => parseTrainerDayWorkoutStructureText('Active 10 min @ 53w')).toThrow(/does not match the expected/);
+    });
+
+    it('still throws for the WhatsOnZwift format "Xmin @ Y% FTP" even with a status label prepended (no parenthesized watts)', () => {
+      expect(() => parseTrainerDayWorkoutStructureText('Active 2min @ 50% FTP')).toThrow(/does not match the expected/);
+    });
+  });
+
+  describe('third repeat form: the self-contained bracket declaration "NX (X min @ Y% (Zw) | ...)"', () => {
+    it('expands a bracket repeat declaration using this format\'s percentage-based line shape', () => {
+      const text = '4X (Active 1 min @ 100% (100w) 90 rpm | Rest 4 min @ 90% (90w) 95 rpm)';
+      const workout = parseTrainerDayWorkoutStructureText(text);
+      const on = { type: 'steady', duration: 60, powerStart: 100, powerEnd: 100, cadence: 90 };
+      const off = { type: 'steady', duration: 240, powerStart: 90, powerEnd: 90, cadence: 95 };
+      expect(workout.intervals).toEqual([on, off, on, off, on, off, on, off]);
+    });
+
+    it('works alongside plain standalone lines before and after it', () => {
+      const text = [
+        '- Active 5 min @ 50% (50w) 80 rpm',
+        '4X (Active 1 min @ 100% (100w) 90 rpm | Rest 4 min @ 90% (90w) 95 rpm)',
+        '- Cooldown 5 min @ 50% (50w) 80 rpm',
+      ].join('\n');
+      const workout = parseTrainerDayWorkoutStructureText(text);
+      expect(workout.intervals).toHaveLength(10);
+      expect(workout.totalDuration).toBe(30 * 60);
+    });
+
+    it('routes correctly through parseAutoDetectedPasteText() too (regression: must not be misrouted to the plain-watts "full copy-paste" format just because both use "NX (...)" brackets)', async () => {
+      const { parseAutoDetectedPasteText } = await import('../src/parser/pasteTextRouter.js');
+      const text = [
+        '- Active 5 min @ 50% (50w) 80 rpm',
+        '4X (Active 1 min @ 100% (100w) 90 rpm | Rest 4 min @ 90% (90w) 95 rpm)',
+        '- Cooldown 5 min @ 50% (50w) 80 rpm',
+      ].join('\n');
+      const workout = parseAutoDetectedPasteText(text);
+      expect(workout.source).toBe('paste-trainerday-structure');
+      expect(workout.intervals).toHaveLength(10);
+    });
+  });
 });
