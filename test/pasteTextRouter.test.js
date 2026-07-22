@@ -183,6 +183,32 @@ describe('parseAutoDetectedPasteText', () => {
       expect(workout.intervals).toHaveLength(12);
       expect(workout.intervals.map((iv) => iv.powerStart)).toEqual([50, 55, 60, 65, 70, 75, 80, 85, 90, 95, 100, 50]);
     });
+
+    it('detects and routes real page content with a leading status label, bullet prefix, and trailing cadence on the first line', () => {
+      const text = ['- Active 5 min @ 50% (50w) 80 rpm', '- Rest 4 min @ 90% (90w) 95 rpm'].join('\n');
+      const workout = parseAutoDetectedPasteText(text);
+      expect(workout.source).toBe('paste-trainerday-structure');
+      expect(workout.intervals[0]).toEqual({ type: 'steady', duration: 300, powerStart: 50, powerEnd: 50, cadence: 80 });
+    });
+
+    it('parses the full user-provided "4X interval block" example end to end (bullets, bold "**4X**", indentation, status labels, cadence)', () => {
+      const text = [
+        '- Active 5 min @ 50% (50w) 80 rpm',
+        '- **4X**',
+        '  * Active 1 min @ 100% (100w) 90 rpm',
+        '  * Rest 4 min @ 90% (90w) 95 rpm',
+        '- Active 8 min @ 50% (50w) 85 rpm',
+        '- **4X**',
+        '  * Active 1 min @ 100% (100w) 90 rpm',
+        '  * Rest 4 min @ 90% (90w) 95 rpm',
+        '- Cooldown 5 min @ 50% (50w) 80 rpm',
+      ].join('\n');
+
+      const workout = parseAutoDetectedPasteText(text);
+      expect(workout.source).toBe('paste-trainerday-structure');
+      expect(workout.intervals).toHaveLength(19);
+      expect(workout.totalDuration).toBe(58 * 60);
+    });
   });
 
   it('throws when the input is empty or blank', () => {

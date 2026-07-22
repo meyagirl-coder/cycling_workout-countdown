@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseNewlineRepeatText, stripBulletPrefix } from '../src/parser/newlineRepeatTextParser.js';
+import { parseNewlineRepeatText, stripBulletPrefix, stripMarkdownBold } from '../src/parser/newlineRepeatTextParser.js';
 
 /** dummy line parser for testing the shared state machine in isolation: "<label>" -> { label } */
 function parseLabelLine(line) {
@@ -28,6 +28,20 @@ describe('stripBulletPrefix', () => {
 
   it('only strips a leading bullet, not one that appears mid-line', () => {
     expect(stripBulletPrefix('10 min @ 53w - recovery')).toBe('10 min @ 53w - recovery');
+  });
+});
+
+describe('stripMarkdownBold', () => {
+  it('strips a "**...**" bold wrapper around a repeat declaration (TrainerDay "Workout structure" Markdown rendering)', () => {
+    expect(stripMarkdownBold('**4X**')).toBe('4X');
+  });
+
+  it('strips "**" markers that appear anywhere in the line, not just at the very start/end', () => {
+    expect(stripMarkdownBold('- **4X**')).toBe('- 4X');
+  });
+
+  it('leaves a line with no "**" unchanged', () => {
+    expect(stripMarkdownBold('4x')).toBe('4x');
   });
 });
 
@@ -62,5 +76,41 @@ describe('parseNewlineRepeatText: repeat-block termination rule (blank line is t
     const text = ['2x', 'A', '', 'B', 'C', 'D'].join('\n');
     const result = parseNewlineRepeatText(text, parseLabelLine, '"<label>"');
     expect(result.map((r) => r.label)).toEqual(['A', 'A', 'B', 'C', 'D']);
+  });
+});
+
+describe('parseNewlineRepeatText: indentation can also terminate a repeat block (no blank line needed)', () => {
+  it('a deeper-indented block body, followed by a same-indent line with no blank line in between, still ends the block', () => {
+    // Mirrors TrainerDay's "Workout structure" Markdown rendering: "2x" (indent 0),
+    // body lines indented two spaces, then straight back to an unindented line - no blank line anywhere.
+    const text = ['2x', '  A', '  B', 'C'].join('\n');
+    const result = parseNewlineRepeatText(text, parseLabelLine, '"<label>"');
+    expect(result.map((r) => r.label)).toEqual(['A', 'B', 'A', 'B', 'C']);
+  });
+
+  it('two indented repeat blocks back to back with an unindented line between them, no blank lines anywhere', () => {
+    const text = ['2x', '  A', '  B', 'independent', '3x', '  C'].join('\n');
+    const result = parseNewlineRepeatText(text, parseLabelLine, '"<label>"');
+    expect(result.map((r) => r.label)).toEqual(['A', 'B', 'A', 'B', 'independent', 'C', 'C', 'C']);
+  });
+
+  it('does not apply the indent-boundary rule when every body line has the same indent as the "Nx" line (flat format keeps its old blank-line-only behavior)', () => {
+    // Regression: must not start ending flat-format blocks after just one line once no line is ever
+    // more indented than the header - this is the pre-existing (and much more common) format.
+    const text = ['2x', 'A', 'B', 'C'].join('\n');
+    const result = parseNewlineRepeatText(text, parseLabelLine, '"<label>"');
+    expect(result.map((r) => r.label)).toEqual(['A', 'B', 'C', 'A', 'B', 'C']);
+  });
+
+  it('an indented block that runs to the end of the text (no trailing line to trigger the boundary) still flushes correctly', () => {
+    const text = ['2x', '  A', '  B'].join('\n');
+    const result = parseNewlineRepeatText(text, parseLabelLine, '"<label>"');
+    expect(result.map((r) => r.label)).toEqual(['A', 'B', 'A', 'B']);
+  });
+
+  it('a blank line still works as a terminator even for an indented block (both rules coexist)', () => {
+    const text = ['2x', '  A', '  B', '', 'C'].join('\n');
+    const result = parseNewlineRepeatText(text, parseLabelLine, '"<label>"');
+    expect(result.map((r) => r.label)).toEqual(['A', 'B', 'A', 'B', 'C']);
   });
 });

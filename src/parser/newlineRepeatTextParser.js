@@ -28,6 +28,23 @@
  * 另外，即使沒有空行分隔，「下一個 Nx 宣告」本身也會立刻結束目前正在收集的
  * 區塊（等同於一個隱性的空行）——這是為了讓連續兩個重複區塊可以緊接著寫，
  * 不強制中間一定要留空行。
+ *
+ * **縮排也可以是區塊終止信號（第二種終止規則，跟空行並存）**：有些來源
+ * （例如 TrainerDay「Workout structure」用 Markdown 巢狀清單呈現重複組，
+ * `**4X**` 底下用兩個空格 + `*` 縮排列出重複內容，緊接著下一個不縮排的
+ * 項目沒有空行分隔）沒有空行可用，只能靠縮排深度判斷。規則：
+ *   1. 「Nx」宣告那一行本身的縮排（原始行前面的空白字元數，不含符號）記
+ *      成這個區塊的 `headerIndent`。
+ *   2. 只要區塊收集到「至少一行縮排嚴格大於 headerIndent」的內容行，這個
+ *      區塊就標記為「用縮排判斷邊界」（`usesIndentBoundary`）。
+ *   3. 一旦標記了，之後只要遇到縮排 `<= headerIndent` 的行（不管是不是空
+ *      行），就視為區塊結束，立刻 flush，再把這行當作全新的一行重新判斷
+ *      （可能是下一個 Nx 宣告，也可能是一行獨立內容）。
+ *   4. 如果區塊裡的內容行縮排從頭到尾都跟 `headerIndent` 一樣（既有的
+ *      「扁平」寫法，例如 `2x` 後面直接接不縮排的內容行），永遠不會標記
+ *      `usesIndentBoundary`，這條規則完全不介入，行為跟以前一模一樣——
+ *      這是刻意設計成「只在真的有縮排差異時才生效」，不會誤判既有格式裡
+ *      「每一行都不縮排」的重複區塊在寫完第一行就結束。
  */
 export const REPEAT_LINE_RE = /^(\d+)\s*x$/i;
 
@@ -40,6 +57,22 @@ export const REPEAT_LINE_RE = /^(\d+)\s*x$/i;
  */
 export function stripBulletPrefix(line) {
   return line.replace(/^[-*•‣◦]\s*/, '');
+}
+
+/**
+ * 有些來源（例如 TrainerDay「Workout structure」）的重複組宣告是用 Markdown
+ * 粗體包住的（`**4X**`），不是純文字 `4X`——比對格式前先把 `**` 去掉。跟
+ * `stripBulletPrefix()` 一樣，是「這行讀起來是什麼」的正規化，不影響重複
+ * 區塊的判斷邏輯本身。
+ */
+export function stripMarkdownBold(line) {
+  return line.replace(/\*\*/g, '');
+}
+
+/** 算原始行（未 trim）前面的空白字元數，用來判斷縮排深度（見上方規則說明）。 */
+function leadingWhitespaceCount(rawLine) {
+  const match = rawLine.match(/^[ \t]*/);
+  return match ? match[0].length : 0;
 }
 
 /**
@@ -78,14 +111,25 @@ export function parseNewlineRepeatText(text, parseLine, formatDescription) {
   const rawLines = text.split(/\r\n|\r|\n/);
   rawLines.forEach((rawLine, index) => {
     const lineNumber = index + 1;
-    // 規則 4：項目符號前綴只影響這行讀起來是什麼，不影響下面的區塊判斷。
-    const line = stripBulletPrefix(rawLine.trim());
+    // 規則 4：項目符號前綴、Markdown 粗體符號都只影響這行讀起來是什麼，不
+    // 影響下面的區塊判斷。粗體要先去掉再去項目符號——「**4X**」的第一個
+    // `*` 不是清單符號，如果先跑 stripBulletPrefix 會只吃掉半邊的 `**`。
+    const line = stripBulletPrefix(stripMarkdownBold(rawLine.trim()));
 
-    // 規則 1、2：空行是唯一的區塊終止信號，讀到就結束目前的收集，空行本身
+    // 規則 1、2：空行是區塊終止信號之一，讀到就結束目前的收集，空行本身
     // 不算資料、不解析。
     if (line === '') {
       flushPendingRepeat();
       return;
+    }
+
+    // 縮排終止規則（見檔案開頭的說明）：區塊一旦出現過縮排嚴格大於
+    // headerIndent 的內容行，之後只要縮排掉回 headerIndent（或更淺），就
+    // 視為區塊結束——不需要空行、也不需要遇到下一個「Nx」才觸發。flush 完
+    // 之後這一行不 return，繼續往下當成全新的一行處理。
+    const lineIndent = leadingWhitespaceCount(rawLine);
+    if (pendingRepeat && pendingRepeat.usesIndentBoundary && lineIndent <= pendingRepeat.headerIndent) {
+      flushPendingRepeat();
     }
 
     const repeatMatch = line.match(REPEAT_LINE_RE);
@@ -97,7 +141,7 @@ export function parseNewlineRepeatText(text, parseLine, formatDescription) {
       if (count <= 0) {
         throw new Error(`Invalid workout text: line ${lineNumber} ("${line}") has an invalid repeat count`);
       }
-      pendingRepeat = { count, lineNumber, raw: rawLine, lines: [] };
+      pendingRepeat = { count, lineNumber, raw: rawLine, lines: [], headerIndent: lineIndent, usesIndentBoundary: false };
       return;
     }
 
@@ -109,6 +153,9 @@ export function parseNewlineRepeatText(text, parseLine, formatDescription) {
     // 規則 1 vs 規則 3：正在收集重複區塊就塞進 pendingRepeat.lines（區塊內
     // 容），否則就是空行後的獨立一行，直接塞進最終的 intervals。
     if (pendingRepeat) {
+      if (lineIndent > pendingRepeat.headerIndent) {
+        pendingRepeat.usesIndentBoundary = true;
+      }
       pendingRepeat.lines.push(interval);
     } else {
       intervals.push(interval);
