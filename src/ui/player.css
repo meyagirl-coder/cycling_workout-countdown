@@ -755,6 +755,15 @@ body {
   opacity: 0.85;
 }
 
+/* .target-watt-row 本身用 flex + justify-content:center 置中，但它是
+   block-level 元素，寬度會撐滿 .target-block；.target-pct 沒有另外置中的
+   話，文字預設靠左，跟上面那行看起來沒有對齊。這裡直接讓 .target-block
+   整體置中，兩行文字（瓦數／%FTP）都用同一套規則置中，不受主題影響（純
+   排版，不是顏色）。 */
+.target-block {
+  text-align: center;
+}
+
 .target-watt-row {
   display: flex;
   align-items: baseline;
