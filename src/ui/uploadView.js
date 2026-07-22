@@ -1,9 +1,9 @@
 /**
- * 上傳畫面：四個平行的課表載入方式——貼 TrainerDay 課表網址／貼上課表文字
- * 內容／上傳 .zwo 檔案／intervals.icu 行事曆課表，畫面上用同樣的卡片樣式
- * 並排，讓使用者一眼就能看出這是四個平行選項，不是主功能＋附加說明的層級
- * 關係。純 DOM 渲染邏輯，不碰 parser／計時引擎／fetch —— 收到輸入就透過
- * 對應的 handler 丟給呼叫端處理：
+ * 上傳畫面：四個平行的課表載入方式——貼課表網址／貼上課表文字內容／上傳
+ * .zwo 檔案／intervals.icu 行事曆課表，畫面上用同樣的卡片樣式並排，讓使用者
+ * 一眼就能看出這是四個平行選項，不是主功能＋附加說明的層級關係。純 DOM
+ * 渲染邏輯，不碰 parser／計時引擎／fetch —— 收到輸入就透過對應的 handler
+ * 丟給呼叫端處理：
  *   onFileSelected(file)          選了本機 .zwo 檔案——檔案輸入框故意不設
  *                                 `accept` 屬性（見下方），副檔名／內容格式
  *                                 檢查交給呼叫端（playerApp.js）處理
@@ -12,19 +12,20 @@
  *                                 WhatsOnZwift／「時長 百分比」等格式都送
  *                                 這裡，由呼叫端自動判斷是哪一種再解析，這
  *                                 裡不做網址判斷（見「貼課表網址」欄位）
- *   onTrainerDayUrlSubmit(url)    「貼課表網址」欄位送出一個 TrainerDay 網址
+ *   onTrainerDayUrlSubmit(url)    「貼課表網址」欄位偵測到是 TrainerDay 網址
+ *   onWhatsOnZwiftUrlSubmit(url)  「貼課表網址」欄位偵測到是 WhatsOnZwift 網址
  *   onFtpChange(ftp)              FTP 欄位改成一個合法的正數（呼叫端負責存 localStorage）
  *
  * 「貼課表網址」曾經同時支援 TrainerDay／WhatsOnZwift，兩邊都因為抓不到
- * （WhatsOnZwift 反爬蟲防護 HTTP 403；TrainerDay 當時擷取邏輯猜錯頁面格式）
- * 而整個移除過一次。這次只重新加回 TrainerDay（對接新的「Workout
- * structure」格式 parser，使用者已經用另一個 Claude 對話確認過這個格式的
- * 內容可以正常抓到），WhatsOnZwift 因為是網站本身的反爬蟲防護、跟抓取端在
- * 哪個環境執行無關，暫不重新加回——WhatsOnZwift 仍然只能透過「貼上課表文字
- * 內容」手動貼上。
+ * （WhatsOnZwift 當時回傳 HTTP 403，判斷是反爬蟲防護；TrainerDay 當時的
+ * 擷取邏輯鎖定錯的頁面格式）而整個移除過一次。後來重新加回 TrainerDay，
+ * 對接新確認的「Workout structure」格式 parser，這次再加回 WhatsOnZwift——
+ * 兩邊的 proxy／擷取邏輯都在，能不能真的抓到由使用者在 Vercel 正式環境
+ * 實際測試決定：WhatsOnZwift 之前遇到的是網站本身的反爬蟲防護，不是「哪個
+ * 環境呼叫」的問題，如果還是 403，屬於預期內的結果，不是程式碼的問題。
  *
  * @param {HTMLElement} rootEl
- * @param {{onFileSelected: (file: File) => void, onIntervalsIcuSubmit: (rawText: string) => void, onPasteTextSubmit: (rawText: string) => void, onTrainerDayUrlSubmit: (url: string) => void, onFtpChange: (ftp: number) => void}} handlers
+ * @param {{onFileSelected: (file: File) => void, onIntervalsIcuSubmit: (rawText: string) => void, onPasteTextSubmit: (rawText: string) => void, onTrainerDayUrlSubmit: (url: string) => void, onWhatsOnZwiftUrlSubmit: (url: string) => void, onFtpChange: (ftp: number) => void}} handlers
  */
 export function createUploadView(rootEl, handlers) {
   rootEl.innerHTML = `
@@ -47,19 +48,19 @@ export function createUploadView(rootEl, handlers) {
                 type="text"
                 id="upload-url-input"
                 class="upload-url-input"
-                placeholder="貼上 TrainerDay 課表網址"
+                placeholder="貼上課表網址"
                 autocomplete="off"
               />
               <button type="submit" class="upload-url-submit">載入</button>
             </div>
           </form>
-          <p class="upload-source-hint">目前支援 TrainerDay（app.trainerday.com）</p>
+          <p class="upload-source-hint">目前支援 TrainerDay、Zwift（whatsonzwift.com）</p>
         </div>
 
         <div class="upload-source-card">
           <h2 class="upload-source-title">貼上課表文字內容</h2>
           <p class="upload-source-hint">
-            支援 TrainerDay、WhatsOnZwift 格式：請到課表網站的頁面上複製課表文字，貼在下方即可。WhatsOnZwift 目前不支援直接貼網址自動抓取，TrainerDay 可以改用上方的「貼課表網址」。
+            支援 TrainerDay、WhatsOnZwift 格式：請到課表網站的頁面上複製課表文字，貼在下方即可；也可以改用上方的「貼課表網址」直接貼網址，如果自動抓取失敗會提示改回這裡手動貼上。
           </p>
           <form class="upload-paste-form">
             <textarea
@@ -159,6 +160,7 @@ export function createUploadView(rootEl, handlers) {
   });
 
   const TRAINERDAY_HOSTS = new Set(['app.trainerday.com']);
+  const WHATSONZWIFT_HOSTS = new Set(['whatsonzwift.com', 'www.whatsonzwift.com']);
 
   urlForm.addEventListener('submit', (event) => {
     event.preventDefault();
@@ -181,8 +183,10 @@ export function createUploadView(rootEl, handlers) {
     const hostname = parsedUrl.hostname.toLowerCase();
     if (TRAINERDAY_HOSTS.has(hostname)) {
       handlers.onTrainerDayUrlSubmit(value);
+    } else if (WHATSONZWIFT_HOSTS.has(hostname)) {
+      handlers.onWhatsOnZwiftUrlSubmit(value);
     } else {
-      showErrorMessage('目前只支援 TrainerDay（app.trainerday.com）的課表網址，其他網站請改用「貼上課表文字內容」。');
+      showErrorMessage('目前只支援 TrainerDay 或 WhatsOnZwift（whatsonzwift.com）的課表網址，其他網站請改用「貼上課表文字內容」。');
     }
   });
 
