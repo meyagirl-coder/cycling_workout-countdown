@@ -1,8 +1,13 @@
 /**
- * 「貼上課表文字內容」欄位收到的純文字可能是四種已知格式之一：
- *   - TrainerDay「完整複製」格式（主要格式，見下方優先判斷）：第一行常見
+ * 「貼上課表文字內容」欄位收到的純文字可能是五種已知格式之一：
+ *   - TrainerDay「完整複製」格式（優先判斷之一，見下方）：第一行常見
  *     「持续时间: 59m」總時長說明（跳過不解析）＋ `X min/sec @ Yw` 一般行
  *     ＋整行寫完的重複組 `NX (段落1 | 段落2 | ...)`
+ *   - TrainerDay「Workout structure」格式（優先判斷之一，見下方）：頁面上
+ *     「Workout structure」區塊顯示的 `X min @ Y% (Zw)` 一般行 + 獨立一行的
+ *     「Nx」換行重複——跟「完整複製」格式不同，這裡的百分比是明寫的
+ *     （`Y%`），括號內的 `Zw` 是依課表作者實際 FTP 換算出來的瓦數，跟這個
+ *     App 的使用者 FTP 無關，直接忽略
  *   - TrainerDay 手動輸入格式：`X min @ Yw` + 獨立一行的「Nx」換行重複
  *   - WhatsOnZwift 格式：`Xmin @ Y% FTP`／`Xmin from A to B% FTP`／複合
  *     重複組寫成兩行（`Nx Xmin @ Y% FTP,` 接著下一行 `Zmin @ W% FTP`）
@@ -13,19 +18,22 @@
  *
  * TrainerDay「完整複製」格式優先判斷：只要整份文字裡出現「持续时間」總時長
  * 說明行，或是整行寫完的重複組 `NX (...)`，就直接判定是這個格式——這兩種
- * 寫法是這個格式獨有的，不會出現在其他三種格式裡，不需要跟「第一個看起來
- * 像課表內容的行」的判斷搶順序，用者要求這個格式優先於舊的手動輸入格式。
+ * 寫法是這個格式獨有的，不會出現在其他格式裡，不需要跟「第一個看起來像
+ * 課表內容的行」的判斷搶順序，使用者要求這個格式優先於舊的手動輸入格式。
  *
- * 其餘三種格式的判斷邏輯不變：找第一個看起來像課表內容的行（先去掉常見的
- * 清單項目符號前綴，例如從網頁清單複製貼上時常帶著的「‧ 」「* 」，不然這
- * 幾個符號會讓下面的格式判斷全部落空；再略過空行跟單獨的「Nx」宣告——那
- * 種行在 TrainerDay 手動輸入格式跟「時長 百分比」格式裡都可能出現，不能
- * 用來判斷是哪一種格式），依它符合哪個格式的正則決定要用哪個 parser 解析
- * 「整份」文字（各 parser 內部也會做同樣的符號去除，不是只有這裡判斷格式
- * 時去除、實際解析時又漏掉）。如果第一個看起來像內容的行不符合任何已知
- * 格式，最後再試一次 TrainerDay「完整複製」格式的一般行寫法（`X min/sec @
- * Yw`，含手動輸入格式沒有的秒數單位）——涵蓋「整段複製但剛好沒有總時長行
- * 也沒有重複組」的情況。
+ * 其餘格式的判斷邏輯：找第一個看起來像課表內容的行（先去掉常見的清單項目
+ * 符號前綴，例如從網頁清單複製貼上時常帶著的「‧ 」「* 」，不然這幾個符號
+ * 會讓下面的格式判斷全部落空；再略過空行跟單獨的「Nx」宣告——那種行在多種
+ * 格式裡都可能出現，不能用來判斷是哪一種格式），依它符合哪個格式的正則
+ * 決定要用哪個 parser 解析「整份」文字（各 parser 內部也會做同樣的符號
+ * 去除，不是只有這裡判斷格式時去除、實際解析時又漏掉）。`X min @ Y% (Zw)`
+ * （TrainerDay「Workout structure」格式）跟 `X min @ Yw`（TrainerDay 手動
+ * 輸入格式）先判斷前者，因為前者的正則比較嚴格（多了 `%` 跟括號），不會
+ * 誤判到後者身上，順序對調也不影響結果，只是保持「更明確的格式先判斷」的
+ * 習慣。如果第一個看起來像內容的行不符合任何已知格式，最後再試一次
+ * TrainerDay「完整複製」格式的一般行寫法（`X min/sec @ Yw`，含手動輸入
+ * 格式沒有的秒數單位）——涵蓋「整段複製但剛好沒有總時長行也沒有重複組」的
+ * 情況。
  */
 import { INTERVAL_LINE_RE, parsePasteText } from './pasteTextParser.js';
 import { REPEAT_LINE_RE, stripBulletPrefix } from './newlineRepeatTextParser.js';
@@ -36,6 +44,10 @@ import {
   TRAINERDAY_FULL_REPEAT_RE,
   parseTrainerDayFullText,
 } from './trainerDayFullTextParser.js';
+import {
+  TRAINERDAY_STRUCTURE_LINE_RE,
+  parseTrainerDayWorkoutStructureText,
+} from './trainerDayWorkoutStructureParser.js';
 import { WOZ_RAMP_LINE_RE, WOZ_REPEAT_FIRST_LINE_RE, WOZ_STEADY_LINE_RE, parseWhatsOnZwiftText } from './whatsOnZwiftParser.js';
 
 /**
@@ -57,6 +69,7 @@ export function parseAutoDetectedPasteText(text) {
   const firstContentLine = lines.find((line) => line !== '' && !REPEAT_LINE_RE.test(line));
 
   if (firstContentLine) {
+    if (TRAINERDAY_STRUCTURE_LINE_RE.test(firstContentLine)) return parseTrainerDayWorkoutStructureText(text);
     if (INTERVAL_LINE_RE.test(firstContentLine)) return parsePasteText(text);
     if (
       WOZ_STEADY_LINE_RE.test(firstContentLine) ||
@@ -70,6 +83,6 @@ export function parseAutoDetectedPasteText(text) {
   }
 
   throw new Error(
-    `Invalid workout text: could not recognize the workout text format (expected "X min @ Yw", WhatsOnZwift's "%FTP" style, "Xm Y%"/"Xs Y%", or TrainerDay's full copy-paste format)`
+    `Invalid workout text: could not recognize the workout text format (expected "X min @ Yw", WhatsOnZwift's "%FTP" style, "Xm Y%"/"Xs Y%", TrainerDay's full copy-paste format, or TrainerDay's "Workout structure" format)`
   );
 }
