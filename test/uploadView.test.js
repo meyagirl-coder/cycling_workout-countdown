@@ -12,6 +12,7 @@ function makeHandlers(overrides = {}) {
     onIntervalsIcuSubmit: vi.fn(),
     onPasteTextSubmit: vi.fn(),
     onTrainerDayUrlSubmit: vi.fn(),
+    onWhatsOnZwiftUrlSubmit: vi.fn(),
     onFtpChange: vi.fn(),
     ...overrides,
   };
@@ -46,16 +47,16 @@ describe('createUploadView layout (four parallel source cards)', () => {
     expect(root.querySelectorAll('.upload-source-card')).toHaveLength(4);
   });
 
-  it('renders the url card\'s hint text, scoped to TrainerDay only (WhatsOnZwift auto-fetch is still not viable)', () => {
+  it('renders the url card\'s hint text listing both supported sites', () => {
     const { root } = setup();
     const urlCard = root.querySelectorAll('.upload-source-card')[0];
     const hint = urlCard.querySelector('.upload-source-hint');
     expect(hint).not.toBeNull();
     expect(hint.textContent).toContain('TrainerDay');
-    expect(hint.textContent).not.toContain('WhatsOnZwift');
+    expect(hint.textContent).toContain('whatsonzwift.com');
   });
 
-  it('shows a hint on the paste-text card pointing WhatsOnZwift users there, while mentioning TrainerDay also has the url card', () => {
+  it('shows a hint on the paste-text card mentioning both sites and pointing to the url card as an alternative', () => {
     const { root } = setup();
     const pasteCard = root.querySelectorAll('.upload-source-card')[1];
     const hint = pasteCard.querySelector('.upload-source-hint');
@@ -117,7 +118,7 @@ describe('createUploadView: FTP field', () => {
   });
 });
 
-describe('createUploadView: block 1 - 貼課表網址 (TrainerDay only)', () => {
+describe('createUploadView: block 1 - 貼課表網址 (TrainerDay + WhatsOnZwift)', () => {
   it('routes a TrainerDay url to onTrainerDayUrlSubmit', () => {
     const { root, handlers } = setup();
     const input = root.querySelector('.upload-url-input');
@@ -128,6 +129,7 @@ describe('createUploadView: block 1 - 貼課表網址 (TrainerDay only)', () => 
 
     expect(handlers.onTrainerDayUrlSubmit).toHaveBeenCalledTimes(1);
     expect(handlers.onTrainerDayUrlSubmit).toHaveBeenCalledWith('https://app.trainerday.com/workouts/20260714-ramp-up-5');
+    expect(handlers.onWhatsOnZwiftUrlSubmit).not.toHaveBeenCalled();
     expect(handlers.onPasteTextSubmit).not.toHaveBeenCalled();
   });
 
@@ -142,21 +144,31 @@ describe('createUploadView: block 1 - 貼課表網址 (TrainerDay only)', () => 
     expect(handlers.onTrainerDayUrlSubmit).toHaveBeenCalledTimes(1);
   });
 
-  it('shows an inline error (no handler call) for a url from an unsupported host (e.g. whatsonzwift.com - not re-added)', () => {
+  it('routes a whatsonzwift.com url to onWhatsOnZwiftUrlSubmit', () => {
     const { root, handlers } = setup();
     const input = root.querySelector('.upload-url-input');
     const form = root.querySelector('.upload-url-form');
-    const errorEl = root.querySelector('.upload-error');
 
-    input.value = 'https://whatsonzwift.com/workouts/over-unders';
+    input.value = 'https://whatsonzwift.com/workouts/threshold/over-unders';
     form.dispatchEvent(new Event('submit', { cancelable: true }));
 
+    expect(handlers.onWhatsOnZwiftUrlSubmit).toHaveBeenCalledTimes(1);
+    expect(handlers.onWhatsOnZwiftUrlSubmit).toHaveBeenCalledWith('https://whatsonzwift.com/workouts/threshold/over-unders');
     expect(handlers.onTrainerDayUrlSubmit).not.toHaveBeenCalled();
-    expect(errorEl.classList.contains('hidden')).toBe(false);
-    expect(errorEl.textContent).toContain('TrainerDay');
   });
 
-  it('shows an inline error for a url from any other unsupported host', () => {
+  it('also accepts the www.whatsonzwift.com subdomain', () => {
+    const { root, handlers } = setup();
+    const input = root.querySelector('.upload-url-input');
+    const form = root.querySelector('.upload-url-form');
+
+    input.value = 'https://www.whatsonzwift.com/workouts/over-unders';
+    form.dispatchEvent(new Event('submit', { cancelable: true }));
+
+    expect(handlers.onWhatsOnZwiftUrlSubmit).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows an inline error (no handler call) for a url from an unsupported host', () => {
     const { root, handlers } = setup();
     const input = root.querySelector('.upload-url-input');
     const form = root.querySelector('.upload-url-form');
@@ -166,7 +178,9 @@ describe('createUploadView: block 1 - 貼課表網址 (TrainerDay only)', () => 
     form.dispatchEvent(new Event('submit', { cancelable: true }));
 
     expect(handlers.onTrainerDayUrlSubmit).not.toHaveBeenCalled();
+    expect(handlers.onWhatsOnZwiftUrlSubmit).not.toHaveBeenCalled();
     expect(errorEl.classList.contains('hidden')).toBe(false);
+    expect(errorEl.textContent).toMatch(/TrainerDay.*WhatsOnZwift|WhatsOnZwift.*TrainerDay/);
   });
 
   it('shows an inline "format error" for a value that is not a valid url at all', () => {
@@ -179,6 +193,7 @@ describe('createUploadView: block 1 - 貼課表網址 (TrainerDay only)', () => 
     form.dispatchEvent(new Event('submit', { cancelable: true }));
 
     expect(handlers.onTrainerDayUrlSubmit).not.toHaveBeenCalled();
+    expect(handlers.onWhatsOnZwiftUrlSubmit).not.toHaveBeenCalled();
     expect(errorEl.classList.contains('hidden')).toBe(false);
   });
 
