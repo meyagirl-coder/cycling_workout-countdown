@@ -13,6 +13,8 @@ function makeHandlers(overrides = {}) {
     onPasteTextSubmit: vi.fn(),
     onTrainerDayUrlSubmit: vi.fn(),
     onWhatsOnZwiftUrlSubmit: vi.fn(),
+    onScheduledStartTimeSet: vi.fn(),
+    onScheduledStartTimeCancel: vi.fn(),
     onFtpChange: vi.fn(),
     ...overrides,
   };
@@ -115,6 +117,108 @@ describe('createUploadView: FTP field', () => {
     ftpInput.dispatchEvent(new Event('input'));
 
     expect(handlers.onFtpChange).toHaveBeenCalledWith(200);
+  });
+});
+
+describe('createUploadView: 設定開始時間 (group-ride scheduling, positioned right below FTP)', () => {
+  it('has the title "設定開始時間", positioned after the FTP row and before the four source cards', () => {
+    const { root } = setup();
+    const label = root.querySelector('.upload-schedule-label');
+    expect(label.textContent).toBe('設定開始時間');
+
+    const positions = Array.from(root.querySelectorAll('.upload-ftp-row, .upload-schedule-row, .upload-source-list')).map(
+      (el) => el.className
+    );
+    expect(positions).toEqual(['upload-ftp-row', 'upload-schedule-row', 'upload-source-list']);
+  });
+
+  it('shows a hint with the exact example format "20260724 20:00"', () => {
+    const { root } = setup();
+    expect(root.querySelector('.upload-schedule-hint').textContent).toContain('20260724 20:00');
+    expect(root.querySelector('.upload-schedule-input').getAttribute('placeholder')).toBe('20260724 20:00');
+  });
+
+  it('calls onScheduledStartTimeSet with a Date when the input has the valid "YYYYMMDD HH:mm" format', () => {
+    const { root, handlers } = setup();
+    const input = root.querySelector('.upload-schedule-input');
+    const submitBtn = root.querySelector('.upload-schedule-submit');
+
+    input.value = '20260724 20:00';
+    submitBtn.click();
+
+    expect(handlers.onScheduledStartTimeSet).toHaveBeenCalledTimes(1);
+    const date = handlers.onScheduledStartTimeSet.mock.calls[0][0];
+    expect(date).toBeInstanceOf(Date);
+    expect(date.getFullYear()).toBe(2026);
+    expect(date.getHours()).toBe(20);
+  });
+
+  it('shows the confirmed date/time and disables the input after a valid submission (does not silently do nothing)', () => {
+    const { root } = setup();
+    const input = root.querySelector('.upload-schedule-input');
+    const submitBtn = root.querySelector('.upload-schedule-submit');
+
+    input.value = '20260724 20:00';
+    submitBtn.click();
+
+    const status = root.querySelector('.upload-schedule-status');
+    expect(status.classList.contains('hidden')).toBe(false);
+    expect(status.textContent).toContain('2026/07/24 20:00');
+    expect(input.disabled).toBe(true);
+    expect(submitBtn.disabled).toBe(true);
+  });
+
+  it('shows a clear inline error (not a silent failure) for an invalid format, and does not call the handler', () => {
+    const { root, handlers } = setup();
+    const input = root.querySelector('.upload-schedule-input');
+    const submitBtn = root.querySelector('.upload-schedule-submit');
+    const errorEl = root.querySelector('.upload-error');
+
+    input.value = 'not a valid date';
+    submitBtn.click();
+
+    expect(handlers.onScheduledStartTimeSet).not.toHaveBeenCalled();
+    expect(errorEl.classList.contains('hidden')).toBe(false);
+    expect(errorEl.textContent).toMatch(/日期時間格式錯誤/);
+  });
+
+  it('does nothing for a blank submission (no handler call, no error)', () => {
+    const { root, handlers } = setup();
+    const submitBtn = root.querySelector('.upload-schedule-submit');
+    const errorEl = root.querySelector('.upload-error');
+
+    submitBtn.click();
+
+    expect(handlers.onScheduledStartTimeSet).not.toHaveBeenCalled();
+    expect(errorEl.classList.contains('hidden')).toBe(true);
+  });
+
+  it('calls onScheduledStartTimeCancel and resets to the unset state when "取消" is clicked', () => {
+    const { root, handlers } = setup();
+    const input = root.querySelector('.upload-schedule-input');
+    const submitBtn = root.querySelector('.upload-schedule-submit');
+
+    input.value = '20260724 20:00';
+    submitBtn.click();
+
+    root.querySelector('.upload-schedule-cancel').click();
+
+    expect(handlers.onScheduledStartTimeCancel).toHaveBeenCalledTimes(1);
+    expect(root.querySelector('.upload-schedule-status').classList.contains('hidden')).toBe(true);
+    expect(input.disabled).toBe(false);
+    expect(input.value).toBe('');
+    expect(submitBtn.disabled).toBe(false);
+  });
+
+  it('view.showScheduleStatus() / clearScheduleStatus() let the caller drive the status display externally (e.g. after restoring a schedule from localStorage)', () => {
+    const { root, view } = setup();
+
+    view.showScheduleStatus(new Date(2026, 6, 24, 20, 0));
+    expect(root.querySelector('.upload-schedule-status').classList.contains('hidden')).toBe(false);
+    expect(root.querySelector('.upload-schedule-status-text').textContent).toBe('2026/07/24 20:00');
+
+    view.clearScheduleStatus();
+    expect(root.querySelector('.upload-schedule-status').classList.contains('hidden')).toBe(true);
   });
 });
 

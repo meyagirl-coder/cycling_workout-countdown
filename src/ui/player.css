@@ -170,6 +170,98 @@ body {
   text-align: center;
 }
 
+/* 團體訓練排程：「設定開始時間」欄位，位置固定在 FTP 設定列下方 */
+.upload-schedule-row {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.upload-schedule-label {
+  font-size: 1.1rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.upload-schedule-input-wrap {
+  display: flex;
+  gap: 0.5rem;
+  flex: 1;
+  justify-content: flex-end;
+  min-width: 0;
+}
+
+.upload-schedule-input {
+  min-width: 0;
+  flex: 1;
+  max-width: 12rem;
+  padding: 0.5rem 0.75rem;
+  border-radius: 0.75rem;
+  border: 1px solid #334155;
+  background: #0f172a;
+  color: #f8fafc;
+  font-size: 0.95rem;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.upload-schedule-input:focus {
+  outline: none;
+  border-color: #60a5fa;
+}
+
+.upload-schedule-input:disabled {
+  opacity: 0.6;
+}
+
+.upload-schedule-submit {
+  padding: 0.5rem 1rem;
+  border: none;
+  border-radius: 0.75rem;
+  background: #2563eb;
+  color: #f8fafc;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.upload-schedule-submit:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.upload-schedule-hint {
+  margin: -0.35rem 0 0;
+  color: #64748b;
+  font-size: 0.8rem;
+  text-align: center;
+}
+
+.upload-schedule-status {
+  margin: 0;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  color: #93c5fd;
+  font-size: 0.85rem;
+}
+
+.upload-schedule-cancel {
+  padding: 0.2rem 0.6rem;
+  border: 1px solid #334155;
+  border-radius: 0.5rem;
+  background: transparent;
+  color: #f87171;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
 .upload-url-form,
 .upload-intervals-form {
   width: 100%;
@@ -275,6 +367,61 @@ body {
   margin: 0;
   color: #f87171;
   font-size: 0.9rem;
+}
+
+/* 團體訓練排程的等待畫面：設定了開始時間、時間還沒到時顯示，取代平常的執行頁 */
+.waiting-screen {
+  max-width: 480px;
+  margin: 0 auto;
+  padding: 3rem 1.25rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+  text-align: center;
+}
+
+.waiting-label {
+  margin: 0;
+  color: #60a5fa;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  font-size: 0.85rem;
+}
+
+.waiting-workout-name {
+  margin: 0;
+  font-size: 1.5rem;
+  font-weight: 800;
+}
+
+.waiting-workout-meta {
+  margin: 0;
+  color: #94a3b8;
+  font-size: 0.95rem;
+}
+
+.waiting-countdown {
+  width: 100%;
+  padding: 1.5rem;
+  border-radius: 1.25rem;
+  border: 1px solid #1e293b;
+  background: #0f172a;
+  font-size: 1.75rem;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.waiting-warning {
+  margin: 0;
+  padding: 0.85rem 1rem;
+  border-radius: 0.75rem;
+  border: 1px solid rgba(251, 191, 36, 0.35);
+  background: rgba(251, 191, 36, 0.08);
+  color: #fbbf24;
+  font-size: 0.85rem;
+  text-align: left;
 }
 
 .player {

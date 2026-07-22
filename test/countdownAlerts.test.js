@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { TIMER_EVENTS } from '../src/engine/timerEngine.js';
 import { COUNTDOWN_FINISHING_SOON_TEXT, handleTimerEvents } from '../src/ui/countdownAlerts.js';
 
@@ -156,5 +156,80 @@ describe('handleTimerEvents: multiple events in the same batch', () => {
     expect(deps.playBeep).not.toHaveBeenCalled();
     expect(deps.speak).not.toHaveBeenCalled();
     expect(deps.showNextIntervalBanner).not.toHaveBeenCalled();
+  });
+});
+
+describe('unlockAudioAndSpeechForAutoplay (團體訓練排程：「設定開始時間」當下解鎖自動播放權限)', () => {
+  // countdownAlerts.js 的 sharedAudioContext 是模組層級變數，playCountdownBeep()
+  // 也共用它——每個測試都用 vi.resetModules() + 動態 import 拿一份全新的模組
+  // 實例，避免某個測試建立過 AudioContext 之後，後面的測試誤判成「沒有再建立
+  // 一個新的」。
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.resetModules();
+  });
+
+  function stubAudioContext() {
+    const oscillator = { connect: vi.fn(), start: vi.fn(), stop: vi.fn(), frequency: {} };
+    const gain = { connect: vi.fn(), gain: { setValueAtTime: vi.fn(), exponentialRampToValueAtTime: vi.fn() } };
+    const ctx = {
+      createOscillator: vi.fn(() => oscillator),
+      createGain: vi.fn(() => gain),
+      destination: {},
+      currentTime: 0,
+      state: 'suspended',
+      resume: vi.fn(),
+    };
+    const AudioContextCtor = vi.fn(() => ctx);
+    vi.stubGlobal('AudioContext', AudioContextCtor);
+    return { AudioContextCtor, ctx, oscillator, gain };
+  }
+
+  it('creates and resumes an AudioContext, then plays a silent (zero-gain) blip to fully unlock it', async () => {
+    const { AudioContextCtor, ctx, oscillator, gain } = stubAudioContext();
+    const { unlockAudioAndSpeechForAutoplay } = await import('../src/ui/countdownAlerts.js');
+
+    unlockAudioAndSpeechForAutoplay();
+
+    expect(AudioContextCtor).toHaveBeenCalledTimes(1);
+    expect(ctx.resume).toHaveBeenCalledTimes(1);
+    expect(gain.gain.setValueAtTime).toHaveBeenCalledWith(0, ctx.currentTime); // silent, not the audible 0.2 level playCountdownBeep uses
+    expect(oscillator.start).toHaveBeenCalledTimes(1);
+  });
+
+  it('reuses the same shared AudioContext across multiple calls instead of creating a new one each time', async () => {
+    const { AudioContextCtor } = stubAudioContext();
+    const { unlockAudioAndSpeechForAutoplay } = await import('../src/ui/countdownAlerts.js');
+
+    unlockAudioAndSpeechForAutoplay();
+    unlockAudioAndSpeechForAutoplay();
+
+    expect(AudioContextCtor).toHaveBeenCalledTimes(1);
+  });
+
+  it('speaks a near-silent (volume 0) utterance to unlock SpeechSynthesis for later automatic warnings', async () => {
+    const speak = vi.fn();
+    vi.stubGlobal('speechSynthesis', { speak });
+    vi.stubGlobal(
+      'SpeechSynthesisUtterance',
+      class {
+        constructor(text) {
+          this.text = text;
+          this.volume = 1;
+        }
+      }
+    );
+    const { unlockAudioAndSpeechForAutoplay } = await import('../src/ui/countdownAlerts.js');
+
+    unlockAudioAndSpeechForAutoplay();
+
+    expect(speak).toHaveBeenCalledTimes(1);
+    const utterance = speak.mock.calls[0][0];
+    expect(utterance.volume).toBe(0);
+  });
+
+  it('does not throw when AudioContext/speechSynthesis are unavailable (e.g. an unsupported browser)', async () => {
+    const { unlockAudioAndSpeechForAutoplay } = await import('../src/ui/countdownAlerts.js');
+    expect(() => unlockAudioAndSpeechForAutoplay()).not.toThrow();
   });
 });
