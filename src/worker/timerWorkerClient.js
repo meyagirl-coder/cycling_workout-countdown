@@ -28,6 +28,18 @@ export function createTimerWorkerClient(workerUrl = new URL('./timerWorker.js', 
     init(workout) {
       send({ type: 'init', workout });
     },
+    /**
+     * 從先前存下來的進度復原（頁面重新整理後用，見 workoutProgressStore.js），
+     * 跟 init() 一樣會建立全新的 engine，差別是接著把狀態設回存檔當下的
+     * elapsedTotal／powerAdjustPct／status，不是從頭開始。永遠不會恢復成
+     * running，只會是 idle／paused／finished（見 timerEngine.js 的 restore()）。
+     *
+     * @param {object} workout
+     * @param {{ elapsedTotal: number, powerAdjustPct?: number, status?: string }} savedState
+     */
+    restore(workout, savedState) {
+      send({ type: 'restore', workout, ...savedState });
+    },
     play() {
       send({ type: 'play' });
     },

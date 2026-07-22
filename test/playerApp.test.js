@@ -1,9 +1,37 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { initPlayerApp } from '../src/ui/playerApp.js';
+import { createWorkerRuntime } from '../src/worker/workerRuntime.js';
 
 /** jsdom has no real Worker; initPlayerApp only needs postMessage/onmessage to exist without throwing for these tests. */
 class MockWorker {
   postMessage() {}
+  terminate() {}
+}
+
+/**
+ * 跟上面的 MockWorker 不同，這支是「真的會動」的假 Worker：內部接到真正的
+ * createWorkerRuntime()，postMessage() 同步呼叫 runtime.handleMessage()，
+ * runtime 送出的狀態再同步回呼 this.onmessage —— 讓 client.onUpdate() 真的
+ * 會觸發、engine 的 play/pause/tick 都是真實邏輯（連 setInterval 節奏也是
+ * 真的，可以用 vi.advanceTimersByTime() 控制），只是省去真的開一個 Worker
+ * 執行緒。只有「頁面狀態保存」這個 describe 需要真實的狀態變化（存
+ * localStorage 靠 client.onUpdate() 觸發），其餘測試都還是用上面單純的
+ * no-op MockWorker 就夠了。
+ */
+class RealisticMockWorker {
+  constructor() {
+    this.onmessage = null;
+    this.runtime = createWorkerRuntime({
+      postMessage: (message) => {
+        if (this.onmessage) this.onmessage({ data: message });
+      },
+    });
+  }
+
+  postMessage(message) {
+    this.runtime.handleMessage(message);
+  }
+
   terminate() {}
 }
 
@@ -289,5 +317,121 @@ describe('initPlayerApp: 團體訓練排程 (group-ride scheduling)', () => {
 
     expect(root.querySelector('.player-mount').classList.contains('hidden')).toBe(true);
     expect(root.querySelector('.upload-mount').classList.contains('hidden')).toBe(false);
+  });
+});
+
+describe('initPlayerApp: 頁面狀態保存 (page state persistence across reload/tab-switch)', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(2026, 6, 22, 10, 0, 0));
+    window.localStorage.clear();
+    vi.stubGlobal('Worker', RealisticMockWorker);
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    window.localStorage.clear();
+    vi.unstubAllGlobals();
+  });
+
+  // 貼上課表文字內容全程同步，不需要 vi.waitFor（同 「團體訓練排程」describe 的說明）。
+  function submitPasteText(root, text) {
+    root.querySelector('.upload-paste-textarea').value = text;
+    root.querySelector('.upload-paste-form').dispatchEvent(new Event('submit', { cancelable: true }));
+  }
+
+  it('debounced-saves the URL/paste-text draft inputs and restores them on a simulated reload', () => {
+    const { root } = setup();
+    const urlInput = root.querySelector('.upload-url-input');
+    const pasteTextarea = root.querySelector('.upload-paste-textarea');
+
+    urlInput.value = 'https://app.trainerday.com/workouts/abc';
+    urlInput.dispatchEvent(new Event('input'));
+    pasteTextarea.value = '5m 60%';
+    pasteTextarea.dispatchEvent(new Event('input'));
+
+    // 還沒過 debounce 時間，不應該已經存進 localStorage
+    expect(window.localStorage.getItem('upload_draft_inputs')).toBeNull();
+
+    vi.advanceTimersByTime(500);
+    expect(window.localStorage.getItem('upload_draft_inputs')).not.toBeNull();
+
+    // 模擬「重新整理頁面」：全新的 root + 全新一次 initPlayerApp() 呼叫
+    const { root: reloadedRoot } = setup();
+    expect(reloadedRoot.querySelector('.upload-url-input').value).toBe('https://app.trainerday.com/workouts/abc');
+    expect(reloadedRoot.querySelector('.upload-paste-textarea').value).toBe('5m 60%');
+  });
+
+  it('coalesces rapid edits into a single debounced save carrying both fields\' latest values', () => {
+    const { root } = setup();
+    const urlInput = root.querySelector('.upload-url-input');
+    const pasteTextarea = root.querySelector('.upload-paste-textarea');
+
+    urlInput.value = 'https://app.trainerday.com/workouts/a';
+    urlInput.dispatchEvent(new Event('input'));
+    vi.advanceTimersByTime(100);
+    urlInput.value = 'https://app.trainerday.com/workouts/abc';
+    urlInput.dispatchEvent(new Event('input'));
+    vi.advanceTimersByTime(100);
+    pasteTextarea.value = '5m 60%';
+    pasteTextarea.dispatchEvent(new Event('input'));
+
+    expect(window.localStorage.getItem('upload_draft_inputs')).toBeNull();
+    vi.advanceTimersByTime(500);
+
+    const saved = JSON.parse(window.localStorage.getItem('upload_draft_inputs'));
+    expect(saved.url).toBe('https://app.trainerday.com/workouts/abc');
+    expect(saved.pasteText).toBe('5m 60%');
+  });
+
+  it('persists the workout + progress on every update, and restores to the player screen paused at the same point after a simulated reload', () => {
+    const { root } = setup();
+    submitPasteText(root, '5m 60%');
+    expect(root.querySelector('.player-mount').classList.contains('hidden')).toBe(false);
+    const workoutName = root.querySelector('.workout-name').textContent;
+
+    // 剛載入、還沒按播放：課表資料本身就已經存進 localStorage，進度是 idle/0
+    const savedAfterLoad = JSON.parse(window.localStorage.getItem('workout_progress'));
+    expect(savedAfterLoad.workout.intervals).toHaveLength(1);
+    expect(savedAfterLoad.status).toBe('idle');
+    expect(savedAfterLoad.elapsedTotal).toBe(0);
+
+    // 開始播放，經過 1 秒（5 個 200ms tick）
+    root.querySelector('.btn-play-pause').click();
+    vi.advanceTimersByTime(1000);
+
+    const savedWhileRunning = JSON.parse(window.localStorage.getItem('workout_progress'));
+    expect(savedWhileRunning.status).toBe('running');
+    expect(savedWhileRunning.elapsedTotal).toBeGreaterThan(0);
+
+    // 模擬「重新整理頁面」：全新的 root + 全新一次 initPlayerApp() 呼叫
+    const { root: reloadedRoot } = setup();
+
+    expect(reloadedRoot.querySelector('.player-mount').classList.contains('hidden')).toBe(false);
+    expect(reloadedRoot.querySelector('.upload-mount').classList.contains('hidden')).toBe(true);
+    expect(reloadedRoot.querySelector('.workout-name').textContent).toBe(workoutName);
+    // 規格：重新整理後不會自動恢復播放，一律停在「已暫停」，但課表跟進度要還在
+    expect(reloadedRoot.querySelector('.interval-progress').textContent).toContain('已暫停');
+    expect(reloadedRoot.querySelector('.elapsed-time').textContent).toContain(String(Math.floor(savedWhileRunning.elapsedTotal)));
+
+    const savedAfterReload = JSON.parse(window.localStorage.getItem('workout_progress'));
+    expect(savedAfterReload.status).toBe('paused');
+    expect(savedAfterReload.elapsedTotal).toBe(savedWhileRunning.elapsedTotal);
+  });
+
+  it('clears the saved workout progress when returning home, so a subsequent reload shows the upload screen again', () => {
+    const { root } = setup();
+    submitPasteText(root, '5m 60%');
+    expect(window.localStorage.getItem('workout_progress')).not.toBeNull();
+
+    root.querySelector('.btn-return-home').click();
+
+    expect(root.querySelector('.upload-mount').classList.contains('hidden')).toBe(false);
+    expect(window.localStorage.getItem('workout_progress')).toBeNull();
+
+    // 模擬「重新整理頁面」：沒有殘留進度可以復原，應該正常顯示上傳畫面
+    const { root: reloadedRoot } = setup();
+    expect(reloadedRoot.querySelector('.upload-mount').classList.contains('hidden')).toBe(false);
+    expect(reloadedRoot.querySelector('.player-mount').classList.contains('hidden')).toBe(true);
   });
 });

@@ -292,4 +292,73 @@ describe('createTimerEngine', () => {
     expect(midWarmup.pct).toBe(60);
     expect(midWarmup.watts).toBe(120);
   });
+
+  describe('restore (page-reload recovery, see workoutProgressStore.js)', () => {
+    it('restores currentIntervalIndex/elapsedInInterval derived from the saved elapsedTotal, landing on "paused"', () => {
+      const engine = createTimerEngine(makeSyntheticWorkout());
+      // 15s in: 10s warmup + 5s into the 12s steady interval (index 1).
+      const { state } = engine.restore({ elapsedTotal: 15, powerAdjustPct: 0, status: 'paused' });
+
+      expect(state.status).toBe('paused');
+      expect(state.currentIntervalIndex).toBe(1);
+      expect(state.elapsedInInterval).toBe(5);
+      expect(state.elapsedTotal).toBe(15);
+    });
+
+    it('restores powerAdjustPct', () => {
+      const engine = createTimerEngine(makeSyntheticWorkout());
+      const { state } = engine.restore({ elapsedTotal: 0, powerAdjustPct: 3, status: 'idle' });
+      expect(state.powerAdjustPct).toBe(3);
+    });
+
+    it('defaults powerAdjustPct to 0 when omitted', () => {
+      const engine = createTimerEngine(makeSyntheticWorkout());
+      const { state } = engine.restore({ elapsedTotal: 0, status: 'idle' });
+      expect(state.powerAdjustPct).toBe(0);
+    });
+
+    it('restores "idle" as-is when elapsedTotal is 0 and the saved status says idle (never actually started)', () => {
+      const engine = createTimerEngine(makeSyntheticWorkout());
+      const { state } = engine.restore({ elapsedTotal: 0, powerAdjustPct: 0, status: 'idle' });
+      expect(state.status).toBe('idle');
+    });
+
+    it('converts a saved "running" status into "paused" - never auto-resumes playback on restore', () => {
+      const engine = createTimerEngine(makeSyntheticWorkout());
+      const { state } = engine.restore({ elapsedTotal: 15, powerAdjustPct: 0, status: 'running' });
+      expect(state.status).toBe('paused');
+    });
+
+    it('restores to "finished" when the saved elapsedTotal already reached the end, regardless of the saved status', () => {
+      const engine = createTimerEngine(makeSyntheticWorkout());
+      const { state } = engine.restore({ elapsedTotal: 30, powerAdjustPct: 0, status: 'paused' });
+      expect(state.status).toBe('finished');
+    });
+
+    it('clamps a negative elapsedTotal to 0 instead of producing a broken state', () => {
+      const engine = createTimerEngine(makeSyntheticWorkout());
+      const { state } = engine.restore({ elapsedTotal: -5, powerAdjustPct: 0, status: 'paused' });
+      expect(state.elapsedTotal).toBe(0);
+      expect(state.currentIntervalIndex).toBe(0);
+    });
+
+    it('a restored engine can be resumed normally with play() afterwards, continuing from the restored point', () => {
+      const engine = createTimerEngine(makeSyntheticWorkout());
+      engine.restore({ elapsedTotal: 15, powerAdjustPct: 0, status: 'paused' });
+
+      const { state: playedState } = engine.play(100_000);
+      expect(playedState.status).toBe('running');
+
+      const { state: tickedState } = engine.tick(102_000); // 2s later
+      expect(tickedState.elapsedTotal).toBe(17);
+      expect(tickedState.currentIntervalIndex).toBe(1);
+      expect(tickedState.elapsedInInterval).toBe(7);
+    });
+
+    it('getState() after restore() reflects the restored snapshot (not stale idle-at-zero data)', () => {
+      const engine = createTimerEngine(makeSyntheticWorkout());
+      engine.restore({ elapsedTotal: 15, powerAdjustPct: 0, status: 'paused' });
+      expect(engine.getState().elapsedTotal).toBe(15);
+    });
+  });
 });

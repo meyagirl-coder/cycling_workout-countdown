@@ -772,6 +772,8 @@ App 一打開，使用者第一眼看到的畫面：
 - FTP、體重：`localStorage`，key 建議 `user_ftp`、`user_weight`，App 啟動時讀取，沒有就跳出設定畫面
 - 團體訓練排程（課表＋開始時間）：`localStorage` key `scheduled_workout`，見 5.3 節
 - 主題選擇（dark／light／auto）：`localStorage` key `user_theme`，見 5.4 節
+- 首頁輸入草稿（「貼課表網址」「貼上課表文字內容」）：`localStorage` key `upload_draft_inputs`（`draftInputStore.js`）。使用者打字時 debounce 400ms 後把兩個欄位目前的完整內容一起存下去，App 開機時（`playerApp.js`）如果有存過（而且是今天存的）就自動帶回輸入框，不用重新打字。只在「當天」有效（用瀏覽器本地日期判斷，見 `utils/localDate.js`），跨天視為過期。
+- 執行中課表進度：`localStorage` key `workout_progress`（`workoutProgressStore.js`）。課表資料本身（不只是計時器狀態）連同目前進度（`elapsedTotal`、`powerAdjustPct`、`status`）在每次收到計時器新狀態時整包存下去，重新整理頁面或切分頁再切回來時，App 開機會用 `client.restore()`（而不是 `client.init()`）復原到「同一份課表、停在同一個進度點」——狀態固定回到 `paused`／`idle`／`finished`，不會自動恢復成 `running`（就算存檔當下正在跑，也需要使用者自己按播放）。同樣只在「當天」有效；使用者按下「回到主畫面」時會主動清掉，不用等過期。這筆進度的復原順序在團體訓練排程之後：兩者理論上不會同時有意義的資料，但如果剛好都有，排程（使用者更晚、更明確設定的動作）優先。
 - 這個 Phase 還不用 IndexedDB（留給 Phase 2 存課表清單／群組用）
 
 ---

@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createUploadView } from '../src/ui/uploadView.js';
 
 function selectFile(input, file) {
@@ -16,6 +16,7 @@ function makeHandlers(overrides = {}) {
     onScheduledStartTimeSet: vi.fn(),
     onScheduledStartTimeCancel: vi.fn(),
     onFtpChange: vi.fn(),
+    onDraftInputChange: vi.fn(),
     ...overrides,
   };
 }
@@ -486,6 +487,76 @@ describe('createUploadView: block 4 - 使用 intervals 行事曆課表', () => {
     const expectedLocalDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
 
     expect(link.getAttribute('href')).toBe(`/api/intervals-events?today=${expectedLocalDate}`);
+  });
+});
+
+describe('createUploadView: draft input persistence (URL + paste text fields)', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('does not call onDraftInputChange immediately on input - it is debounced', () => {
+    const { root, handlers } = setup();
+    root.querySelector('.upload-url-input').value = 'https://app.trainerday.com/workouts/abc';
+    root.querySelector('.upload-url-input').dispatchEvent(new Event('input'));
+
+    expect(handlers.onDraftInputChange).not.toHaveBeenCalled();
+  });
+
+  it('calls onDraftInputChange with both fields\' current values after the debounce delay', () => {
+    const { root, handlers } = setup();
+    const urlInput = root.querySelector('.upload-url-input');
+    const pasteTextarea = root.querySelector('.upload-paste-textarea');
+
+    urlInput.value = 'https://app.trainerday.com/workouts/abc';
+    urlInput.dispatchEvent(new Event('input'));
+    vi.advanceTimersByTime(500);
+
+    expect(handlers.onDraftInputChange).toHaveBeenCalledTimes(1);
+    expect(handlers.onDraftInputChange).toHaveBeenCalledWith({ url: 'https://app.trainerday.com/workouts/abc', pasteText: '' });
+
+    pasteTextarea.value = '5m 50%';
+    pasteTextarea.dispatchEvent(new Event('input'));
+    vi.advanceTimersByTime(500);
+
+    expect(handlers.onDraftInputChange).toHaveBeenCalledTimes(2);
+    expect(handlers.onDraftInputChange).toHaveBeenLastCalledWith({ url: 'https://app.trainerday.com/workouts/abc', pasteText: '5m 50%' });
+  });
+
+  it('coalesces rapid keystrokes into a single call (resets the debounce timer on each input)', () => {
+    const { root, handlers } = setup();
+    const pasteTextarea = root.querySelector('.upload-paste-textarea');
+
+    for (const partial of ['5', '5m', '5m ', '5m 5', '5m 50', '5m 50%']) {
+      pasteTextarea.value = partial;
+      pasteTextarea.dispatchEvent(new Event('input'));
+      vi.advanceTimersByTime(100); // less than the debounce delay - each keystroke resets it
+    }
+    vi.advanceTimersByTime(500);
+
+    expect(handlers.onDraftInputChange).toHaveBeenCalledTimes(1);
+    expect(handlers.onDraftInputChange).toHaveBeenLastCalledWith({ url: '', pasteText: '5m 50%' });
+  });
+
+  it('setDraftInputs() restores both fields\' values from the outside (e.g. after loading a saved draft)', () => {
+    const { root, view } = setup();
+    view.setDraftInputs({ url: 'https://app.trainerday.com/workouts/abc', pasteText: '5m 50%\n10m 75%' });
+
+    expect(root.querySelector('.upload-url-input').value).toBe('https://app.trainerday.com/workouts/abc');
+    expect(root.querySelector('.upload-paste-textarea').value).toBe('5m 50%\n10m 75%');
+  });
+
+  it('setDraftInputs() leaves a field untouched when its value is not a string (e.g. only one field was saved)', () => {
+    const { root, view } = setup();
+    root.querySelector('.upload-url-input').value = 'https://app.trainerday.com/workouts/abc';
+    view.setDraftInputs({ pasteText: '5m 50%' });
+
+    expect(root.querySelector('.upload-url-input').value).toBe('https://app.trainerday.com/workouts/abc');
+    expect(root.querySelector('.upload-paste-textarea').value).toBe('5m 50%');
   });
 });
 

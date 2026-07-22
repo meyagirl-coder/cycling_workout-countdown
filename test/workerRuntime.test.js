@@ -288,4 +288,56 @@ describe('createWorkerRuntime', () => {
     expect(last.state.status).toBe('finished');
     expect(scheduler.activeCount()).toBe(0);
   });
+
+  describe('"restore" message (page-reload recovery, see workoutProgressStore.js)', () => {
+    it('emits a state reflecting the restored elapsedTotal/powerAdjustPct, landing on "paused", without starting the loop', () => {
+      const clock = createFakeClock(0);
+      const scheduler = createFakeScheduler();
+      const { runtime, messages } = createHarness(clock, scheduler);
+
+      runtime.handleMessage({ type: 'restore', workout: makeSyntheticWorkout(), elapsedTotal: 15, powerAdjustPct: 2, status: 'paused' });
+
+      expect(messages).toHaveLength(1);
+      expect(messages[0].state).toEqual({
+        status: 'paused',
+        currentIntervalIndex: 1,
+        elapsedInInterval: 5,
+        elapsedTotal: 15,
+        powerAdjustPct: 2,
+        startTimestamp: null,
+      });
+      expect(scheduler.activeCount()).toBe(0);
+    });
+
+    it('lets subsequent commands (play/pause/skip) work normally on the restored engine', () => {
+      const clock = createFakeClock(100_000);
+      const scheduler = createFakeScheduler();
+      const { runtime, messages } = createHarness(clock, scheduler);
+
+      runtime.handleMessage({ type: 'restore', workout: makeSyntheticWorkout(), elapsedTotal: 15, powerAdjustPct: 0, status: 'paused' });
+      runtime.handleMessage({ type: 'play' });
+      expect(scheduler.activeCount()).toBe(1);
+
+      clock.advance(2000);
+      scheduler.fireAll();
+
+      const last = messages[messages.length - 1];
+      expect(last.state.status).toBe('running');
+      expect(last.state.elapsedTotal).toBe(17);
+      expect(last.state.currentIntervalIndex).toBe(1);
+    });
+
+    it('a second "restore" replaces the previously restored/initialized engine entirely', () => {
+      const clock = createFakeClock(0);
+      const scheduler = createFakeScheduler();
+      const { runtime, messages } = createHarness(clock, scheduler);
+
+      runtime.handleMessage({ type: 'init', workout: makeSyntheticWorkout() });
+      runtime.handleMessage({ type: 'restore', workout: makeSyntheticWorkout(), elapsedTotal: 25, powerAdjustPct: 0, status: 'paused' });
+
+      const last = messages[messages.length - 1];
+      expect(last.state.currentIntervalIndex).toBe(2); // 25s lands in the freeride segment
+      expect(last.state.elapsedInInterval).toBe(3);
+    });
+  });
 });

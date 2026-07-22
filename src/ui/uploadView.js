@@ -1,3 +1,4 @@
+import { getLocalDateString } from '../utils/localDate.js';
 import { parseScheduledStartTimeInput } from './scheduledStartTimeParser.js';
 
 /**
@@ -29,6 +30,12 @@ import { parseScheduledStartTimeInput } from './scheduledStartTimeParser.js';
  *   onScheduledStartTimeSet(date)     「設定開始時間」輸入合法格式後按下「設定」
  *   onScheduledStartTimeCancel()      按下「設定開始時間」旁的「取消」
  *   onFtpChange(ftp)                  FTP 欄位改成一個合法的正數（呼叫端負責存 localStorage）
+ *   onDraftInputChange({url, pasteText})  「貼課表網址」／「貼上課表文字內容」
+ *                                     任一欄位輸入內容改變，debounce 過後才觸發
+ *                                     （呼叫端負責存 localStorage，見
+ *                                     draftInputStore.js）——避免使用者重新
+ *                                     整理頁面或切分頁再切回來時打到一半的
+ *                                     內容整個消失，不用重新打字。
  *
  * 「貼課表網址」曾經同時支援 TrainerDay／WhatsOnZwift，兩邊都因為抓不到
  * （WhatsOnZwift 當時回傳 HTTP 403，判斷是反爬蟲防護；TrainerDay 當時的
@@ -39,7 +46,7 @@ import { parseScheduledStartTimeInput } from './scheduledStartTimeParser.js';
  * 環境呼叫」的問題，如果還是 403，屬於預期內的結果，不是程式碼的問題。
  *
  * @param {HTMLElement} rootEl
- * @param {{onFileSelected: (file: File) => void, onIntervalsIcuSubmit: (rawText: string) => void, onPasteTextSubmit: (rawText: string) => void, onTrainerDayUrlSubmit: (url: string) => void, onWhatsOnZwiftUrlSubmit: (url: string) => void, onScheduledStartTimeSet: (date: Date) => void, onScheduledStartTimeCancel: () => void, onFtpChange: (ftp: number) => void}} handlers
+ * @param {{onFileSelected: (file: File) => void, onIntervalsIcuSubmit: (rawText: string) => void, onPasteTextSubmit: (rawText: string) => void, onTrainerDayUrlSubmit: (url: string) => void, onWhatsOnZwiftUrlSubmit: (url: string) => void, onScheduledStartTimeSet: (date: Date) => void, onScheduledStartTimeCancel: () => void, onFtpChange: (ftp: number) => void, onDraftInputChange: (draft: {url: string, pasteText: string}) => void}} handlers
  */
 export function createUploadView(rootEl, handlers) {
   rootEl.innerHTML = `
@@ -237,6 +244,22 @@ export function createUploadView(rootEl, handlers) {
     if (Number.isFinite(value) && value > 0) handlers.onFtpChange(Math.round(value));
   });
 
+  // 「貼課表網址」「貼上課表文字內容」草稿：debounce 過後才通知呼叫端存
+  // localStorage，避免使用者每打一個字就寫一次；兩個欄位共用同一個計時器、
+  // 每次都送出兩個欄位「目前」的完整內容（不是只送剛剛改的那個），呼叫端
+  // 只要整包存起來就好，不用自己合併新舊值。
+  const DRAFT_SAVE_DEBOUNCE_MS = 400;
+  let draftSaveTimeoutId = null;
+  function scheduleDraftSave() {
+    if (draftSaveTimeoutId !== null) clearTimeout(draftSaveTimeoutId);
+    draftSaveTimeoutId = setTimeout(() => {
+      draftSaveTimeoutId = null;
+      handlers.onDraftInputChange({ url: urlInput.value, pasteText: pasteTextarea.value });
+    }, DRAFT_SAVE_DEBOUNCE_MS);
+  }
+  urlInput.addEventListener('input', scheduleDraftSave);
+  pasteTextarea.addEventListener('input', scheduleDraftSave);
+
   // 「設定」按鈕的 click handler 必須整段保持同步（不能是 async／不能包在
   // Promise.then 或 setTimeout 裡）：呼叫端（playerApp.js 的
   // onScheduledStartTimeSet）會在這個呼叫堆疊當下解鎖瀏覽器的自動播放權限
@@ -299,6 +322,11 @@ export function createUploadView(rootEl, handlers) {
     setFtpValue(ftp) {
       ftpInput.value = ftp;
     },
+    /** 從外部（例如剛從 localStorage 復原的草稿）帶回「貼課表網址」「貼上課表文字內容」的內容 */
+    setDraftInputs({ url, pasteText }) {
+      if (typeof url === 'string') urlInput.value = url;
+      if (typeof pasteText === 'string') pasteTextarea.value = pasteText;
+    },
     /** 從外部（例如剛從 localStorage 復原排程）設定「已設定開始時間」狀態顯示 */
     showScheduleStatus(date) {
       showScheduleStatus(date);
@@ -308,14 +336,6 @@ export function createUploadView(rootEl, handlers) {
       hideScheduleStatus();
     },
   };
-}
-
-/** 瀏覽器本地日期（YYYY-MM-DD），用 local getter 而不是 UTC getter，故意跟伺服器時區脫鉤 */
-function getLocalDateString(date = new Date()) {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
 }
 
 /** 「已設定開始時間」狀態顯示用的人類可讀格式，例如 "2026/07/24 20:00" */
