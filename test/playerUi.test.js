@@ -238,6 +238,7 @@ describe('createPlayerView', () => {
 
     expect(root.querySelector('.countdown-number').textContent).toBe('0:06'); // 10 - 4
     expect(root.querySelector('.target-watt').textContent).toBe('176 W'); // 200 * 0.88
+    expect(root.querySelector('.target-cadence').textContent).toBe('90 rpm'); // this interval's cadence
     expect(root.querySelector('.target-pct').textContent).toBe('88% FTP');
     expect(root.querySelector('.elapsed-time').textContent).toBe('經過時間 0:16');
     expect(root.querySelector('.countdown-label')).toBeNull(); // regression: label removed, replaced by elapsed-time
@@ -254,8 +255,35 @@ describe('createPlayerView', () => {
     view.update(makeWorkout(), state, 200);
 
     expect(root.querySelector('.target-watt').textContent).toBe('自由騎乘');
+    expect(root.querySelector('.target-cadence').textContent).toBe('');
     expect(root.querySelector('.target-pct').textContent).toBe('');
     expect(root.querySelector('.status-panel').className).toContain('zone-none');
+  });
+
+  it('shows no cadence badge when the current interval has no cadence data (regression: must not show a misleading "0 rpm")', () => {
+    document.body.innerHTML = '<div id="root"></div>';
+    const root = document.getElementById('root');
+    const view = createPlayerView(root, { onPlayPause: vi.fn(), onSkip: vi.fn(), onRedo: vi.fn(), onStop: vi.fn() });
+
+    // Index 0 is the warmup segment, which has cadence: null in makeWorkout().
+    const state = makeIdleState({ status: 'running', currentIntervalIndex: 0, elapsedInInterval: 0, elapsedTotal: 0 });
+    view.update(makeWorkout(), state, 200);
+
+    expect(root.querySelector('.target-cadence').textContent).toBe('');
+  });
+
+  it('updates the cadence badge when moving to a different interval with different cadence data', () => {
+    document.body.innerHTML = '<div id="root"></div>';
+    const root = document.getElementById('root');
+    const view = createPlayerView(root, { onPlayPause: vi.fn(), onSkip: vi.fn(), onRedo: vi.fn(), onStop: vi.fn() });
+
+    const steadyState = makeIdleState({ status: 'running', currentIntervalIndex: 1, elapsedInInterval: 0, elapsedTotal: 12 });
+    view.update(makeWorkout(), steadyState, 200);
+    expect(root.querySelector('.target-cadence').textContent).toBe('90 rpm');
+
+    const cooldownState = makeIdleState({ status: 'running', currentIntervalIndex: 3, elapsedInInterval: 0, elapsedTotal: 30 });
+    view.update(makeWorkout(), cooldownState, 200);
+    expect(root.querySelector('.target-cadence').textContent).toBe('');
   });
 
   it('disables controls and shows the finished banner once the workout is finished', () => {

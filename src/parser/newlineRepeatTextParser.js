@@ -45,8 +45,19 @@
  *      `usesIndentBoundary`，這條規則完全不介入，行為跟以前一模一樣——
  *      這是刻意設計成「只在真的有縮排差異時才生效」，不會誤判既有格式裡
  *      「每一行都不縮排」的重複區塊在寫完第一行就結束。
+ *
+ * **第三種重複寫法：整行寫完的括號重複組（跟上面兩種是完全不同的機制）**：
+ * `NX (段落1 | 段落2 | ...)`——括號包住整組內容，裡面用 `|` 分隔任意數量的
+ * 段落，這一整行本身就自帶「重複幾次」跟「重複哪些內容」，不需要「收集到
+ * 哪裡結束」的狀態機。遇到這種行本身就是一個隱性的區塊邊界，跟空行、下一個
+ * 「Nx」宣告一樣，會先結束目前還在收集的換行重複區塊，然後直接展開、塞進
+ * 最終的 intervals（不會被目前收集中的區塊吃掉）。跟
+ * trainerDayFullTextParser.js 的寫法一樣，是共用同一個正則跟切段邏輯。
  */
 export const REPEAT_LINE_RE = /^(\d+)\s*x$/i;
+
+/** 整行寫完的重複組：`NX (段落1 | 段落2 | ...)`，`X` 大小寫都接受 */
+export const BRACKET_REPEAT_LINE_RE = /^(\d+)\s*[Xx]\s*\(([\s\S]+)\)$/;
 
 /**
  * 使用者從課表頁面複製貼上時，常常會連著清單的項目符號一起複製（例如
@@ -130,6 +141,33 @@ export function parseNewlineRepeatText(text, parseLine, formatDescription) {
     const lineIndent = leadingWhitespaceCount(rawLine);
     if (pendingRepeat && pendingRepeat.usesIndentBoundary && lineIndent <= pendingRepeat.headerIndent) {
       flushPendingRepeat();
+    }
+
+    const bracketMatch = line.match(BRACKET_REPEAT_LINE_RE);
+    if (bracketMatch) {
+      // 整行寫完的括號重複組是完全獨立、自帶次數跟內容的一行，本身就是一個
+      // 隱性的區塊邊界（跟空行、下一個「Nx」宣告一樣），先結束目前還在收集
+      // 的換行重複區塊，再直接展開、塞進最終的 intervals。
+      flushPendingRepeat();
+      const [, countStr, segmentsRaw] = bracketMatch;
+      const count = Number(countStr);
+      if (count <= 0) {
+        throw new Error(`Invalid workout text: line ${lineNumber} ("${line}") has an invalid repeat count`);
+      }
+      const segments = segmentsRaw.split('|').map((segment) => stripBulletPrefix(stripMarkdownBold(segment.trim())));
+      const parsedSegments = segments.map((segment) => {
+        const segmentInterval = parseLine(segment);
+        if (!segmentInterval) {
+          throw new Error(
+            `Invalid workout text: line ${lineNumber} ("${line}") has a segment ("${segment}") that does not match the expected ${formatDescription} format`
+          );
+        }
+        return segmentInterval;
+      });
+      for (let i = 0; i < count; i++) {
+        intervals.push(...parsedSegments);
+      }
+      return;
     }
 
     const repeatMatch = line.match(REPEAT_LINE_RE);

@@ -17,9 +17,14 @@
  * 處理」，不重複實作任何解析邏輯。
  *
  * TrainerDay「完整複製」格式優先判斷：只要整份文字裡出現「持续时間」總時長
- * 說明行，或是整行寫完的重複組 `NX (...)`，就直接判定是這個格式——這兩種
- * 寫法是這個格式獨有的，不會出現在其他格式裡，不需要跟「第一個看起來像
- * 課表內容的行」的判斷搶順序，使用者要求這個格式優先於舊的手動輸入格式。
+ * 說明行，或是整行寫完、且**不含 `%`** 的重複組 `NX (...)`，就直接判定是這個
+ * 格式——這兩種寫法是這個格式獨有的，不會出現在其他格式裡，不需要跟「第一
+ * 個看起來像課表內容的行」的判斷搶順序，使用者要求這個格式優先於舊的手動
+ * 輸入格式。**排除含 `%` 的括號重複組**是因為 TrainerDay「Workout
+ * structure」格式（見下方）現在也支援同一種括號寫法（`NX (X min @ Y% (Zw) |
+ * ...)`），兩者的括號語法完全相同，只能靠段落內容有沒有 `%` 區分——沒有 `%`
+ * 才是這個「完整複製」格式獨有的寫法（`Yw`，沒有百分比），不能看到括號就
+ * 直接當成這個格式。
  *
  * 其餘格式的判斷邏輯：找第一個看起來像課表內容的行（先去掉常見的清單項目
  * 符號前綴，例如從網頁清單複製貼上時常帶著的「‧ 」「* 」，以及 Markdown
@@ -63,7 +68,7 @@ export function parseAutoDetectedPasteText(text) {
   const lines = text.split(/\r\n|\r|\n/).map((line) => stripBulletPrefix(stripMarkdownBold(line.trim())));
 
   const hasTrainerDayFullOnlyMarkers = lines.some(
-    (line) => TRAINERDAY_FULL_DURATION_HEADER_RE.test(line) || TRAINERDAY_FULL_REPEAT_RE.test(line)
+    (line) => TRAINERDAY_FULL_DURATION_HEADER_RE.test(line) || (TRAINERDAY_FULL_REPEAT_RE.test(line) && !line.includes('%'))
   );
   if (hasTrainerDayFullOnlyMarkers) return parseTrainerDayFullText(text);
 
