@@ -1,25 +1,30 @@
 /**
- * 上傳畫面：三個平行的課表載入方式——貼上課表文字內容／上傳 .zwo 檔案／
- * intervals.icu 行事曆課表，畫面上用同樣的卡片樣式並排，讓使用者一眼就能
- * 看出這是三個平行選項，不是主功能＋附加說明的層級關係。純 DOM 渲染邏輯，
- * 不碰 parser／計時引擎／fetch —— 收到輸入就透過對應的 handler 丟給呼叫端
- * 處理：
+ * 上傳畫面：四個平行的課表載入方式——貼 TrainerDay 課表網址／貼上課表文字
+ * 內容／上傳 .zwo 檔案／intervals.icu 行事曆課表，畫面上用同樣的卡片樣式
+ * 並排，讓使用者一眼就能看出這是四個平行選項，不是主功能＋附加說明的層級
+ * 關係。純 DOM 渲染邏輯，不碰 parser／計時引擎／fetch —— 收到輸入就透過
+ * 對應的 handler 丟給呼叫端處理：
  *   onFileSelected(file)          選了本機 .zwo 檔案——檔案輸入框故意不設
  *                                 `accept` 屬性（見下方），副檔名／內容格式
  *                                 檢查交給呼叫端（playerApp.js）處理
  *   onIntervalsIcuSubmit(rawText) 送出 intervals.icu event ID（或網址）
  *   onPasteTextSubmit(rawText)    送出貼上的純文字課表——TrainerDay／
- *                                 WhatsOnZwift／「時長 百分比」三種格式都
- *                                 送這裡，由呼叫端自動判斷是哪一種再解析
+ *                                 WhatsOnZwift／「時長 百分比」等格式都送
+ *                                 這裡，由呼叫端自動判斷是哪一種再解析，這
+ *                                 裡不做網址判斷（見「貼課表網址」欄位）
+ *   onTrainerDayUrlSubmit(url)    「貼課表網址」欄位送出一個 TrainerDay 網址
  *   onFtpChange(ftp)              FTP 欄位改成一個合法的正數（呼叫端負責存 localStorage）
  *
- * 曾經有「貼課表網址」自動抓取的欄位（呼叫 proxy 下載 TrainerDay／
- * WhatsOnZwift 頁面），但兩邊分別遇到反爬蟲防護（HTTP 403）跟抓不到動態
- * 渲染內容的問題，技術上走不通，已經移除；改成在這裡的卡片標題下方直接
- * 提示使用者改用「貼上課表文字內容」。
+ * 「貼課表網址」曾經同時支援 TrainerDay／WhatsOnZwift，兩邊都因為抓不到
+ * （WhatsOnZwift 反爬蟲防護 HTTP 403；TrainerDay 當時擷取邏輯猜錯頁面格式）
+ * 而整個移除過一次。這次只重新加回 TrainerDay（對接新的「Workout
+ * structure」格式 parser，使用者已經用另一個 Claude 對話確認過這個格式的
+ * 內容可以正常抓到），WhatsOnZwift 因為是網站本身的反爬蟲防護、跟抓取端在
+ * 哪個環境執行無關，暫不重新加回——WhatsOnZwift 仍然只能透過「貼上課表文字
+ * 內容」手動貼上。
  *
  * @param {HTMLElement} rootEl
- * @param {{onFileSelected: (file: File) => void, onIntervalsIcuSubmit: (rawText: string) => void, onPasteTextSubmit: (rawText: string) => void, onFtpChange: (ftp: number) => void}} handlers
+ * @param {{onFileSelected: (file: File) => void, onIntervalsIcuSubmit: (rawText: string) => void, onPasteTextSubmit: (rawText: string) => void, onTrainerDayUrlSubmit: (url: string) => void, onFtpChange: (ftp: number) => void}} handlers
  */
 export function createUploadView(rootEl, handlers) {
   rootEl.innerHTML = `
@@ -35,9 +40,26 @@ export function createUploadView(rootEl, handlers) {
 
       <div class="upload-source-list">
         <div class="upload-source-card">
+          <h2 class="upload-source-title">貼課表網址</h2>
+          <form class="upload-url-form">
+            <div class="upload-url-row">
+              <input
+                type="text"
+                id="upload-url-input"
+                class="upload-url-input"
+                placeholder="貼上 TrainerDay 課表網址"
+                autocomplete="off"
+              />
+              <button type="submit" class="upload-url-submit">載入</button>
+            </div>
+          </form>
+          <p class="upload-source-hint">目前支援 TrainerDay（app.trainerday.com）</p>
+        </div>
+
+        <div class="upload-source-card">
           <h2 class="upload-source-title">貼上課表文字內容</h2>
           <p class="upload-source-hint">
-            支援 TrainerDay、WhatsOnZwift 格式：請到課表網站的頁面上複製課表文字，貼在下方即可。目前不支援直接貼課表網址自動抓取。
+            支援 TrainerDay、WhatsOnZwift 格式：請到課表網站的頁面上複製課表文字，貼在下方即可。WhatsOnZwift 目前不支援直接貼網址自動抓取，TrainerDay 可以改用上方的「貼課表網址」。
           </p>
           <form class="upload-paste-form">
             <textarea
@@ -102,6 +124,9 @@ export function createUploadView(rootEl, handlers) {
   const ftpInput = rootEl.querySelector('.upload-ftp-input');
   const pasteForm = rootEl.querySelector('.upload-paste-form');
   const pasteTextarea = rootEl.querySelector('.upload-paste-textarea');
+  const urlForm = rootEl.querySelector('.upload-url-form');
+  const urlInput = rootEl.querySelector('.upload-url-input');
+  const urlSubmitBtn = rootEl.querySelector('.upload-url-submit');
 
   function showErrorMessage(message) {
     errorEl.textContent = message;
@@ -125,12 +150,40 @@ export function createUploadView(rootEl, handlers) {
     if (value) handlers.onIntervalsIcuSubmit(value);
   });
 
-  // 「貼上課表文字內容」只處理文字，不做網址判斷——「貼課表網址」自動抓取
-  // 因為反爬蟲防護／動態渲染內容抓不到而移除了，現在只剩這一種輸入方式。
+  // 「貼上課表文字內容」只處理文字，不做網址判斷——網址判斷完全交給
+  // 「貼課表網址」那個獨立欄位，兩邊的邏輯不混在一起。
   pasteForm.addEventListener('submit', (event) => {
     event.preventDefault();
     const raw = pasteTextarea.value;
     if (raw.trim()) handlers.onPasteTextSubmit(raw);
+  });
+
+  const TRAINERDAY_HOSTS = new Set(['app.trainerday.com']);
+
+  urlForm.addEventListener('submit', (event) => {
+    event.preventDefault();
+    const value = urlInput.value.trim();
+    if (!value) return;
+
+    let parsedUrl;
+    try {
+      parsedUrl = new URL(value);
+    } catch {
+      showErrorMessage('網址格式錯誤，請確認貼上的是完整的課表網址。');
+      return;
+    }
+
+    if (parsedUrl.protocol !== 'http:' && parsedUrl.protocol !== 'https:') {
+      showErrorMessage('網址格式錯誤，請確認貼上的是完整的課表網址。');
+      return;
+    }
+
+    const hostname = parsedUrl.hostname.toLowerCase();
+    if (TRAINERDAY_HOSTS.has(hostname)) {
+      handlers.onTrainerDayUrlSubmit(value);
+    } else {
+      showErrorMessage('目前只支援 TrainerDay（app.trainerday.com）的課表網址，其他網站請改用「貼上課表文字內容」。');
+    }
   });
 
   // 即時反映：只要是合法的正數就馬上通知呼叫端（存 localStorage／更新執行頁瓦數），
@@ -152,6 +205,11 @@ export function createUploadView(rootEl, handlers) {
       intervalsSubmitBtn.disabled = isLoading;
       intervalsSubmitBtn.textContent = isLoading ? '載入中…' : '載入';
       intervalsInput.disabled = isLoading;
+    },
+    setUrlLoading(isLoading) {
+      urlSubmitBtn.disabled = isLoading;
+      urlSubmitBtn.textContent = isLoading ? '載入中…' : '載入';
+      urlInput.disabled = isLoading;
     },
     setFtpValue(ftp) {
       ftpInput.value = ftp;

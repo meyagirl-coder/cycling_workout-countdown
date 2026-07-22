@@ -11,6 +11,7 @@ function makeHandlers(overrides = {}) {
     onFileSelected: vi.fn(),
     onIntervalsIcuSubmit: vi.fn(),
     onPasteTextSubmit: vi.fn(),
+    onTrainerDayUrlSubmit: vi.fn(),
     onFtpChange: vi.fn(),
     ...overrides,
   };
@@ -24,44 +25,46 @@ function setup(handlerOverrides = {}) {
   return { root, handlers, view };
 }
 
-describe('createUploadView layout (three parallel source cards)', () => {
-  it('renders exactly three source cards, in order: paste text, .zwo upload, intervals.icu', () => {
+describe('createUploadView layout (four parallel source cards)', () => {
+  it('renders exactly four source cards, in order: url, paste text, .zwo upload, intervals.icu', () => {
     const { root } = setup();
     const titles = Array.from(root.querySelectorAll('.upload-source-title')).map((el) => el.textContent);
-    expect(titles).toEqual(['貼上課表文字內容', '上傳 ZWO 檔案', '使用 intervals 行事曆課表']);
+    expect(titles).toEqual(['貼課表網址', '貼上課表文字內容', '上傳 ZWO 檔案', '使用 intervals 行事曆課表']);
   });
 
   it('gives every source card title the same font-size/weight via one shared class (visual consistency)', () => {
     const { root } = setup();
     const titles = root.querySelectorAll('.upload-source-title');
-    expect(titles).toHaveLength(3);
+    expect(titles).toHaveLength(4);
     for (const title of titles) {
       expect(title.tagName).toBe('H2');
     }
   });
 
-  it('wraps each of the three blocks in the same card class', () => {
+  it('wraps each of the four blocks in the same card class', () => {
     const { root } = setup();
-    expect(root.querySelectorAll('.upload-source-card')).toHaveLength(3);
+    expect(root.querySelectorAll('.upload-source-card')).toHaveLength(4);
   });
 
-  it('no longer renders a url input field or url form (removed: auto-fetch was not viable)', () => {
+  it('renders the url card\'s hint text, scoped to TrainerDay only (WhatsOnZwift auto-fetch is still not viable)', () => {
     const { root } = setup();
-    expect(root.querySelector('.upload-url-form')).toBeNull();
-    expect(root.querySelector('.upload-url-input')).toBeNull();
+    const urlCard = root.querySelectorAll('.upload-source-card')[0];
+    const hint = urlCard.querySelector('.upload-source-hint');
+    expect(hint).not.toBeNull();
+    expect(hint.textContent).toContain('TrainerDay');
+    expect(hint.textContent).not.toContain('WhatsOnZwift');
   });
 
-  it('shows a hint on the paste-text card pointing users to it instead of url auto-fetch', () => {
+  it('shows a hint on the paste-text card pointing WhatsOnZwift users there, while mentioning TrainerDay also has the url card', () => {
     const { root } = setup();
-    const pasteCard = root.querySelectorAll('.upload-source-card')[0];
+    const pasteCard = root.querySelectorAll('.upload-source-card')[1];
     const hint = pasteCard.querySelector('.upload-source-hint');
     expect(hint).not.toBeNull();
     expect(hint.textContent).toContain('TrainerDay');
     expect(hint.textContent).toContain('WhatsOnZwift');
-    expect(hint.textContent).toContain('不支援直接貼課表網址');
   });
 
-  it('keeps a single shared error area below all three cards', () => {
+  it('keeps a single shared error area below all four cards', () => {
     const { root } = setup();
     expect(root.querySelectorAll('.upload-error')).toHaveLength(1);
     expect(root.querySelector('.upload-error').classList.contains('hidden')).toBe(true);
@@ -114,7 +117,111 @@ describe('createUploadView: FTP field', () => {
   });
 });
 
-describe('createUploadView: block 1 - 貼上課表文字內容 (text only, no url auto-fetch)', () => {
+describe('createUploadView: block 1 - 貼課表網址 (TrainerDay only)', () => {
+  it('routes a TrainerDay url to onTrainerDayUrlSubmit', () => {
+    const { root, handlers } = setup();
+    const input = root.querySelector('.upload-url-input');
+    const form = root.querySelector('.upload-url-form');
+
+    input.value = 'https://app.trainerday.com/workouts/20260714-ramp-up-5';
+    form.dispatchEvent(new Event('submit', { cancelable: true }));
+
+    expect(handlers.onTrainerDayUrlSubmit).toHaveBeenCalledTimes(1);
+    expect(handlers.onTrainerDayUrlSubmit).toHaveBeenCalledWith('https://app.trainerday.com/workouts/20260714-ramp-up-5');
+    expect(handlers.onPasteTextSubmit).not.toHaveBeenCalled();
+  });
+
+  it('is case-insensitive for the protocol ("HTTP://...")', () => {
+    const { root, handlers } = setup();
+    const input = root.querySelector('.upload-url-input');
+    const form = root.querySelector('.upload-url-form');
+
+    input.value = 'HTTP://app.trainerday.com/workouts/foo';
+    form.dispatchEvent(new Event('submit', { cancelable: true }));
+
+    expect(handlers.onTrainerDayUrlSubmit).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows an inline error (no handler call) for a url from an unsupported host (e.g. whatsonzwift.com - not re-added)', () => {
+    const { root, handlers } = setup();
+    const input = root.querySelector('.upload-url-input');
+    const form = root.querySelector('.upload-url-form');
+    const errorEl = root.querySelector('.upload-error');
+
+    input.value = 'https://whatsonzwift.com/workouts/over-unders';
+    form.dispatchEvent(new Event('submit', { cancelable: true }));
+
+    expect(handlers.onTrainerDayUrlSubmit).not.toHaveBeenCalled();
+    expect(errorEl.classList.contains('hidden')).toBe(false);
+    expect(errorEl.textContent).toContain('TrainerDay');
+  });
+
+  it('shows an inline error for a url from any other unsupported host', () => {
+    const { root, handlers } = setup();
+    const input = root.querySelector('.upload-url-input');
+    const form = root.querySelector('.upload-url-form');
+    const errorEl = root.querySelector('.upload-error');
+
+    input.value = 'https://example.com/some-other-workout-site';
+    form.dispatchEvent(new Event('submit', { cancelable: true }));
+
+    expect(handlers.onTrainerDayUrlSubmit).not.toHaveBeenCalled();
+    expect(errorEl.classList.contains('hidden')).toBe(false);
+  });
+
+  it('shows an inline "format error" for a value that is not a valid url at all', () => {
+    const { root, handlers } = setup();
+    const input = root.querySelector('.upload-url-input');
+    const form = root.querySelector('.upload-url-form');
+    const errorEl = root.querySelector('.upload-error');
+
+    input.value = 'not a url';
+    form.dispatchEvent(new Event('submit', { cancelable: true }));
+
+    expect(handlers.onTrainerDayUrlSubmit).not.toHaveBeenCalled();
+    expect(errorEl.classList.contains('hidden')).toBe(false);
+  });
+
+  it('rejects a non-http(s) protocol even if the hostname matches (e.g. "file://app.trainerday.com/...")', () => {
+    const { root, handlers } = setup();
+    const input = root.querySelector('.upload-url-input');
+    const form = root.querySelector('.upload-url-form');
+
+    input.value = 'file://app.trainerday.com/etc/passwd';
+    form.dispatchEvent(new Event('submit', { cancelable: true }));
+
+    expect(handlers.onTrainerDayUrlSubmit).not.toHaveBeenCalled();
+  });
+
+  it('does nothing for a blank submission (no handler call, no error)', () => {
+    const { root, handlers } = setup();
+    const form = root.querySelector('.upload-url-form');
+    const errorEl = root.querySelector('.upload-error');
+
+    form.dispatchEvent(new Event('submit', { cancelable: true }));
+
+    expect(handlers.onTrainerDayUrlSubmit).not.toHaveBeenCalled();
+    expect(errorEl.classList.contains('hidden')).toBe(true);
+  });
+
+  it('toggles the url-form loading state on the submit button and input', () => {
+    const { root, view } = setup();
+    const submitBtn = root.querySelector('.upload-url-submit');
+    const input = root.querySelector('.upload-url-input');
+
+    view.setUrlLoading(true);
+    expect(submitBtn.disabled).toBe(true);
+    expect(submitBtn.textContent).toBe('載入中…');
+    expect(input.disabled).toBe(true);
+
+    view.setUrlLoading(false);
+    expect(submitBtn.disabled).toBe(false);
+    expect(submitBtn.textContent).toBe('載入');
+    expect(input.disabled).toBe(false);
+  });
+});
+
+describe('createUploadView: block 2 - 貼上課表文字內容 (text only, no url detection)', () => {
   it('shows a placeholder using %FTP-style examples, with no "w" watt-based example anywhere (avoids implying watts are required)', () => {
     const { root } = setup();
     const textarea = root.querySelector('.upload-paste-textarea');
@@ -148,7 +255,7 @@ describe('createUploadView: block 1 - 貼上課表文字內容 (text only, no ur
     expect(handlers.onPasteTextSubmit).not.toHaveBeenCalled();
   });
 
-  it('does not do any url detection on the pasted text - a url-shaped value is just submitted as-is', () => {
+  it('routes text that looks like a url straight to onPasteTextSubmit - no url detection happens in this field anymore', () => {
     const { root, handlers } = setup();
     const textarea = root.querySelector('.upload-paste-textarea');
     const form = root.querySelector('.upload-paste-form');
@@ -158,10 +265,11 @@ describe('createUploadView: block 1 - 貼上課表文字內容 (text only, no ur
 
     expect(handlers.onPasteTextSubmit).toHaveBeenCalledTimes(1);
     expect(handlers.onPasteTextSubmit).toHaveBeenCalledWith('https://app.trainerday.com/workouts/20260714-ramp-up-5');
+    expect(handlers.onTrainerDayUrlSubmit).not.toHaveBeenCalled();
   });
 });
 
-describe('createUploadView: block 2 - 上傳 ZWO 檔案', () => {
+describe('createUploadView: block 3 - 上傳 ZWO 檔案', () => {
   it('renders the dropzone with the file input', () => {
     const { root } = setup();
     expect(root.querySelector('.upload-dropzone')).not.toBeNull();
@@ -194,7 +302,7 @@ describe('createUploadView: block 2 - 上傳 ZWO 檔案', () => {
   });
 });
 
-describe('createUploadView: block 3 - 使用 intervals 行事曆課表', () => {
+describe('createUploadView: block 4 - 使用 intervals 行事曆課表', () => {
   it('submits the trimmed event ID input', () => {
     const { root, handlers } = setup();
     const input = root.querySelector('.upload-intervals-input');

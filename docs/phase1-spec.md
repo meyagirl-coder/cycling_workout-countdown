@@ -151,27 +151,38 @@ function parsePasteText(text) -> Workout
 
 純函式，跟 `parseZwoXml()` 同樣不碰 UI、不碰 localStorage。
 
-### 3.3 貼課表網址自動抓取（已移除）
+### 3.3 貼課表網址自動抓取
 
-Phase 1 開發過程中曾經做過「貼上 TrainerDay／WhatsOnZwift 課表網址，伺服器
-端 proxy 抓 HTML 後自動解析」的功能（`/api/trainerday-workout`、
-`/api/whatsonzwift-workout` 兩支 Vercel Serverless Function，搭配
-`extractWorkoutTextFromHtml()`／`extractWhatsOnZwiftTextFromHtml()` 從 HTML
-擷取課表文字）。
-
-實際部署後確認兩邊都走不通：
+Phase 1 開發過程中做過「貼上 TrainerDay／WhatsOnZwift 課表網址，伺服器端
+proxy 抓 HTML 後自動解析」的功能（`/api/trainerday-workout`、
+`/api/whatsonzwift-workout` 兩支 Vercel Serverless Function），第一次實測
+後兩邊都走不通，整個移除過一次：
 - **WhatsOnZwift**：伺服器直接回傳 `HTTP 403`，判斷是反爬蟲防護擋下抓取
   請求；換過偽裝成真實瀏覽器的 User-Agent／Accept 標頭後仍然被擋，判斷是
   比 User-Agent 檢查更進階的防護（IP 信譽／TLS 指紋辨識／JS 挑戰之類），
-  不是換標頭能繞過的。
-- **TrainerDay**：抓取本身成功（`HTTP 200`），但頁面回傳的 HTML 裡找不到
-  預期格式的課表文字——研判課表內容是前端 JavaScript 動態渲染的，伺服器端
-  直接抓 HTML 拿不到。
+  不是換標頭能繞過的。**這個結論目前還沒改變，WhatsOnZwift 沒有重新加回
+  URL 自動抓取**，仍然只能透過 §3.4 的「手動複製貼上文字」。
+- **TrainerDay**：抓取本身成功（`HTTP 200`），但當時的擷取邏輯（鎖定
+  `X min @ Yw` 這個格式）在頁面回傳的 HTML 裡找不到符合的課表文字，判斷
+  是猜錯了頁面上課表文字的實際格式。
 
-技術成本效益不好，決定放棄這個功能：上述兩支 proxy function、HTML 擷取
-模組、以及首頁的「貼課表網址」欄位都已經移除，只保留下面 §3.4／§3.5 的
-「手動複製貼上文字」作為對應 TrainerDay／WhatsOnZwift 這兩個網站課表的
-方式。
+後來使用者實際用另一個 Claude 對話成功抓到 TrainerDay 課表頁面的內容，
+發現頁面上「Workout structure」區塊顯示的是 §3.7 的 `X min @ Y% (Zw)`
+格式，不是 §3.2 的 `X min @ Yw`——**重新加回了 TrainerDay 的 URL 自動抓取**
+（`api/trainerday-workout.js`，搭配
+`extractTrainerDayWorkoutStructureFromHtml()` 從 HTML 擷取 §3.7 格式的課表
+文字），只允許抓取 `app.trainerday.com` 底下的網址（避免被當成任意網址的
+SSRF 跳板）；WhatsOnZwift 仍然不支援，因為它的失敗原因是網站本身的反爬蟲
+防護，跟「伺服器端擷取邏輯抓錯格式」是完全不同的問題，換一份新格式的
+extractor 也解決不了。
+
+> 這個沙箱環境的網路政策本身連不上 `app.trainerday.com`（不管是 `curl`、
+> 走 proxy、還是 `WebFetch` 工具都在政策層直接被 403 擋下，連 TCP tunnel
+> 都建立不起來），沒辦法直接對照實際頁面的 HTML 結構核對擷取邏輯，是照
+> 使用者提供的「Workout structure」範例文字實作的。**Vercel 正式部署的
+> serverless function 執行環境不受這個沙箱的網路政策限制**，實際能不能
+> 抓到要在正式環境測試才能確定；如果部署後這支 proxy 又抓不到內容，請
+> 改用「貼上課表文字內容」，並回報實際的頁面結構以便調整擷取邏輯。
 
 ### 3.4 WhatsOnZwift 文字格式（手動貼上）
 
@@ -464,18 +475,27 @@ App 一打開，使用者第一眼看到的畫面：
   - 一句簡短說明副標，例如「上傳課表檔案或連結 intervals.icu，開始你的結構化訓練」
   - 只在首頁（上傳畫面）顯示；進到執行頁後隱藏，把畫面空間讓給倒數計時跟
     target watt，這兩個在騎車時才是使用者真正需要一直盯著看的內容。
-- **三個平行的課表載入方式**：FTP 設定列下方是三張視覺上完全對等的卡片
+- **四個平行的課表載入方式**：FTP 設定列下方是四張視覺上完全對等的卡片
   （同一套 `.upload-source-card` 樣式：一致的標題字級／字重、一致的提示文字
-  字級、一致的卡片邊框與間距），依序排列，讓使用者一眼看出這是三個平行選項，
+  字級、一致的卡片邊框與間距），依序排列，讓使用者一眼看出這是四個平行選項，
   不是「主功能＋附加說明」的層級關係（不再用「或」分隔線這種暗示 A/B 選一
   的視覺語言）：
-  1. **貼上課表文字內容**：多行 textarea＋「載入」按鈕，只處理文字，不做
-     網址判斷。送出後用 `parseAutoDetectedPasteText()` 自動判斷是
+  1. **貼課表網址**：單行輸入框＋「載入」按鈕，貼上完整網址後判斷網域——
+     目前只接受 `app.trainerday.com`（含 `http://` 會自動升級成
+     `https://`），呼叫 `/api/trainerday-workout` 抓回來用
+     `parseTrainerDayWorkoutStructureText()` 解析（見 §3.3／§3.7）；網址
+     格式錯誤或網域不支援（例如 whatsonzwift.com，還沒重新支援），直接在
+     畫面顯示錯誤，不會呼叫任何 proxy。卡片下方提示文字：「目前支援
+     TrainerDay（app.trainerday.com）」。
+  2. **貼上課表文字內容**：多行 textarea＋「載入」按鈕，只處理文字，**不**
+     判斷輸入是不是網址（網址判斷完全交給上面第 1 張卡片，兩者的邏輯分開，
+     不混在一起）。送出後用 `parseAutoDetectedPasteText()` 自動判斷是
      §3.2／§3.4／§3.5／§3.6／§3.7 五種文字格式中的哪一種再分流解析（§3.6 的
      TrainerDay 完整複製格式優先判斷，見該節說明）。卡片標題下方有提示
-     文字，說明支援 TrainerDay、WhatsOnZwift 格式，請到課表網站複製文字貼在
-     這裡，不支援直接貼課表網址自動抓取（§3.3 說明了為什麼移除這個功能）。
-  2. **上傳 ZWO 檔案**：維持既有的拖曳／點擊上傳樣式（`.upload-dropzone`），
+     文字，說明支援 TrainerDay、WhatsOnZwift 格式，WhatsOnZwift 目前不支援
+     直接貼網址自動抓取（§3.3 說明了原因），TrainerDay 可以改用第 1 張
+     卡片。
+  3. **上傳 ZWO 檔案**：維持既有的拖曳／點擊上傳樣式（`.upload-dropzone`），
      選一份 `.zwo` 課表檔案，讀出內容後用 `parseZwoXml()` 解析。檔案輸入框
      故意不設 `accept` 屬性（regression：iOS Safari／Chrome 對雲端硬碟裡的
      檔案常常判斷不出 `.zwo` 這種非標準副檔名的 MIME type，只要 `accept`
@@ -485,14 +505,16 @@ App 一打開，使用者第一眼看到的畫面：
      是不是 `.zwo`（不分大小寫），不是就直接顯示「這不是合法的 zwo
      檔案」，不會浪費一次讀檔／解析；副檔名對的話才交給 `parseZwoXml()`
      檢查實際內容是否合法（副檔名檢查不能取代內容驗證，兩者都要）。
-  3. **使用 intervals 行事曆課表**：單行輸入框（事件 ID）＋「載入」按鈕，
+  4. **使用 intervals 行事曆課表**：單行輸入框（事件 ID）＋「載入」按鈕，
      透過 `/api/intervals-zwo` 這個 Vercel Serverless Function 代理下載
      `.zwo` 內容，用 `parseZwoXml()` 解析（只有部署在有 Serverless Function
      的平台才會動）。卡片下方是「點此查詢最近一筆行事曆訓練代碼」連結，用
      新分頁打開 `/api/intervals-events` 查詢工具（見 §5.1.1），不會離開目前
      畫面。
-- 解析失敗（檔案、intervals.icu 回傳的內容、或貼上的純文字）要有清楚的錯誤
-  訊息，並留在首頁讓使用者重試，不能整個畫面壞掉。
+- 解析失敗（檔案、intervals.icu 回傳的內容、貼上的純文字、或 TrainerDay
+  網址抓取都一樣）要有清楚的錯誤訊息，並留在首頁讓使用者重試，不能整個
+  畫面壞掉；網址抓取失敗時要額外提示可以改用「貼上課表文字內容」（第 2
+  張卡片）。
 
 #### 5.1.1 找 event ID：`/api/intervals-events`
 
