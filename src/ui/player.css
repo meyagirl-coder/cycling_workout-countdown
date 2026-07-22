@@ -1,12 +1,12 @@
-/* 功率區間顏色參考 TrainerDay 官方色碼（Z1-Z6）；Z7 TrainerDay 介面沒有
-   顯示這個區間，維持原本的紫色不變 */
+/* 功率區間顏色是 TrainerDay 官方精確色碼（Z1-Z6，直接從網站檢查元素查出來
+   的，不是估計值）；Z7 TrainerDay 沒有定義這個區間的顏色，維持原本的紫色 */
 :root {
-  --zone-gray: #9e9e9e;
-  --zone-blue: #4a90d9;
-  --zone-green: #5cb85c;
-  --zone-yellow: #f0c93d;
-  --zone-orange: #f0834d;
-  --zone-red: #d9483d;
+  --zone-gray: #7f7f7f;
+  --zone-blue: #3f8fce;
+  --zone-green: #49c072;
+  --zone-yellow: #ffcc3f;
+  --zone-orange: #f46d41;
+  --zone-red: #d6270b;
   --zone-purple: #9333ea;
   --zone-none: #334155;
 }

@@ -75,19 +75,19 @@
 
 | 區間 | %FTP | 顏色建議 | 色碼（`--zone-*`，`player.css`） |
 |---|---|---|---|
-| Z1 Active Recovery | ≤55% | 灰 | `#9e9e9e` |
-| Z2 Endurance | 56–75% | 藍 | `#4a90d9` |
-| Z3 Tempo | 76–90% | 綠 | `#5cb85c` |
-| Z4 Threshold | 91–105% | 黃 | `#f0c93d` |
-| Z5 VO2max | 106–120% | 橘 | `#f0834d` |
-| Z6 Anaerobic | 121–150% | 紅 | `#d9483d` |
+| Z1 Active Recovery | ≤55% | 灰 | `#7f7f7f` |
+| Z2 Endurance | 56–75% | 藍 | `#3f8fce` |
+| Z3 Tempo | 76–90% | 綠 | `#49c072` |
+| Z4 Threshold | 91–105% | 黃 | `#ffcc3f` |
+| Z5 VO2max | 106–120% | 橘 | `#f46d41` |
+| Z6 Anaerobic | 121–150% | 紅 | `#d6270b` |
 | Z7 Neuromuscular | >150% | 紫 | `#9333ea` |
 
-> Z1-Z6 的色碼是參考 TrainerDay 官方色碼美化過的版本；Z7 TrainerDay 介面
-> 沒有顯示這個區間（官方只到 Z6 Anaerobic），維持原本的紫色不變。時間軸
-> 柱狀圖（`.timeline-segment.zone-*`）跟執行頁大字卡片背景色
-> （`.status-panel.zone-*`）共用同一組 `--zone-*` CSS 變數，改一處兩邊
-> 自動同步，不會顏色不一致。
+> Z1-Z6 的色碼是 TrainerDay 官方精確色碼（直接從網站檢查元素查出來的，不是
+> 估計值）；Z7 TrainerDay 沒有定義這個區間的顏色，維持原本的紫色不變（我們
+> 自己保留的）。時間軸柱狀圖（`.timeline-segment.zone-*`）跟執行頁大字卡片
+> 背景色（`.status-panel.zone-*`）共用同一組 `--zone-*` CSS 變數，改一處
+> 兩邊自動同步，不會顏色不一致。
 >
 > 邊界值都算在「較低」的那個區間（例如剛好 55% 算 Z1、剛好 105% 算 Z4），
 > `getZoneColor()` 依序比對每個區間的上限（`<=`），不是用「下一個區間的下限」
