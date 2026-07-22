@@ -5,10 +5,13 @@ import { parseWhatsOnZwiftText } from '../parser/whatsOnZwiftParser.js';
 import { parseZwoXml } from '../parser/zwoParser.js';
 import { createTimerWorkerClient } from '../worker/timerWorkerClient.js';
 import { createAppBanner } from './appBanner.js';
-import { handleTimerEvents, playCountdownBeep, speakCountdownWarning } from './countdownAlerts.js';
+import { handleTimerEvents, playCountdownBeep, speakCountdownWarning, unlockAudioAndSpeechForAutoplay } from './countdownAlerts.js';
 import { DEFAULT_FTP, loadFtp, saveFtp } from './ftpStore.js';
 import { createPlayerView } from './renderPlayer.js';
+import { createScheduledStartRuntime } from './scheduledStartRuntime.js';
+import { clearSchedule, loadSchedule, saveSchedule } from './scheduleStore.js';
 import { createUploadView } from './uploadView.js';
+import { createWaitingView } from './waitingView.js';
 
 const INTERVALS_ICU_PROXY_URL = '/api/intervals-zwo';
 const TRAINERDAY_PROXY_URL = '/api/trainerday-workout';
@@ -21,14 +24,22 @@ const WHATSONZWIFT_PROXY_URL = '/api/whatsonzwift-workout';
  * Workout JSON，成功才切到執行頁並接上 Web Worker 計時引擎；解析或下載失敗則
  * 在上傳畫面顯示錯誤訊息，讓使用者重試。
  *
+ * 團體訓練排程（選填）：使用者在上傳畫面設定了開始時間後，課表載入成功時
+ * 不會直接進執行頁，而是交給 armSchedule() 判斷——時間已經過去就直接開始
+ * 播放，還沒到就切到等待畫面（waitingView.js）倒數，時間到才自動觸發開始。
+ * 排程（課表＋開始時間）存進 localStorage（scheduleStore.js），App 開機時
+ * 會檢查一次，撐過分頁切換／短暫關閉重開；但沒辦法撐過分頁完全關閉或裝置
+ * 長時間背景休眠，這個限制會在等待畫面上明確告知使用者。
+ *
  * @param {HTMLElement} rootEl
  * @returns {{ client: ReturnType<typeof createTimerWorkerClient> }}
  */
 export function initPlayerApp(rootEl) {
   rootEl.innerHTML =
-    '<div class="app-banner-mount"></div><div class="upload-mount"></div><div class="player-mount hidden"></div>';
+    '<div class="app-banner-mount"></div><div class="upload-mount"></div><div class="waiting-mount hidden"></div><div class="player-mount hidden"></div>';
   const bannerMount = rootEl.querySelector('.app-banner-mount');
   const uploadMount = rootEl.querySelector('.upload-mount');
+  const waitingMount = rootEl.querySelector('.waiting-mount');
   const playerMount = rootEl.querySelector('.player-mount');
 
   const appBanner = createAppBanner(bannerMount);
@@ -41,12 +52,21 @@ export function initPlayerApp(rootEl) {
   // 畫面上（FTP 輸入欄位）會清楚顯示這個數字，使用者隨時可以改。
   let currentFtp = loadFtp() ?? DEFAULT_FTP;
 
+  // 團體訓練排程：使用者按下「設定」時先記在這裡（還沒有課表可以配對），
+  // 等下一次任何方式的課表載入成功時才真正套用、存進 localStorage、清掉這個
+  // 暫存值（見 loadWorkout()）。scheduleRuntime 是等待畫面倒數用的可停止
+  // 計時器（見 scheduledStartRuntime.js），同時間最多只有一個在跑。
+  let pendingScheduledStartTimestamp = null;
+  let scheduleRuntime = null;
+
   const uploadView = createUploadView(uploadMount, {
     onFileSelected: (file) => handleFileSelected(file),
     onIntervalsIcuSubmit: (rawText) => handleIntervalsIcuSubmit(rawText),
     onPasteTextSubmit: (rawText) => handlePasteTextSubmit(rawText),
     onTrainerDayUrlSubmit: (url) => handleTrainerDayUrlSubmit(url),
     onWhatsOnZwiftUrlSubmit: (url) => handleWhatsOnZwiftUrlSubmit(url),
+    onScheduledStartTimeSet: (date) => handleScheduledStartTimeSet(date),
+    onScheduledStartTimeCancel: () => handleScheduledStartTimeCancel(),
     onFtpChange: (ftp) => {
       currentFtp = ftp;
       saveFtp(ftp);
@@ -57,6 +77,10 @@ export function initPlayerApp(rootEl) {
     },
   });
   uploadView.setFtpValue(currentFtp);
+
+  const waitingView = createWaitingView(waitingMount, {
+    onCancelSchedule: () => handleCancelSchedule(),
+  });
 
   const playerView = createPlayerView(playerMount, {
     onPlayPause: () => {
@@ -75,6 +99,7 @@ export function initPlayerApp(rootEl) {
   /** 執行頁完成橫幅的「回到主畫面」按鈕（規格 §4.5）：純畫面切換，不用重置引擎 */
   function returnToHome() {
     playerMount.classList.add('hidden');
+    waitingMount.classList.add('hidden');
     uploadMount.classList.remove('hidden');
     appBanner.show();
     uploadView.clearError();
@@ -96,7 +121,14 @@ export function initPlayerApp(rootEl) {
     });
   });
 
-  /** 解析成功就切到執行頁；失敗就把訊息顯示在上傳畫面，回傳是否成功 */
+  /**
+   * 解析成功就切到執行頁；失敗就把訊息顯示在上傳畫面，回傳是否成功。
+   *
+   * 如果使用者先按過「設定開始時間」的「設定」，pendingScheduledStartTimestamp
+   * 會有值——這時候不直接進執行頁，改成交給團體訓練排程流程判斷（規格：
+   * 已經過去就立刻開始播放、還沒到就進等待畫面），不管這份課表是透過哪種
+   * 輸入方式載入的都一樣（貼文字／貼網址／上傳 .zwo／intervals.icu）。
+   */
   function loadWorkout(parseFn, errorPrefix) {
     let workout;
     try {
@@ -106,12 +138,97 @@ export function initPlayerApp(rootEl) {
       return false;
     }
 
+    if (pendingScheduledStartTimestamp !== null) {
+      const startTimestamp = pendingScheduledStartTimestamp;
+      pendingScheduledStartTimestamp = null;
+      uploadView.clearScheduleStatus();
+      saveSchedule(workout, startTimestamp);
+      armSchedule(workout, startTimestamp);
+      return true;
+    }
+
+    switchToPlayerScreen(workout);
+    return true;
+  }
+
+  /** 課表資料就緒（不管是新解析的還是排程流程給的）切到執行頁的共用邏輯 */
+  function switchToPlayerScreen(workout) {
     currentWorkout = workout;
     client.init(workout);
     appBanner.hide();
     uploadMount.classList.add('hidden');
+    waitingMount.classList.add('hidden');
     playerMount.classList.remove('hidden');
-    return true;
+  }
+
+  /**
+   * 已經有一份課表跟排定開始時間，決定「立刻開始」還是「進等待畫面」——
+   * 開機時從 localStorage 復原排程、或剛設定完排程且課表也載入成功時，都會
+   * 呼叫這裡（規格：時間已經過去就直接立刻開始播放，不用等畫面）。
+   */
+  function armSchedule(workout, startTimestamp) {
+    if (startTimestamp <= Date.now()) {
+      startScheduledWorkoutNow(workout);
+    } else {
+      enterWaitingScreen(workout, startTimestamp);
+    }
+  }
+
+  /** 排定時間到了（或一開機就發現已經過去）：清掉排程紀錄，直接切到執行頁並開始播放 */
+  function startScheduledWorkoutNow(workout) {
+    stopScheduleRuntimeIfRunning();
+    clearSchedule();
+    switchToPlayerScreen(workout);
+    client.play();
+  }
+
+  /** 排定時間還沒到：切到等待畫面，顯示課表基本資訊＋即時倒數，時間到自動觸發開始 */
+  function enterWaitingScreen(workout, startTimestamp) {
+    stopScheduleRuntimeIfRunning();
+    appBanner.hide();
+    uploadMount.classList.add('hidden');
+    playerMount.classList.add('hidden');
+    waitingMount.classList.remove('hidden');
+    waitingView.update(workout, startTimestamp - Date.now());
+
+    scheduleRuntime = createScheduledStartRuntime({
+      startTimestamp,
+      onTick: (remainingMs) => waitingView.update(workout, remainingMs),
+      onReached: () => startScheduledWorkoutNow(workout),
+    });
+    scheduleRuntime.start();
+  }
+
+  function stopScheduleRuntimeIfRunning() {
+    if (scheduleRuntime) {
+      scheduleRuntime.stop();
+      scheduleRuntime = null;
+    }
+  }
+
+  /**
+   * 「設定開始時間」按下「設定」的當下（見 uploadView.js）：這個 click
+   * handler 全程同步呼叫到這裡，藉此在使用者互動當下解鎖瀏覽器的自動播放
+   * 權限（unlockAudioAndSpeechForAutoplay()），確保排定時間到、由
+   * setInterval 自動觸發播放時，提示音／語音能正常運作，不會被瀏覽器擋掉。
+   */
+  function handleScheduledStartTimeSet(date) {
+    pendingScheduledStartTimestamp = date.getTime();
+    unlockAudioAndSpeechForAutoplay();
+  }
+
+  function handleScheduledStartTimeCancel() {
+    pendingScheduledStartTimestamp = null;
+  }
+
+  /** 等待畫面「取消排程」：清掉排程紀錄，回到上傳畫面 */
+  function handleCancelSchedule() {
+    stopScheduleRuntimeIfRunning();
+    clearSchedule();
+    waitingMount.classList.add('hidden');
+    uploadMount.classList.remove('hidden');
+    appBanner.show();
+    uploadView.clearError();
   }
 
   // 檔案選擇輸入框故意不設 accept 屬性（見 uploadView.js 的說明），所以這裡
@@ -228,6 +345,16 @@ export function initPlayerApp(rootEl) {
     } finally {
       uploadView.setIntervalsIcuLoading(false);
     }
+  }
+
+  // App 開機時檢查 localStorage 有沒有還沒完成的排程（規格：切換分頁／背景／
+  // 短暫關閉瀏覽器再打開，排程要還在）——放在所有畫面／handler 都設好之後
+  // 才呼叫，armSchedule() 裡用到的 uploadView／waitingView／playerView 這時
+  // 才確定都已經存在。找不到、或存的資料壞掉（loadSchedule() 已經處理過
+  // 壞資料回傳 null 的情況）就照原本一樣顯示上傳畫面。
+  const restoredSchedule = loadSchedule();
+  if (restoredSchedule) {
+    armSchedule(restoredSchedule.workout, restoredSchedule.startTimestamp);
   }
 
   return { client };

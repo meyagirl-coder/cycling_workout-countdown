@@ -142,3 +142,42 @@ export function speakCountdownWarning(text) {
   utterance.lang = 'zh-TW';
   window.speechSynthesis.speak(utterance);
 }
+
+/**
+ * 團體訓練排程功能用：使用者「設定開始時間」這個動作本身觸發一次幾乎無聲的
+ * 音效／語音播放，藉此解鎖瀏覽器的自動播放權限——瀏覽器（尤其 iOS Safari）
+ * 通常只允許在真正的使用者互動（點擊／按鍵）當下、同步呼叫堆疊裡建立或
+ * 播放音訊，之後排程時間到、由 setInterval／setTimeout 自動觸發播放時已經
+ * 沒有使用者互動了，如果 AudioContext／SpeechSynthesis 是第一次使用，很
+ * 容易被瀏覽器悄悄擋掉——必須在呼叫端的按鈕 click handler「當下」同步呼叫
+ * 這個函式（不能包在 async 函式的 await 之後、或 setTimeout 裡，那樣就不算
+ * 使用者互動的當下了），才能讓後續真正自動觸發的提示音／語音正常播放。
+ *
+ * playCountdownBeep() 共用同一個 sharedAudioContext，這裡建立／resume 它，
+ * 並播放一段音量為 0 的極短音效——單純呼叫 new AudioContext() 在部分瀏覽器
+ * 還不夠「解鎖」，需要真的播放一次（即使無聲）才算數。SpeechSynthesis 也
+ * 一樣，唸一次音量 0 的極短內容來解鎖之後的語音播放（Safari／iOS 對第一次
+ * 呼叫 speak() 比較嚴格，這是常見的繞過方式）。
+ */
+export function unlockAudioAndSpeechForAutoplay() {
+  const AudioContextCtor = typeof window !== 'undefined' && (window.AudioContext || window.webkitAudioContext);
+  if (AudioContextCtor) {
+    if (!sharedAudioContext) sharedAudioContext = new AudioContextCtor();
+    const ctx = sharedAudioContext;
+    if (typeof ctx.resume === 'function' && ctx.state === 'suspended') ctx.resume();
+
+    const oscillator = ctx.createOscillator();
+    const gain = ctx.createGain();
+    oscillator.connect(gain);
+    gain.connect(ctx.destination);
+    gain.gain.setValueAtTime(0, ctx.currentTime); // 無聲
+    oscillator.start();
+    oscillator.stop(ctx.currentTime + 0.05);
+  }
+
+  if (typeof window !== 'undefined' && window.speechSynthesis && typeof SpeechSynthesisUtterance !== 'undefined') {
+    const utterance = new SpeechSynthesisUtterance(' ');
+    utterance.volume = 0;
+    window.speechSynthesis.speak(utterance);
+  }
+}
