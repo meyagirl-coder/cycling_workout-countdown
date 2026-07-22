@@ -703,11 +703,17 @@ body {
   transition: background-color 0.5s ease;
 }
 
+/* 字級用 clamp() 隨螢幕寬度縮放，不是為了倒數數字本身（"2:00" 沒有空格，本來
+   就不會被拆行）——是因為右邊 .target-block 的瓦數／%FTP 這兩組文字改成
+   nowrap（見下方）之後不能再靠壓縮寬度來擠出空間，這邊也要跟著縮小字級，
+   兩邊才有辦法同時塞進窄螢幕（手機直向）的同一排，不會讓整個 .status-panel
+   橫向溢出。 */
 .countdown-number {
-  font-size: 4.5rem;
+  font-size: clamp(2.75rem, 11vw, 4.5rem);
   font-weight: 900;
   font-variant-numeric: tabular-nums;
   line-height: 1;
+  white-space: nowrap;
 }
 
 /* 剩餘 <=10 秒（本組時長 >10 秒）時的倒數視覺提示，規格 §4.4——這個顏色故意
@@ -737,17 +743,25 @@ body {
 
 .elapsed-time {
   margin-top: 0.5rem;
-  font-size: 1.1rem;
+  font-size: clamp(0.85rem, 3.2vw, 1.1rem);
   opacity: 0.85;
+  white-space: nowrap;
 }
 
-/* 瓦數跟 %FTP 兩行文字要同一個字級,不能一個明顯比另一個大或小 */
+/* 瓦數跟 %FTP 兩行文字要同一個字級,不能一個明顯比另一個大或小。
+   字級用 clamp() 隨螢幕寬度縮放（而不是固定 2.25rem）：手機直向這種較窄的
+   寬度，字級會自動縮小，確保「120 W」「60% FTP」整組文字永遠有空間排在
+   同一行，不需要犧牲下面 white-space: nowrap 的「不斷行」需求去換版面。
+   white-space: nowrap 是這裡真正負責「不斷行」的規則——單位跟數字之間原本
+   用一般空格分隔，容器窄的時候會被瀏覽器當成正常換行點拆成兩行（例如
+   「120」跟「W」分開），nowrap 讓這整組文字永遠被當成一個不可斷開的整體。 */
 .target-watt,
 .target-pct {
-  font-size: 2.25rem;
+  font-size: clamp(1.5rem, 6.5vw, 2.25rem);
   font-weight: 900;
   line-height: 1;
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 .target-pct {
@@ -766,14 +780,17 @@ body {
   display: flex;
   align-items: baseline;
   justify-content: flex-start;
+  flex-wrap: nowrap;
   gap: 0.4rem;
 }
 
-/* 建議踏頻是輔助資訊，字級明顯比瓦數小一截，不能跟 .target-watt 搶視覺重量 */
+/* 建議踏頻是輔助資訊，字級明顯比瓦數小一截，不能跟 .target-watt 搶視覺重量。
+   同樣用 clamp() 隨寬度縮放＋nowrap，避免「80」跟「rpm」被拆成兩行。 */
 .target-cadence {
-  font-size: 1.1rem;
+  font-size: clamp(0.75rem, 3vw, 1.1rem);
   font-weight: 700;
   opacity: 0.75;
+  white-space: nowrap;
 }
 
 .controls {
