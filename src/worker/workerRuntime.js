@@ -63,6 +63,20 @@ export function createWorkerRuntime({
         emit([]);
         return;
       }
+      case 'restore': {
+        // 頁面重新整理後復原之前存在 localStorage 的進度（見
+        // workoutProgressStore.js）——跟 'init' 一樣建立全新的 engine 實例，
+        // 差別是接著呼叫 engine.restore() 把 elapsedTotal／powerAdjustPct／
+        // status 設回存檔當下的樣子，不是從頭（elapsedTotal 0、idle）開始。
+        engine = createTimerEngine(message.workout);
+        const { events } = engine.restore({
+          elapsedTotal: message.elapsedTotal,
+          powerAdjustPct: message.powerAdjustPct,
+          status: message.status,
+        });
+        emit(events);
+        return;
+      }
       case 'play': {
         const { events } = requireEngine().play(now());
         startLoop();

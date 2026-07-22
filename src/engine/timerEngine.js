@@ -145,6 +145,38 @@ export function createTimerEngine(workout) {
     return result([]);
   }
 
+  /**
+   * 從先前存下來的進度重新建立狀態（頁面重新整理後復原用，見
+   * workoutProgressStore.js）：直接設定 `elapsedTotal`／`powerAdjustPct`，
+   * `currentIntervalIndex`／`elapsedInInterval` 照舊由 `buildState()` 從
+   * `elapsedTotal` 反推，不需要另外還原。
+   *
+   * 狀態一律不會恢復成 `running`——就算存檔當下正在跑，重新整理後也只會停
+   * 在暫停狀態，不會自動恢復播放（跟使用者當下沒有點擊互動就自動開始播放
+   * 是兩回事，這裡單純是「資料還在，畫面停在原地」，仍然需要使用者自己按
+   * 播放）。已經跑完（`elapsedTotal` 到達 `totalDuration`）的話固定回到
+   * `finished`，不管存檔當下的 `savedStatus` 是什麼，避免恢復出一個「已經
+   * 跑完但狀態卻不是 finished」的不一致狀態。
+   *
+   * @param {{ elapsedTotal: number, powerAdjustPct?: number, status?: string }} saved
+   */
+  function restore({ elapsedTotal: savedElapsedTotal, powerAdjustPct: savedPowerAdjustPct, status: savedStatus }) {
+    elapsedTotal = Math.max(0, savedElapsedTotal);
+    powerAdjustPct = savedPowerAdjustPct ?? 0;
+    startTimestamp = null;
+
+    const located = locateIntervalAt(workout, elapsedTotal);
+    if (located.finished) {
+      status = 'finished';
+    } else if (savedStatus === 'idle') {
+      status = 'idle';
+    } else {
+      status = 'paused';
+    }
+
+    return result([]);
+  }
+
   function tick(now = Date.now()) {
     if (status !== 'running') return result([]);
 
@@ -175,7 +207,7 @@ export function createTimerEngine(workout) {
     return buildState();
   }
 
-  return { play, pause, skip, redo, stop, adjustPower, tick, getState };
+  return { play, pause, skip, redo, stop, adjustPower, tick, getState, restore };
 }
 
 function clamp01(value) {
