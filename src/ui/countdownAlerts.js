@@ -1,8 +1,11 @@
 /**
- * 倒數提示（規格 §4.4）：剩餘 10 秒時同時觸發提示音＋語音＋下一組預告；切組
- * 瞬間顯示下一組資訊。這裡只負責「timer 事件 -> 該做什麼提示」的判斷邏輯，
- * 音效／語音的實際播放實作是可注入的依賴（playBeep/speak），方便在 jsdom 下
- * 用假函式測試觸發時機是否正確，不需要真的 AudioContext／SpeechSynthesis。
+ * 倒數提示（規格 §4.4）：組別時長 > 20 秒的正常規則——剩餘 10 秒時同時觸發
+ * 提示音＋語音＋下一組預告；切組瞬間顯示下一組資訊。組別時長 <= 20 秒的
+ * 短間歇例外——只在最後 5 秒逐秒觸發提示音（5-4-3-2-1），不觸發語音／
+ * banner（見 timerEngine.js 的 SHORT_COUNTDOWN_TICK）。這裡只負責「timer
+ * 事件 -> 該做什麼提示」的判斷邏輯，音效／語音的實際播放實作是可注入的
+ * 依賴（playBeep/speak），方便在 jsdom 下用假函式測試觸發時機是否正確，
+ * 不需要真的 AudioContext／SpeechSynthesis。
  *
  * 倒數 10 秒的預告（countdownWarning）跟切組瞬間的顯示（intervalChanged）
  * 是兩個不同時間點、格式也不同：
@@ -68,6 +71,20 @@ export function handleTimerEvents(events, { workout, state, ftp, playBeep, speak
       } catch (err) {
         console.error('countdownAlerts: showNextIntervalBanner() failed', err);
       }
+    }
+  }
+
+  // 短間歇例外（組別時長 <= 20 秒，見 timerEngine.js）：最後 5 秒逐秒觸發一次
+  // SHORT_COUNTDOWN_TICK，只播提示音（5-4-3-2-1），刻意不算預告內容、不語音、
+  // 不顯示 banner——組別太短，插播一段「10 秒後進入下一組...」語音反而佔掉
+  //這組大半時間。降頻分頁一次 tick 可能跨過不只一個秒數點，events 陣列裡會
+  // 有對應次數的 SHORT_COUNTDOWN_TICK，這裡就播對應次數的提示音，不會漏拍。
+  const shortTickCount = events.filter((event) => event === TIMER_EVENTS.SHORT_COUNTDOWN_TICK).length;
+  for (let i = 0; i < shortTickCount; i++) {
+    try {
+      playBeep();
+    } catch (err) {
+      console.error('countdownAlerts: playBeep() failed (short-interval countdown tick)', err);
     }
   }
 

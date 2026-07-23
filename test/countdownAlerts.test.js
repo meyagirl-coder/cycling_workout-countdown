@@ -159,6 +159,69 @@ describe('handleTimerEvents: multiple events in the same batch', () => {
   });
 });
 
+describe('handleTimerEvents: shortCountdownTick (短間歇例外，組別時長 <= 20 秒：只播提示音，不唸下一組預告)', () => {
+  it('plays a beep but does not speak or show a banner', () => {
+    const deps = makeDeps();
+    const state = makeState({ currentIntervalIndex: 1 });
+    handleTimerEvents([TIMER_EVENTS.SHORT_COUNTDOWN_TICK], { workout: makeWorkout(), state, ftp: 200, ...deps });
+
+    expect(deps.playBeep).toHaveBeenCalledTimes(1);
+    expect(deps.speak).not.toHaveBeenCalled();
+    expect(deps.showNextIntervalBanner).not.toHaveBeenCalled();
+  });
+
+  it('plays one beep per occurrence when multiple shortCountdownTick events arrive in the same batch (throttled tab catch-up)', () => {
+    const deps = makeDeps();
+    const state = makeState({ currentIntervalIndex: 1 });
+    handleTimerEvents(
+      [TIMER_EVENTS.SHORT_COUNTDOWN_TICK, TIMER_EVENTS.SHORT_COUNTDOWN_TICK, TIMER_EVENTS.SHORT_COUNTDOWN_TICK],
+      { workout: makeWorkout(), state, ftp: 200, ...deps }
+    );
+
+    expect(deps.playBeep).toHaveBeenCalledTimes(3);
+    expect(deps.speak).not.toHaveBeenCalled();
+  });
+
+  it('does not interact with countdownWarning/intervalChanged handling when they arrive in the same batch', () => {
+    const deps = makeDeps();
+    const state = makeState({ currentIntervalIndex: 1, elapsedInInterval: 0, elapsedTotal: 12 });
+    handleTimerEvents([TIMER_EVENTS.SHORT_COUNTDOWN_TICK, TIMER_EVENTS.INTERVAL_CHANGED], { workout: makeWorkout(), state, ftp: 200, ...deps });
+
+    expect(deps.playBeep).toHaveBeenCalledTimes(1);
+    expect(deps.speak).not.toHaveBeenCalled();
+    expect(deps.showNextIntervalBanner).toHaveBeenCalledTimes(1);
+    expect(deps.showNextIntervalBanner).toHaveBeenCalledWith('下一組：穩定 · 0:20 · 88% FTP · 176W');
+  });
+
+  it('a playBeep() failure during a short-interval tick does not throw and is isolated per occurrence', () => {
+    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const deps = makeDeps();
+    deps.playBeep.mockImplementation(() => {
+      throw new Error('AudioContext boom');
+    });
+    const state = makeState({ currentIntervalIndex: 1 });
+
+    expect(() =>
+      handleTimerEvents([TIMER_EVENTS.SHORT_COUNTDOWN_TICK, TIMER_EVENTS.SHORT_COUNTDOWN_TICK], {
+        workout: makeWorkout(),
+        state,
+        ftp: 200,
+        ...deps,
+      })
+    ).not.toThrow();
+
+    expect(deps.playBeep).toHaveBeenCalledTimes(2);
+    expect(consoleErrorSpy).toHaveBeenCalledTimes(2);
+    consoleErrorSpy.mockRestore();
+  });
+
+  it('does nothing when shortCountdownTick is absent from the event list', () => {
+    const deps = makeDeps();
+    handleTimerEvents([TIMER_EVENTS.WORKOUT_FINISHED], { workout: makeWorkout(), state: makeState(), ftp: 200, ...deps });
+    expect(deps.playBeep).not.toHaveBeenCalled();
+  });
+});
+
 describe('handleTimerEvents: error isolation (regression - user reported "one beep then total silence")', () => {
   // 使用者回報過「只聽到一聲提示音，之後語音跟後續提示音全部消失」——最像是
   // 某一段（例如 speak()）丟出沒被 catch 的例外，把同一次呼叫裡排在後面的

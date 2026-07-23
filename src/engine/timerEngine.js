@@ -13,11 +13,25 @@ import { getZoneColor } from '../constants/powerZones.js';
 
 export const TIMER_EVENTS = {
   COUNTDOWN_WARNING: 'countdownWarning',
+  SHORT_COUNTDOWN_TICK: 'shortCountdownTick',
   INTERVAL_CHANGED: 'intervalChanged',
   WORKOUT_FINISHED: 'workoutFinished',
 };
 
 const COUNTDOWN_WARNING_SECONDS = 10;
+
+/**
+ * 短間歇例外規則（規格：以「組別時長」判斷走哪一條倒數提示路徑）：
+ *   - 組別時長 > 20 秒：正常規則，剩餘 10 秒時觸發一次 COUNTDOWN_WARNING
+ *     （提示音＋語音預告下一組＋banner，見 countdownAlerts.js）。
+ *   - 組別時長 <= 20 秒（含剛好 20 秒——邊界值刻意用 `>`/`<=` 一組互斥，不是
+ *     `>` / `<`，避免剛好 20 秒的組別兩條路徑都沒有、或兩條路徑都觸發）：
+ *     短間歇例外，只在最後 5 秒逐秒觸發 SHORT_COUNTDOWN_TICK（5-4-3-2-1，
+ *     每秒一次提示音），不觸發語音預告——組別太短，插入一段「10 秒後進入
+ *     下一組...」的語音報讀反而會佔掉這組大半時間，體驗更差。
+ */
+const SHORT_INTERVAL_THRESHOLD_SECONDS = 20;
+const SHORT_COUNTDOWN_TICK_SECONDS = [5, 4, 3, 2, 1];
 
 /**
  * 純函式：計算目前這一秒的目標瓦數／%FTP／功率區間顏色。
@@ -195,8 +209,21 @@ export function createTimerEngine(workout) {
     } else {
       const duration = workout.intervals[after.index].duration;
       const remaining = duration - after.elapsedInInterval;
-      if (duration > COUNTDOWN_WARNING_SECONDS && prevRemaining > COUNTDOWN_WARNING_SECONDS && remaining <= COUNTDOWN_WARNING_SECONDS) {
-        events.push(TIMER_EVENTS.COUNTDOWN_WARNING);
+
+      if (duration > SHORT_INTERVAL_THRESHOLD_SECONDS) {
+        if (prevRemaining > COUNTDOWN_WARNING_SECONDS && remaining <= COUNTDOWN_WARNING_SECONDS) {
+          events.push(TIMER_EVENTS.COUNTDOWN_WARNING);
+        }
+      } else {
+        // 短間歇例外：逐一檢查 5/4/3/2/1 每個秒數點有沒有被這次 tick 跨過——
+        // 不是只挑一個門檻，是因為分頁切到背景時 setInterval 可能被降頻，一次
+        // tick 可能跨過不只一個整數秒，這裡確保每個被跨過的秒數都各自觸發一次
+        // SHORT_COUNTDOWN_TICK，不會因為降頻漏掉中間的提示音。
+        for (const threshold of SHORT_COUNTDOWN_TICK_SECONDS) {
+          if (prevRemaining > threshold && remaining <= threshold) {
+            events.push(TIMER_EVENTS.SHORT_COUNTDOWN_TICK);
+          }
+        }
       }
     }
 

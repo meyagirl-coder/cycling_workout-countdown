@@ -159,30 +159,119 @@ describe('createTimerEngine', () => {
     expect(events).toContain(TIMER_EVENTS.WORKOUT_FINISHED);
   });
 
-  it('emits countdownWarning only once remaining time crosses 10s, and only for segments longer than 10s', () => {
-    const engine = createTimerEngine(makeSyntheticWorkout());
-    engine.play(0);
-    engine.tick(10_000); // switch into the 12s steady segment, remaining = 12s
-
-    const stillAbove = engine.tick(11_000); // remaining = 11s, no warning yet
-    expect(stillAbove.events).not.toContain(TIMER_EVENTS.COUNTDOWN_WARNING);
-
-    const crossed = engine.tick(14_000); // remaining = 8s, crossed the 10s threshold
-    expect(crossed.events).toContain(TIMER_EVENTS.COUNTDOWN_WARNING);
-
-    const staysBelow = engine.tick(15_000); // remaining = 7s, already warned, no repeat
-    expect(staysBelow.events).not.toContain(TIMER_EVENTS.COUNTDOWN_WARNING);
-  });
-
-  it('never fires countdownWarning for a segment whose duration is 10s or less', () => {
-    const workout = makeSyntheticWorkout(); // first segment (warmup) is exactly 10s
-    const engine = createTimerEngine(workout);
-    engine.play(0);
-
-    for (let s = 1; s <= 9; s++) {
-      const { events } = engine.tick(s * 1000);
-      expect(events).not.toContain(TIMER_EVENTS.COUNTDOWN_WARNING);
+  describe('countdownWarning / shortCountdownTick (規格：組別時長 > 20 秒才走正常 10 秒預告規則，<= 20 秒走短間歇例外)', () => {
+    /** 20 秒門檻測試專用：19s／20s（剛好等於門檻，仍要走短間歇）／25s（正常規則）三段 */
+    function makeThresholdTestWorkout() {
+      return {
+        id: 'threshold-test',
+        name: 'Threshold Test Workout',
+        source: 'zwo',
+        totalDuration: 19 + 20 + 25,
+        intervals: [
+          { type: 'steady', duration: 19, powerStart: 60, powerEnd: 60, cadence: null },
+          { type: 'steady', duration: 20, powerStart: 65, powerEnd: 65, cadence: null },
+          { type: 'steady', duration: 25, powerStart: 70, powerEnd: 70, cadence: null },
+        ],
+      };
     }
+
+    it('emits countdownWarning only once remaining time crosses 10s, only for segments longer than 20s', () => {
+      const engine = createTimerEngine(makeThresholdTestWorkout());
+      engine.play(0);
+      engine.tick(39_000); // 19 + 20 = 39s in, switch into the 25s segment, remaining = 25s
+
+      const stillAbove = engine.tick(50_000); // remaining = 14s, no warning yet
+      expect(stillAbove.events).not.toContain(TIMER_EVENTS.COUNTDOWN_WARNING);
+
+      const crossed = engine.tick(55_000); // remaining = 9s, crossed the 10s threshold
+      expect(crossed.events).toContain(TIMER_EVENTS.COUNTDOWN_WARNING);
+      expect(crossed.events).not.toContain(TIMER_EVENTS.SHORT_COUNTDOWN_TICK);
+
+      const staysBelow = engine.tick(56_000); // remaining = 8s, already warned, no repeat
+      expect(staysBelow.events).not.toContain(TIMER_EVENTS.COUNTDOWN_WARNING);
+    });
+
+    it('never fires countdownWarning for a segment 20s or shorter, even well before the last 5 seconds', () => {
+      const workout = makeSyntheticWorkout(); // first segment (warmup) is exactly 10s, <=20
+      const engine = createTimerEngine(workout);
+      engine.play(0);
+
+      for (let s = 1; s <= 4; s++) {
+        const { events } = engine.tick(s * 1000);
+        expect(events).not.toContain(TIMER_EVENTS.COUNTDOWN_WARNING);
+      }
+    });
+
+    it('a segment exactly 20s long takes the short-interval path, not the normal countdownWarning path (boundary regression: <= not <)', () => {
+      const engine = createTimerEngine(makeThresholdTestWorkout());
+      engine.play(0);
+      engine.tick(19_000); // switch into the 20s segment, remaining = 20s
+
+      // walk through to remaining = 5s (elapsedInInterval = 15s within this segment, at t=34s)
+      for (let t = 20_000; t <= 33_000; t += 1000) engine.tick(t);
+      const atFive = engine.tick(34_000); // remaining = 5s
+      expect(atFive.events).toContain(TIMER_EVENTS.SHORT_COUNTDOWN_TICK);
+      expect(atFive.events).not.toContain(TIMER_EVENTS.COUNTDOWN_WARNING);
+    });
+
+    it('fires shortCountdownTick exactly once at each of the last 5 seconds (5-4-3-2-1) for a short segment', () => {
+      const workout = makeSyntheticWorkout(); // steady segment (index 1) is 12s
+      const engine = createTimerEngine(workout);
+      engine.play(0);
+
+      // remaining goes 12,11,...,1,0 as elapsedInInterval (within this segment) goes 0..12,
+      // i.e. absolute time 10s..22s (the first tick(10_000) call is the INTERVAL_CHANGED
+      // transition from the 10s warmup into this segment, not a short-tick threshold
+      // crossing). shortCountdownTick should fire when remaining crosses each of
+      // 5,4,3,2,1 - i.e. at absolute t = 10+7=17 (remaining 5), 18 (4), 19 (3), 20 (2), 21 (1).
+      const tickCountsByAbsoluteSecond = {};
+      for (let t = 10_000; t <= 22_000; t += 1000) {
+        const { events } = engine.tick(t);
+        const count = events.filter((e) => e === TIMER_EVENTS.SHORT_COUNTDOWN_TICK).length;
+        if (count > 0) tickCountsByAbsoluteSecond[t / 1000] = count;
+      }
+
+      expect(tickCountsByAbsoluteSecond).toEqual({ 17: 1, 18: 1, 19: 1, 20: 1, 21: 1 });
+    });
+
+    it('never fires countdownWarning for the same short segment (mutually exclusive with shortCountdownTick)', () => {
+      const workout = makeSyntheticWorkout();
+      const engine = createTimerEngine(workout);
+      engine.play(0);
+      engine.tick(10_000);
+
+      for (let t = 11_000; t <= 22_000; t += 1000) {
+        const { events } = engine.tick(t);
+        expect(events).not.toContain(TIMER_EVENTS.COUNTDOWN_WARNING);
+      }
+    });
+
+    it('fires shortCountdownTick multiple times in one tick if a throttled background tab skips over several threshold seconds at once', () => {
+      const workout = makeSyntheticWorkout(); // 12s steady segment
+      const engine = createTimerEngine(workout);
+      engine.play(0);
+      engine.tick(10_000); // enter the 12s segment, remaining = 12s
+      engine.tick(15_000); // remaining = 7s, still above all short-tick thresholds
+
+      // simulate a big gap (backgrounded tab) jumping straight to remaining = 2s,
+      // skipping over the 5/4/3/2 threshold crossings in a single tick (1 is not yet
+      // crossed since remaining=2 is not <= 1)
+      const { events } = engine.tick(20_000); // remaining = 2s
+      const shortTicks = events.filter((e) => e === TIMER_EVENTS.SHORT_COUNTDOWN_TICK);
+      expect(shortTicks).toHaveLength(4); // crossed 5, 4, 3, and 2
+    });
+
+    it('does not fire shortCountdownTick again for a threshold already crossed in a previous tick', () => {
+      const workout = makeSyntheticWorkout();
+      const engine = createTimerEngine(workout);
+      engine.play(0);
+      engine.tick(10_000);
+      engine.tick(17_000); // remaining = 5s, fires once
+
+      const repeat = engine.tick(17_500); // still remaining ~4.5s rounding aside, no new integer crossed yet within same second
+      // no new threshold crossed between 17.0s and 17.5s ticks (still within the same "5" bucket boundary already passed)
+      expect(repeat.events.filter((e) => e === TIMER_EVENTS.SHORT_COUNTDOWN_TICK)).toHaveLength(0);
+    });
   });
 
   it('freezes elapsedTotal on pause and resumes correctly without counting paused time', () => {

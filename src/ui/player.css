@@ -735,29 +735,24 @@ body {
   line-height: 1;
 }
 
-/* 剩餘 <=10 秒（本組時長 >10 秒）時的倒數視覺提示，規格 §4.4——這個顏色故意
-   不跟著主題變數變（不用 --danger-text），因為這個數字是疊在 .status-panel
-   的區間顏色卡片上，不是頁面底色上，需要的是「跟哪個區間顏色都能對比出來」
-   的固定警示色，不是「淺色主題要變深、深色主題要變淺」的一般文字邏輯。 */
+/* 剩餘 <=10 秒（本組時長 >10 秒）時的倒數視覺提示，規格 §4.4——單純變色，
+   一路持續到這組結束或切到下一組為止（isCountdownUrgent 每次 render 都
+   重新計算，切組瞬間換成新組別的 duration/remaining，條件自然變回
+   false，不需要額外的計時器去關掉這個狀態）。故意不用會讓文字尺寸跳動的
+   animation/transform（曾經有過的「放大縮小」效果拿掉了，只留顏色變化，
+   避免忽大忽小分散注意力）。
+   顏色跟 text-shadow 都故意不跟著主題變數變（不用 --danger-text），因為這個
+   數字是疊在 .status-panel 的區間顏色卡片上，不是頁面底色上：金黃色
+   （#fbbf24）刻意跟 7 個功率區間顏色（灰/藍/綠/黃 #ffcc3f/橘 #f46d41/紅
+   #d6270b/紫）的色相都拉開距離，不會被誤認成某個區間顏色；而暗色 text-shadow
+   （模擬字元描邊）確保不管疊在哪個區間顏色卡片上（包括最深的紅色 Z6 卡片，
+   金黃色本身在深紅背景上對比會不夠），都還是清晰可辨識——單靠換顏色沒有
+   描邊的話，在紅／橘卡片上實測會出現「暖色疊暖色」看不清楚的情況。 */
 .countdown-number.countdown-urgent {
-  color: #f87171;
-  animation: countdown-pulse 1s ease-in-out infinite;
-}
-
-@keyframes countdown-pulse {
-  0%,
-  100% {
-    transform: scale(1);
-  }
-  50% {
-    transform: scale(1.08);
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .countdown-number.countdown-urgent {
-    animation: none;
-  }
+  color: #fbbf24;
+  text-shadow:
+    0 0 6px rgba(0, 0, 0, 0.6),
+    0 0 14px rgba(0, 0, 0, 0.4);
 }
 
 .elapsed-time {
