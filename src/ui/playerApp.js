@@ -4,6 +4,7 @@ import { parseTrainerDayWorkoutStructureText } from '../parser/trainerDayWorkout
 import { parseWhatsOnZwiftText } from '../parser/whatsOnZwiftParser.js';
 import { parseZwoXml } from '../parser/zwoParser.js';
 import { createTimerWorkerClient } from '../worker/timerWorkerClient.js';
+import { loadAlertMode, saveAlertMode } from './alertModeStore.js';
 import { createAppBanner } from './appBanner.js';
 import { handleTimerEvents, playCountdownBeeps, speakCountdownWarning, unlockAudioAndSpeechForAutoplay } from './countdownAlerts.js';
 import { clearDraftInputs, loadDraftInputs, saveDraftInputs } from './draftInputStore.js';
@@ -74,6 +75,10 @@ export function initPlayerApp(rootEl) {
   // 畫面上（FTP 輸入欄位）會清楚顯示這個數字，使用者隨時可以改。
   let currentFtp = loadFtp() ?? DEFAULT_FTP;
 
+  // 規格 §4.4：倒數提示模式（語音報數／逼逼聲倒數，見 alertModeStore.js），
+  // 兩者互斥，預設語音報數（維持既有行為，不影響老使用者）。
+  let currentAlertMode = loadAlertMode();
+
   // 團體訓練排程：使用者按下「設定」時先記在這裡（還沒有課表可以配對），
   // 等下一次任何方式的課表載入成功時才真正套用、存進 localStorage、清掉這個
   // 暫存值（見 loadWorkout()）。scheduleRuntime 是等待畫面倒數用的可停止
@@ -97,9 +102,14 @@ export function initPlayerApp(rootEl) {
         playerView.update(currentWorkout, latestState, currentFtp);
       }
     },
+    onAlertModeChange: (mode) => {
+      currentAlertMode = mode;
+      saveAlertMode(mode);
+    },
     onDraftInputChange: (draft) => saveDraftInputs(draft),
   });
   uploadView.setFtpValue(currentFtp);
+  uploadView.setAlertMode(currentAlertMode);
 
   // 上傳畫面的「貼課表網址」「貼上課表文字內容」草稿：開機時如果有存過
   // （而且是今天存的，見 draftInputStore.js）就帶回輸入框，不用重新打字。
@@ -154,6 +164,7 @@ export function initPlayerApp(rootEl) {
       workout: currentWorkout,
       state,
       ftp: currentFtp,
+      alertMode: currentAlertMode,
       speak: speakCountdownWarning,
       playCountdownBeeps,
       showNextIntervalBanner: playerView.showNextIntervalBanner,

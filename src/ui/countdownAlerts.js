@@ -1,18 +1,20 @@
 /**
- * 倒數提示（規格 §4.4）：組別時長 > 20 秒的正常規則——剩餘 10 秒時快速唸出
- * 下一組資訊（語速加快，盡量在 5 秒內講完）＋顯示 banner；接著最後 5 秒
- * （5-4-3-2-1）逐秒語音報數，正常語速，唸完剛好接上下一組開始。組別時長
- * <= 20 秒的短間歇例外——不觸發「下一組」預告（不論語音或 banner，組別太短，
- * 插播一段介紹會佔掉這組大半時間），只有最後 5 秒一樣逐秒語音報數（見
- * timerEngine.js 的 COUNTDOWN_WARNING／COUNTDOWN_TICK）。切組瞬間顯示下一組
- * 資訊（intervalChanged，格式不變）。
+ * 倒數提示（規格 §4.4）：兩個互斥的提示模式（見 alertModeStore.js），使用者
+ * 在首頁選其中一個，存進 localStorage：
+ *   - ALERT_MODE_VOICE「語音報數」（預設）：組別時長 > 20 秒時，剩餘 10 秒
+ *     觸發一次快速語音預告下一組資訊＋banner；接著最後 5 秒（5-4-3-2-1）
+ *     逐秒語音報數。組別時長 <= 20 秒的短間歇例外不觸發預告，只有最後 5 秒
+ *     逐秒語音報數。全程沒有任何嗶聲。
+ *   - ALERT_MODE_BEEP「逼逼聲倒數」：完全不語音，「下一組預告」只顯示文字
+ *     banner（不唸動態內容）；最後 3 秒（兩條規則都有）改成播放三聲「嗶」
+ *     提示音（playCountdownBeeps()）取代語音報數。
+ * 兩者互斥：同一時刻只會啟用其中一個，不會語音跟嗶聲同時出現。
  *
- * 語音之外，最後 3 秒（兩條路徑都有）還會額外播放三聲「嗶」提示音
- * （playCountdownBeeps()）——這是刻意加回來的：SpeechSynthesis 的音訊輸出
- * 是系統層級的，不會被瀏覽器的「分頁音訊分享」（例如 Google Meet 畫面分享）
- * 捕捉到（Chromium bug #1185527），但 Web Audio API 合成的音訊會走分頁自己
- * 的媒體管線，可以被正確捕捉——語音內容本身沒辦法分享出去，但至少讓遠端
- * 參與者能聽到「快到了」的提示音，補上語音分享不到的缺口。
+ * 加嗶聲模式回來是刻意的：SpeechSynthesis 的音訊輸出是系統層級的，不會被
+ * 瀏覽器的「分頁音訊分享」（例如 Google Meet 畫面分享）捕捉到（Chromium bug
+ * #1185527），但 Web Audio API 合成的音訊會走分頁自己的媒體管線，可以被
+ * 正確捕捉——語音模式適合自己一個人騎、想聽到完整口語內容；嗶聲模式適合
+ * 團體訓練透過視訊分享畫面帶練，至少能讓遠端參與者聽到聲音提示。
  *
  * 這裡只負責「timer 事件 -> 該做什麼提示」的判斷邏輯，語音／提示音的實際
  * 播放實作是可注入的依賴（speak/playCountdownBeeps），方便在 jsdom 下用
@@ -20,18 +22,21 @@
  *
  * 三種不同時間點、三種不同格式：
  *   - countdownWarning（正常規則專用）：「下一組」還沒真的開始，只是預告，
- *     用口語化、刻意精簡到能快速唸完的格式（formatFastCountdownSpeechText()，
- *     例如「下一組 75% 5 分鐘」），語速調快（FAST_PREVIEW_SPEECH_RATE）；
- *     banner 視覺文字不受語速時間限制，維持較完整的原有格式
- *     （formatCountdownBannerText()）。
- *   - countdownTick（兩條路徑都有）：最後 5 秒逐秒語音報數（"5"「4」...），
- *     正常語速，不額外顯示 banner——每次都用「目前實際剩餘秒數」現算現報
- *     （不是靠計數器猜第幾次），降頻分頁一次跳過好幾秒也不會報出過期的
- *     數字。剩餘 3 秒那一次額外觸發 playCountdownBeeps()（見上）。
+ *     語音模式下用口語化、刻意精簡到能快速唸完的格式
+ *     （formatFastCountdownSpeechText()，例如「下一組 75% 5 分鐘」），語速
+ *     調快（FAST_PREVIEW_SPEECH_RATE）；banner 視覺文字兩種模式都會顯示、
+ *     不受語速時間限制，維持較完整的原有格式（formatCountdownBannerText()）。
+ *   - countdownTick（兩條路徑都有）：最後 5 秒逐秒觸發——語音模式報數
+ *     （"5"「4」...），正常語速，不額外顯示 banner；每次都用「目前實際
+ *     剩餘秒數」現算現報（不是靠計數器猜第幾次），降頻分頁一次跳過好幾秒
+ *     也不會報出過期的數字。嗶聲模式則是剩餘 3 秒那一次觸發
+ *     playCountdownBeeps()（見上）。
  *   - intervalChanged：已經切到新的一組，維持原本 mm:ss ＋ watts 的詳細
- *     格式（formatNextIntervalText()），這個格式沒有變。
+ *     格式（formatNextIntervalText()），這個格式沒有變，兩種模式都一樣
+ *     （純視覺 banner，不涉及語音／嗶聲）。
  */
 import { computeCurrentTarget, TIMER_EVENTS } from '../engine/timerEngine.js';
+import { ALERT_MODE_BEEP, ALERT_MODE_VOICE } from './alertModeStore.js';
 import { formatMinuteSecondLabel, formatMMSS } from './formatTime.js';
 import { INTERVAL_TYPE_LABELS } from './intervalLabels.js';
 
@@ -57,11 +62,12 @@ const FAST_PREVIEW_SPEECH_RATE = 1.35;
  * @param {object} ctx.workout
  * @param {object} ctx.state - engine 的最新 state（含 currentIntervalIndex/powerAdjustPct）
  * @param {number} ctx.ftp
+ * @param {'voice'|'beep'} ctx.alertMode - ALERT_MODE_VOICE 或 ALERT_MODE_BEEP，兩者互斥
  * @param {(text: string, rate?: number) => void} ctx.speak
  * @param {() => void} ctx.playCountdownBeeps
  * @param {(text: string, durationMs?: number) => void} ctx.showNextIntervalBanner
  */
-export function handleTimerEvents(events, { workout, state, ftp, speak, playCountdownBeeps, showNextIntervalBanner }) {
+export function handleTimerEvents(events, { workout, state, ftp, alertMode, speak, playCountdownBeeps, showNextIntervalBanner }) {
   if (events.includes(TIMER_EVENTS.COUNTDOWN_WARNING)) {
     // 預告內容計算／語音／banner 各自獨立包 try-catch：使用者回報過「語音
     // 播放中途出錯，後續提示全部消失」的情況，最可能的原因是其中一段丟出
@@ -77,12 +83,16 @@ export function handleTimerEvents(events, { workout, state, ftp, speak, playCoun
     }
 
     if (preview) {
-      try {
-        speak(formatFastCountdownSpeechText(preview), FAST_PREVIEW_SPEECH_RATE);
-      } catch (err) {
-        console.error('countdownAlerts: speak() failed', err);
+      if (alertMode === ALERT_MODE_VOICE) {
+        try {
+          speak(formatFastCountdownSpeechText(preview), FAST_PREVIEW_SPEECH_RATE);
+        } catch (err) {
+          console.error('countdownAlerts: speak() failed', err);
+        }
       }
 
+      // banner 是純視覺文字，兩個模式都要顯示——嗶聲模式沒有語音唸出動態
+      // 內容，「下一組預告」就只靠這段文字傳達（見模組開頭說明）。
       try {
         showNextIntervalBanner(formatCountdownBannerText(preview), COUNTDOWN_PREVIEW_BANNER_MS);
       } catch (err) {
@@ -105,17 +115,20 @@ export function handleTimerEvents(events, { workout, state, ftp, speak, playCoun
     }
 
     if (digit !== null) {
-      try {
-        speak(String(digit));
-      } catch (err) {
-        console.error('countdownAlerts: speak() failed (countdown tick)', err);
+      if (alertMode === ALERT_MODE_VOICE) {
+        try {
+          speak(String(digit));
+        } catch (err) {
+          console.error('countdownAlerts: speak() failed (countdown tick)', err);
+        }
       }
 
-      // 剩餘 3 秒那一刻額外觸發三聲「嗶」——只在這裡呼叫一次，
-      // playCountdownBeeps() 內部自己排程 3 聲的節奏，不是外部重複呼叫 3 次
-      // （見上方模組說明，這是為了 Google Meet 分頁音訊分享能捕捉到的
-      // Web Audio API 提示音，跟語音的分享限制無關，兩者互相獨立）。
-      if (digit === 3) {
+      // 嗶聲模式：剩餘 3 秒那一刻觸發三聲「嗶」取代逐秒報數——只在這裡呼叫
+      // 一次，playCountdownBeeps() 內部自己排程 3 聲的節奏，不是外部重複
+      // 呼叫 3 次（見上方模組說明，這是為了 Google Meet 分頁音訊分享能捕捉
+      // 到的 Web Audio API 提示音，跟語音的分享限制無關，兩個模式互斥不會
+      // 同時發生）。
+      if (alertMode === ALERT_MODE_BEEP && digit === 3) {
         try {
           playCountdownBeeps();
         } catch (err) {

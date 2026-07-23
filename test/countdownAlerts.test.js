@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { TIMER_EVENTS } from '../src/engine/timerEngine.js';
+import { ALERT_MODE_BEEP, ALERT_MODE_VOICE } from '../src/ui/alertModeStore.js';
 import { COUNTDOWN_FINISHING_SOON_TEXT, handleTimerEvents } from '../src/ui/countdownAlerts.js';
 
 /** 倒數預告 banner 要撐過完整的 10 秒倒數，比 renderPlayer.js 預設的 5 秒久（見 countdownAlerts.js） */
@@ -32,8 +33,8 @@ function makeState(overrides = {}) {
   };
 }
 
-function makeDeps() {
-  return { speak: vi.fn(), playCountdownBeeps: vi.fn(), showNextIntervalBanner: vi.fn() };
+function makeDeps(alertMode = ALERT_MODE_VOICE) {
+  return { alertMode, speak: vi.fn(), playCountdownBeeps: vi.fn(), showNextIntervalBanner: vi.fn() };
 }
 
 // countdownWarning 觸發時，語音預告用加快的語速講精簡內容（見 countdownAlerts.js）
@@ -188,8 +189,8 @@ describe('handleTimerEvents: countdownTick (最後 5 秒逐秒語音報數，兩
     expect(deps.playCountdownBeeps).not.toHaveBeenCalled();
   });
 
-  it('speaks each of 5/4/3/2/1 correctly based on actual remaining time, triggering playCountdownBeeps() exactly once, only at digit 3', () => {
-    const deps = makeDeps();
+  it('speaks each of 5/4/3/2/1 correctly based on actual remaining time, never triggering playCountdownBeeps() (voice mode is beep-free even at digit 3)', () => {
+    const deps = makeDeps(ALERT_MODE_VOICE);
     for (const [elapsedInInterval, expectedDigit] of [
       [15, '5'],
       [16, '4'],
@@ -202,7 +203,7 @@ describe('handleTimerEvents: countdownTick (最後 5 秒逐秒語音報數，兩
       const state = makeState({ currentIntervalIndex: 1, elapsedInInterval });
       handleTimerEvents([TIMER_EVENTS.COUNTDOWN_TICK], { workout: makeWorkout(), state, ftp: 200, ...deps });
       expect(deps.speak).toHaveBeenCalledWith(expectedDigit);
-      expect(deps.playCountdownBeeps).toHaveBeenCalledTimes(expectedDigit === '3' ? 1 : 0);
+      expect(deps.playCountdownBeeps).not.toHaveBeenCalled();
     }
   });
 
@@ -222,9 +223,9 @@ describe('handleTimerEvents: countdownTick (最後 5 秒逐秒語音報數，兩
     expect(deps.playCountdownBeeps).not.toHaveBeenCalled();
   });
 
-  it('a playCountdownBeeps() failure at digit 3 does not throw and is isolated from speak()', () => {
+  it('(beep mode) a playCountdownBeeps() failure at digit 3 does not throw and is isolated', () => {
     const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
-    const deps = makeDeps();
+    const deps = makeDeps(ALERT_MODE_BEEP);
     deps.playCountdownBeeps.mockImplementation(() => {
       throw new Error('AudioContext boom');
     });
@@ -234,7 +235,7 @@ describe('handleTimerEvents: countdownTick (最後 5 秒逐秒語音報數，兩
       handleTimerEvents([TIMER_EVENTS.COUNTDOWN_TICK], { workout: makeWorkout(), state, ftp: 200, ...deps })
     ).not.toThrow();
 
-    expect(deps.speak).toHaveBeenCalledWith('3');
+    expect(deps.speak).not.toHaveBeenCalled();
     expect(deps.playCountdownBeeps).toHaveBeenCalledTimes(1);
     expect(consoleErrorSpy).toHaveBeenCalled();
     consoleErrorSpy.mockRestore();
@@ -279,6 +280,87 @@ describe('handleTimerEvents: countdownTick (最後 5 秒逐秒語音報數，兩
     handleTimerEvents([TIMER_EVENTS.WORKOUT_FINISHED], { workout: makeWorkout(), state: makeState(), ftp: 200, ...deps });
     expect(deps.speak).not.toHaveBeenCalled();
     expect(deps.playCountdownBeeps).not.toHaveBeenCalled();
+  });
+});
+
+describe('handleTimerEvents: mode exclusivity (ALERT_MODE_VOICE vs ALERT_MODE_BEEP, 使用者在首頁二選一，見 alertModeStore.js)', () => {
+  it('(beep mode) countdownWarning never calls speak(), but still shows the visual preview banner', () => {
+    const deps = makeDeps(ALERT_MODE_BEEP);
+    const state = makeState({ currentIntervalIndex: 0 });
+    handleTimerEvents([TIMER_EVENTS.COUNTDOWN_WARNING], { workout: makeWorkout(), state, ftp: 200, ...deps });
+
+    expect(deps.speak).not.toHaveBeenCalled();
+    expect(deps.showNextIntervalBanner).toHaveBeenCalledTimes(1);
+    expect(deps.showNextIntervalBanner).toHaveBeenCalledWith('下一組：20 秒 · 88% FTP', COUNTDOWN_PREVIEW_BANNER_MS);
+    expect(deps.playCountdownBeeps).not.toHaveBeenCalled();
+  });
+
+  it('(beep mode) countdownTick never calls speak() for any digit, and triggers playCountdownBeeps() exactly once, only at digit 3', () => {
+    for (const [elapsedInInterval, expectedDigit] of [
+      [15, '5'],
+      [16, '4'],
+      [17, '3'],
+      [18, '2'],
+      [19, '1'],
+    ]) {
+      const deps = makeDeps(ALERT_MODE_BEEP);
+      const state = makeState({ currentIntervalIndex: 1, elapsedInInterval });
+      handleTimerEvents([TIMER_EVENTS.COUNTDOWN_TICK], { workout: makeWorkout(), state, ftp: 200, ...deps });
+      expect(deps.speak).not.toHaveBeenCalled();
+      expect(deps.playCountdownBeeps).toHaveBeenCalledTimes(expectedDigit === '3' ? 1 : 0);
+    }
+  });
+
+  it('(beep mode) intervalChanged banner still shows (purely visual, unaffected by alertMode)', () => {
+    const deps = makeDeps(ALERT_MODE_BEEP);
+    const state = makeState({ currentIntervalIndex: 1, elapsedInInterval: 0, elapsedTotal: 12 });
+    handleTimerEvents([TIMER_EVENTS.INTERVAL_CHANGED], { workout: makeWorkout(), state, ftp: 200, ...deps });
+
+    expect(deps.showNextIntervalBanner).toHaveBeenCalledWith('下一組：穩定 · 0:20 · 88% FTP · 176W');
+    expect(deps.speak).not.toHaveBeenCalled();
+  });
+
+  it('(voice mode) never calls playCountdownBeeps(), even across a full countdownWarning + countdownTick sequence', () => {
+    const deps = makeDeps(ALERT_MODE_VOICE);
+    const warningState = makeState({ currentIntervalIndex: 0 });
+    handleTimerEvents([TIMER_EVENTS.COUNTDOWN_WARNING], { workout: makeWorkout(), state: warningState, ftp: 200, ...deps });
+    const tickState = makeState({ currentIntervalIndex: 1, elapsedInInterval: 17 }); // remaining=3
+    handleTimerEvents([TIMER_EVENTS.COUNTDOWN_TICK], { workout: makeWorkout(), state: tickState, ftp: 200, ...deps });
+
+    expect(deps.speak).toHaveBeenCalledTimes(2);
+    expect(deps.playCountdownBeeps).not.toHaveBeenCalled();
+  });
+
+  it('switching alertMode between calls immediately changes behaviour, with no leftover state from the previous mode', () => {
+    const speak = vi.fn();
+    const playCountdownBeeps = vi.fn();
+    const showNextIntervalBanner = vi.fn();
+    const tickState = makeState({ currentIntervalIndex: 1, elapsedInInterval: 17 }); // remaining=3
+
+    handleTimerEvents([TIMER_EVENTS.COUNTDOWN_TICK], {
+      workout: makeWorkout(),
+      state: tickState,
+      ftp: 200,
+      alertMode: ALERT_MODE_VOICE,
+      speak,
+      playCountdownBeeps,
+      showNextIntervalBanner,
+    });
+    expect(speak).toHaveBeenCalledTimes(1);
+    expect(playCountdownBeeps).not.toHaveBeenCalled();
+
+    speak.mockClear();
+    handleTimerEvents([TIMER_EVENTS.COUNTDOWN_TICK], {
+      workout: makeWorkout(),
+      state: tickState,
+      ftp: 200,
+      alertMode: ALERT_MODE_BEEP,
+      speak,
+      playCountdownBeeps,
+      showNextIntervalBanner,
+    });
+    expect(speak).not.toHaveBeenCalled();
+    expect(playCountdownBeeps).toHaveBeenCalledTimes(1);
   });
 });
 
