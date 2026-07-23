@@ -600,15 +600,23 @@ body {
   text-align: left;
 }
 
-/* 三層文字大小比例（規格：以倒數計時大字為基準 100%，第 2 級 90%、第 3 級
-   再 90%＝81%），統一定義成 CSS 變數放在 .player 這個共同祖先上——.status-panel
-   （倒數數字／瓦數／FTP%／經過時間／rpm）跟 .controls（開始按鈕）都是它的
-   子孫，透過繼承拿到同一份變數，以後要整體調整比例只改這三個變數，不用
-   到每個元素分別改。 */
+/* 三層文字大小比例（瓦數／FTP%／開始按鈕＝第 1 級，經過時間＝第 2 級，
+   rpm＝第 3 級），統一定義成 CSS 變數放在 .player 這個共同祖先上——
+   .status-panel（瓦數／FTP%／經過時間／rpm）跟 .controls（開始按鈕）都是
+   它的子孫，透過繼承拿到同一份變數，以後要整體調整比例只改這三個變數，
+   不用到每個元素分別改。
+   數值以「手機螢幕寬度下不裁切、不換行、按鈕高度正常」為第一優先實測校準
+   （曾經試過讓第 1 級直接等於倒數計時大字 4.5rem，結果 FTP% 被卡片邊界
+   切掉、開始按鈕文字換行撐高到 320px——這裡不追求跟倒數計時完全同尺寸，
+   只維持「瓦數/FTP% 明顯大於經過時間/rpm，經過時間/rpm 明顯大於一般說明
+   文字」的相對層級關係，見 player.css 所在 commit 的說明）。倒數計時大字
+   本身（.countdown-number）刻意不共用這組變數、維持獨立的 4.5rem——它在
+   左側自己的欄位，不會跟右側這幾行文字搶寬度，不需要被綁在同一個縮放
+   比例上。 */
 .player {
-  --font-tier-1: 4.5rem;
-  --font-tier-2: calc(var(--font-tier-1) * 0.9);
-  --font-tier-3: calc(var(--font-tier-2) * 0.9);
+  --font-tier-1: 2.25rem;
+  --font-tier-2: 1.1rem;
+  --font-tier-3: 0.95rem;
   max-width: 720px;
   margin: 0 auto;
   /* padding-top 加大到蓋過右上角 .theme-toggle 的高度範圍，避免課表名稱
@@ -721,7 +729,7 @@ body {
 }
 
 .countdown-number {
-  font-size: var(--font-tier-1);
+  font-size: 4.5rem;
   font-weight: 900;
   font-variant-numeric: tabular-nums;
   line-height: 1;
@@ -760,11 +768,10 @@ body {
 
 /* 瓦數／%FTP／rpm 縱向排成三行（規格：瓦數不能因為要塞 rpm 而被迫縮小，
    索性讓 rpm 自己獨立一行，不用再跟瓦數搶同一行的寬度）。瓦數跟 %FTP 兩行
-   固定同一個字級（第 1 級，跟倒數計時大字一樣大），不能一個明顯比另一個
-   大或小；每行本身內容都很短（例如「100 W」「50% FTP」），不會超出卡片
-   寬度，所以不需要像之前兩者同一行時那樣用 clamp() 縮放字級——但還是加
-   white-space: nowrap 保險，避免數字跟單位中間的空格在極端窄螢幕被當成
-   換行點拆開。 */
+   固定同一個字級（第 1 級），不能一個明顯比另一個大或小；white-space:
+   nowrap 避免數字跟單位中間的空格在窄螢幕被當成換行點拆開——第 1 級的
+   實際數值已經是手機螢幕寬度下實測不會裁切的大小（見 .player 開頭的
+   --font-tier-1 說明），不需要再額外用 clamp() 縮放。 */
 .target-watt,
 .target-pct {
   font-size: var(--font-tier-1);
@@ -823,9 +830,14 @@ body {
 
 /* 「開始／暫停」按鈕文字＋圖示（▶／⏸ 這個字元本身就在 textContent 裡，
    見 renderPlayer.js，不是另外的 icon 元素，字級一起放大就好）放大到第 1
-   級，跟倒數計時大字同樣大小——原本跟其他按鈕共用 .btn 的 1.1rem 太小。 */
+   級——原本跟其他按鈕共用 .btn 的 1.1rem 太小。white-space: nowrap 是這裡
+   的關鍵：曾經在字級大很多的版本上，「開始」兩個字被換行、甚至拆成「開」
+   「始」兩行，把按鈕整個撐高到 320px、連帶把同一個 grid row 的「跳組」
+   「重做本組」也拉成一樣高——nowrap 強制整段文字（含圖示）留在同一行，
+   按鈕高度才會回到跟其他按鈕一致，不會單獨突兀地變高。 */
 .btn-play-pause {
   font-size: var(--font-tier-1);
+  white-space: nowrap;
 }
 
 .btn-primary {

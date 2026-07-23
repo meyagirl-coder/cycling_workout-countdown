@@ -37,14 +37,46 @@ const COUNTDOWN_PREVIEW_BANNER_MS = 11000;
  */
 export function handleTimerEvents(events, { workout, state, ftp, playBeep, speak, showNextIntervalBanner }) {
   if (events.includes(TIMER_EVENTS.COUNTDOWN_WARNING)) {
-    playBeep();
-    const preview = computeUpcomingIntervalPreview(workout, state, ftp);
-    speak(formatCountdownSpeechText(preview));
-    showNextIntervalBanner(formatCountdownBannerText(preview), COUNTDOWN_PREVIEW_BANNER_MS);
+    // 提示音／預告內容計算／語音／banner 各自獨立包 try-catch：使用者回報過
+    // 「只聽到一聲提示音，之後語音跟後續提示音全部消失」的情況，最可能的
+    // 原因是其中一段丟出例外，把同一個 tick 裡排在後面的程式碼整個中斷掉
+    // （沒被 catch 住的例外會一路往外拋，中斷當下這次 handleTimerEvents()
+    // 呼叫）。這裡讓四段互不拖累：任一段失敗只在 console 留下錯誤方便除錯，
+    // 不會讓提示音這種最基本的功能也跟著遭殃。
+    try {
+      playBeep();
+    } catch (err) {
+      console.error('countdownAlerts: playBeep() failed', err);
+    }
+
+    let preview = null;
+    try {
+      preview = computeUpcomingIntervalPreview(workout, state, ftp);
+    } catch (err) {
+      console.error('countdownAlerts: computeUpcomingIntervalPreview() failed', err);
+    }
+
+    if (preview) {
+      try {
+        speak(formatCountdownSpeechText(preview));
+      } catch (err) {
+        console.error('countdownAlerts: speak() failed', err);
+      }
+
+      try {
+        showNextIntervalBanner(formatCountdownBannerText(preview), COUNTDOWN_PREVIEW_BANNER_MS);
+      } catch (err) {
+        console.error('countdownAlerts: showNextIntervalBanner() failed', err);
+      }
+    }
   }
 
   if (events.includes(TIMER_EVENTS.INTERVAL_CHANGED)) {
-    showNextIntervalBanner(formatNextIntervalText(workout, state, ftp));
+    try {
+      showNextIntervalBanner(formatNextIntervalText(workout, state, ftp));
+    } catch (err) {
+      console.error('countdownAlerts: showNextIntervalBanner() (intervalChanged) failed', err);
+    }
   }
 }
 
@@ -120,6 +152,11 @@ export function playCountdownBeep() {
 
   if (!sharedAudioContext) sharedAudioContext = new AudioContextCtor();
   const ctx = sharedAudioContext;
+  // iOS Safari 已知行為：交替使用 SpeechSynthesis 之後，共用的 AudioContext
+  // 可能被瀏覽器悄悄中斷（suspended），之後即使程式碼正常執行、沒有拋出任何
+  // 例外，oscillator 也不會真的發出聲音——每次播放前都主動 resume 一次，跟
+  // unlockAudioAndSpeechForAutoplay() 的作法一致，不能只靠一開始 unlock 那一次。
+  if (typeof ctx.resume === 'function' && ctx.state === 'suspended') ctx.resume();
 
   const oscillator = ctx.createOscillator();
   const gain = ctx.createGain();

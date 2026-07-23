@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { TIMER_EVENTS } from '../src/engine/timerEngine.js';
 import { COUNTDOWN_FINISHING_SOON_TEXT, handleTimerEvents } from '../src/ui/countdownAlerts.js';
 
@@ -159,6 +159,94 @@ describe('handleTimerEvents: multiple events in the same batch', () => {
   });
 });
 
+describe('handleTimerEvents: error isolation (regression - user reported "one beep then total silence")', () => {
+  // 使用者回報過「只聽到一聲提示音，之後語音跟後續提示音全部消失」——最像是
+  // 某一段（例如 speak()）丟出沒被 catch 的例外，把同一次呼叫裡排在後面的
+  // 程式碼整個中斷。這裡驗證 playBeep／語音預告／banner 三段互相獨立，任一段
+  // 丟出例外都不會波及其他段，也不會讓例外一路往外拋、中斷呼叫端（見
+  // countdownAlerts.js 的說明）。
+  let consoleErrorSpy;
+
+  beforeEach(() => {
+    consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    consoleErrorSpy.mockRestore();
+  });
+
+  it('playBeep() throwing does not prevent speak() or showNextIntervalBanner() from running, and does not propagate', () => {
+    const deps = makeDeps();
+    deps.playBeep.mockImplementation(() => {
+      throw new Error('AudioContext boom');
+    });
+    const state = makeState({ currentIntervalIndex: 0 });
+
+    expect(() => handleTimerEvents([TIMER_EVENTS.COUNTDOWN_WARNING], { workout: makeWorkout(), state, ftp: 200, ...deps })).not.toThrow();
+
+    expect(deps.playBeep).toHaveBeenCalledTimes(1);
+    expect(deps.speak).toHaveBeenCalledTimes(1);
+    expect(deps.showNextIntervalBanner).toHaveBeenCalledTimes(1);
+    expect(consoleErrorSpy).toHaveBeenCalled();
+  });
+
+  it('speak() throwing does not prevent playBeep() (already ran) or showNextIntervalBanner() from running, and does not propagate', () => {
+    const deps = makeDeps();
+    deps.speak.mockImplementation(() => {
+      throw new Error('SpeechSynthesis boom');
+    });
+    const state = makeState({ currentIntervalIndex: 0 });
+
+    expect(() => handleTimerEvents([TIMER_EVENTS.COUNTDOWN_WARNING], { workout: makeWorkout(), state, ftp: 200, ...deps })).not.toThrow();
+
+    expect(deps.playBeep).toHaveBeenCalledTimes(1);
+    expect(deps.speak).toHaveBeenCalledTimes(1);
+    expect(deps.showNextIntervalBanner).toHaveBeenCalledTimes(1);
+    expect(consoleErrorSpy).toHaveBeenCalled();
+  });
+
+  it('showNextIntervalBanner() throwing during a countdownWarning does not propagate (playBeep/speak already ran)', () => {
+    const deps = makeDeps();
+    deps.showNextIntervalBanner.mockImplementation(() => {
+      throw new Error('DOM boom');
+    });
+    const state = makeState({ currentIntervalIndex: 0 });
+
+    expect(() => handleTimerEvents([TIMER_EVENTS.COUNTDOWN_WARNING], { workout: makeWorkout(), state, ftp: 200, ...deps })).not.toThrow();
+
+    expect(deps.playBeep).toHaveBeenCalledTimes(1);
+    expect(deps.speak).toHaveBeenCalledTimes(1);
+    expect(consoleErrorSpy).toHaveBeenCalled();
+  });
+
+  it('showNextIntervalBanner() throwing during an intervalChanged event does not propagate', () => {
+    const deps = makeDeps();
+    deps.showNextIntervalBanner.mockImplementation(() => {
+      throw new Error('DOM boom');
+    });
+    const state = makeState({ currentIntervalIndex: 1, elapsedInInterval: 0, elapsedTotal: 12 });
+
+    expect(() => handleTimerEvents([TIMER_EVENTS.INTERVAL_CHANGED], { workout: makeWorkout(), state, ftp: 200, ...deps })).not.toThrow();
+    expect(consoleErrorSpy).toHaveBeenCalled();
+  });
+
+  it('a subsequent, independent countdownWarning call still plays the beep normally after a prior call\'s speak() failed (no lingering state corruption)', () => {
+    const deps = makeDeps();
+    deps.speak.mockImplementationOnce(() => {
+      throw new Error('SpeechSynthesis boom');
+    });
+    const state0 = makeState({ currentIntervalIndex: 0 });
+    handleTimerEvents([TIMER_EVENTS.COUNTDOWN_WARNING], { workout: makeWorkout(), state: state0, ftp: 200, ...deps });
+
+    // second, independent call (e.g. the next interval's own countdown warning) - speak() no longer throws
+    const state1 = makeState({ currentIntervalIndex: 2 });
+    handleTimerEvents([TIMER_EVENTS.COUNTDOWN_WARNING], { workout: makeWorkout(), state: state1, ftp: 200, ...deps });
+
+    expect(deps.playBeep).toHaveBeenCalledTimes(2);
+    expect(deps.speak).toHaveBeenCalledTimes(2);
+  });
+});
+
 describe('unlockAudioAndSpeechForAutoplay (團體訓練排程：「設定開始時間」當下解鎖自動播放權限)', () => {
   // countdownAlerts.js 的 sharedAudioContext 是模組層級變數，playCountdownBeep()
   // 也共用它——每個測試都用 vi.resetModules() + 動態 import 拿一份全新的模組
@@ -231,5 +319,57 @@ describe('unlockAudioAndSpeechForAutoplay (團體訓練排程：「設定開始�
   it('does not throw when AudioContext/speechSynthesis are unavailable (e.g. an unsupported browser)', async () => {
     const { unlockAudioAndSpeechForAutoplay } = await import('../src/ui/countdownAlerts.js');
     expect(() => unlockAudioAndSpeechForAutoplay()).not.toThrow();
+  });
+});
+
+describe('playCountdownBeep (regression: iOS Safari can silently suspend the shared AudioContext between beeps)', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.resetModules();
+  });
+
+  function stubAudioContext(initialState) {
+    const oscillator = { connect: vi.fn(), start: vi.fn(), stop: vi.fn(), frequency: {} };
+    const gain = { connect: vi.fn(), gain: { setValueAtTime: vi.fn(), exponentialRampToValueAtTime: vi.fn() } };
+    const ctx = {
+      createOscillator: vi.fn(() => oscillator),
+      createGain: vi.fn(() => gain),
+      destination: {},
+      currentTime: 0,
+      state: initialState,
+      resume: vi.fn(),
+    };
+    const AudioContextCtor = vi.fn(() => ctx);
+    vi.stubGlobal('AudioContext', AudioContextCtor);
+    return { AudioContextCtor, ctx, oscillator };
+  }
+
+  it('calls ctx.resume() before playing when the shared AudioContext is suspended (e.g. after SpeechSynthesis interrupted it)', async () => {
+    const { ctx, oscillator } = stubAudioContext('suspended');
+    const { playCountdownBeep } = await import('../src/ui/countdownAlerts.js');
+
+    playCountdownBeep();
+
+    expect(ctx.resume).toHaveBeenCalledTimes(1);
+    expect(oscillator.start).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not call ctx.resume() when the context is already running (no unnecessary calls)', async () => {
+    const { ctx } = stubAudioContext('running');
+    const { playCountdownBeep } = await import('../src/ui/countdownAlerts.js');
+
+    playCountdownBeep();
+
+    expect(ctx.resume).not.toHaveBeenCalled();
+  });
+
+  it('re-checks and resumes on every call, not just the first (a beep several intervals later can still be suspended again)', async () => {
+    const { ctx } = stubAudioContext('suspended');
+    const { playCountdownBeep } = await import('../src/ui/countdownAlerts.js');
+
+    playCountdownBeep();
+    playCountdownBeep();
+
+    expect(ctx.resume).toHaveBeenCalledTimes(2);
   });
 });
