@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<workout_file>
+    <author>EthanLin</author>
+    <name>IntervalCoach - 閾值衝刺 (正確版)</name>
+    <sportType>bike</sportType>
+    <tags/>
+    <workout>
+        <SteadyState show_avg="1" Power="0.5" Duration="720"/>
+        <SteadyState show_avg="1" PowerHigh="1.0" PowerLow="0.95" Duration="600">
+            <textevent message="Threshold 1/5" duration="10"/>
+        </SteadyState>
+        <SteadyState show_avg="1" Power="1.2" Duration="30">
+            <textevent message="Surge" duration="10"/>
+        </SteadyState>
+        <SteadyState show_avg="1" Power="0.6" Duration="120">
+            <textevent message="Recovery" duration="10"/>
+        </SteadyState>
+        <SteadyState show_avg="1" PowerHigh="1.0" PowerLow="0.95" Duration="600">
+            <textevent message="Threshold 2/5" duration="10"/>
+        </SteadyState>
+        <SteadyState show_avg="1" Power="1.2" Duration="30">
+            <textevent message="Surge" duration="10"/>
+        </SteadyState>
+        <SteadyState show_avg="1" Power="0.6" Duration="120">
+            <textevent message="Recovery" duration="10"/>
+        </SteadyState>
+        <SteadyState show_avg="1" PowerHigh="1.0" PowerLow="0.95" Duration="600">
+            <textevent message="Threshold 3/5" duration="10"/>
+        </SteadyState>
+        <SteadyState show_avg="1" Power="1.2" Duration="30">
+            <textevent message="Surge" duration="10"/>
+        </SteadyState>
+        <SteadyState show_avg="1" Power="0.6" Duration="120">
+            <textevent message="Recovery" duration="10"/>
+        </SteadyState>
+        <SteadyState show_avg="1" PowerHigh="1.0" PowerLow="0.95" Duration="600">
+            <textevent message="Threshold 4/5" duration="10"/>
+        </SteadyState>
+        <SteadyState show_avg="1" Power="1.2" Duration="30">
+            <textevent message="Surge" duration="10"/>
+        </SteadyState>
+        <SteadyState show_avg="1" Power="0.6" Duration="120">
+            <textevent message="Recovery" duration="10"/>
+        </SteadyState>
+        <SteadyState show_avg="1" PowerHigh="1.0" PowerLow="0.95" Duration="600">
+            <textevent message="Threshold 5/5" duration="10"/>
+        </SteadyState>
+        <SteadyState show_avg="1" Power="1.2" Duration="30">
+            <textevent message="Surge" duration="10"/>
+        </SteadyState>
+        <SteadyState show_avg="1" Power="0.6" Duration="120">
+            <textevent message="Recovery" duration="10"/>
+        </SteadyState>
+        <SteadyState show_avg="1" Power="1.0" Duration="300">
+            <textevent message="Hard Finish" duration="10"/>
+        </SteadyState>
+        <SteadyState show_avg="1" Power="0.5" Duration="540"/>
+    </workout>
+</workout_file>
