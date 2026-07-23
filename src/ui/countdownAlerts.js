@@ -1,20 +1,28 @@
 /**
- * 倒數提示（規格 §4.4）：組別時長 > 20 秒的正常規則——剩餘 10 秒時同時觸發
- * 提示音＋語音＋下一組預告；切組瞬間顯示下一組資訊。組別時長 <= 20 秒的
- * 短間歇例外——只在最後 5 秒逐秒觸發提示音（5-4-3-2-1），不觸發語音／
- * banner（見 timerEngine.js 的 SHORT_COUNTDOWN_TICK）。這裡只負責「timer
- * 事件 -> 該做什麼提示」的判斷邏輯，音效／語音的實際播放實作是可注入的
- * 依賴（playBeep/speak），方便在 jsdom 下用假函式測試觸發時機是否正確，
- * 不需要真的 AudioContext／SpeechSynthesis。
+ * 倒數提示（規格 §4.4）：組別時長 > 20 秒的正常規則——剩餘 10 秒時觸發一次
+ * 提示音＋快速唸出下一組資訊（語速加快，盡量在 5 秒內講完）＋顯示 banner；
+ * 接著最後 5 秒（5-4-3-2-1）逐秒語音報數，正常語速，唸完剛好接上下一組
+ * 開始。組別時長 <= 20 秒的短間歇例外——不觸發「下一組」預告（不論語音或
+ * banner，組別太短，插播一段介紹會佔掉這組大半時間），只有最後 5 秒一樣
+ * 逐秒語音報數（見 timerEngine.js 的 COUNTDOWN_WARNING／COUNTDOWN_TICK）。
+ * 切組瞬間顯示下一組資訊（intervalChanged，格式不變）。
  *
- * 倒數 10 秒的預告（countdownWarning）跟切組瞬間的顯示（intervalChanged）
- * 是兩個不同時間點、格式也不同：
- *   - countdownWarning 這時候「下一組」還沒真的開始，只是預告，用口語化的
- *     「X 分鐘」時長格式＋「下一組：X 分鐘 · Y% FTP」／有漸變就顯示
- *     「XX% → YY% FTP」／freeride 顯示「自由騎乘」不顯示百分比／已經是
- *     最後一組就顯示「即將完成」，不能講一個不存在的「下一組」。
- *   - intervalChanged 這時候已經切到新的一組，維持原本 mm:ss ＋ watts 的
- *     詳細格式（formatNextIntervalText()），這個格式沒有變。
+ * 這裡只負責「timer 事件 -> 該做什麼提示」的判斷邏輯，音效／語音的實際
+ * 播放實作是可注入的依賴（playBeep/speak），方便在 jsdom 下用假函式測試
+ * 觸發時機是否正確，不需要真的 AudioContext／SpeechSynthesis。
+ *
+ * 三種不同時間點、三種不同格式：
+ *   - countdownWarning（正常規則專用）：「下一組」還沒真的開始，只是預告，
+ *     用口語化、刻意精簡到能快速唸完的格式（formatFastCountdownSpeechText()，
+ *     例如「下一組 75% 5 分鐘」），語速調快（FAST_PREVIEW_SPEECH_RATE）；
+ *     banner 視覺文字不受語速時間限制，維持較完整的原有格式
+ *     （formatCountdownBannerText()）。
+ *   - countdownTick（兩條路徑都有）：最後 5 秒逐秒語音報數（"5"「4」...），
+ *     正常語速，不額外顯示 banner——每次都用「目前實際剩餘秒數」現算現報
+ *     （不是靠計數器猜第幾次），降頻分頁一次跳過好幾秒也不會報出過期的
+ *     數字。
+ *   - intervalChanged：已經切到新的一組，維持原本 mm:ss ＋ watts 的詳細
+ *     格式（formatNextIntervalText()），這個格式沒有變。
  */
 import { computeCurrentTarget, TIMER_EVENTS } from '../engine/timerEngine.js';
 import { formatMinuteSecondLabel, formatMMSS } from './formatTime.js';
@@ -28,6 +36,14 @@ export const COUNTDOWN_FINISHING_SOON_TEXT = '即將完成';
 // 秒倒數）。
 const COUNTDOWN_PREVIEW_BANNER_MS = 11000;
 
+// 「下一組」預告語音刻意講快一點，盡量在 5 秒內講完，緊接著剩下 5 秒的
+// 逐秒報數（見 timerEngine.js 的 COUNTDOWN_WARNING_SECONDS/COUNTDOWN_TICK_SECONDS）。
+// 瀏覽器不保證 SpeechSynthesis 唸完一段文字實際花多久（不同裝置／語音包快慢
+// 不一），這個語速只是盡力而為，不是精確可控的保證值——報數本身仍然是靠
+// 真正的計時器逐秒觸發，不是接在這段語音講完之後才開始，所以報數的時機
+// 永遠準確，頂多語音講比較久時會跟第一聲報數稍微疊到。
+const FAST_PREVIEW_SPEECH_RATE = 1.35;
+
 /**
  * @param {string[]} events - 這次 tick/action 回傳的事件（TIMER_EVENTS 的值）
  * @param {object} ctx
@@ -35,7 +51,7 @@ const COUNTDOWN_PREVIEW_BANNER_MS = 11000;
  * @param {object} ctx.state - engine 的最新 state（含 currentIntervalIndex/powerAdjustPct）
  * @param {number} ctx.ftp
  * @param {() => void} ctx.playBeep
- * @param {(text: string) => void} ctx.speak
+ * @param {(text: string, rate?: number) => void} ctx.speak
  * @param {(text: string, durationMs?: number) => void} ctx.showNextIntervalBanner
  */
 export function handleTimerEvents(events, { workout, state, ftp, playBeep, speak, showNextIntervalBanner }) {
@@ -61,7 +77,7 @@ export function handleTimerEvents(events, { workout, state, ftp, playBeep, speak
 
     if (preview) {
       try {
-        speak(formatCountdownSpeechText(preview));
+        speak(formatFastCountdownSpeechText(preview), FAST_PREVIEW_SPEECH_RATE);
       } catch (err) {
         console.error('countdownAlerts: speak() failed', err);
       }
@@ -74,17 +90,17 @@ export function handleTimerEvents(events, { workout, state, ftp, playBeep, speak
     }
   }
 
-  // 短間歇例外（組別時長 <= 20 秒，見 timerEngine.js）：最後 5 秒逐秒觸發一次
-  // SHORT_COUNTDOWN_TICK，只播提示音（5-4-3-2-1），刻意不算預告內容、不語音、
-  // 不顯示 banner——組別太短，插播一段「10 秒後進入下一組...」語音反而佔掉
-  //這組大半時間。降頻分頁一次 tick 可能跨過不只一個秒數點，events 陣列裡會
-  // 有對應次數的 SHORT_COUNTDOWN_TICK，這裡就播對應次數的提示音，不會漏拍。
-  const shortTickCount = events.filter((event) => event === TIMER_EVENTS.SHORT_COUNTDOWN_TICK).length;
-  for (let i = 0; i < shortTickCount; i++) {
+  // 最後 5 秒逐秒語音報數（COUNTDOWN_TICK，兩條路徑都有，見 timerEngine.js）：
+  // 不管這次 events 裡出現幾次（降頻分頁一次 tick 跨過好幾個秒數點時會有
+  // 多筆），只用「目前實際剩餘秒數」報一次數，不是每筆都報——報過期、跳過
+  // 的數字（例如卡在背景時一次從 5 跳到 2）反而更容易誤導使用者，不如只報
+  // 當下正確的那一個。
+  if (events.includes(TIMER_EVENTS.COUNTDOWN_TICK)) {
     try {
-      playBeep();
+      const digit = computeCurrentCountdownDigit(workout, state);
+      if (digit !== null) speak(String(digit));
     } catch (err) {
-      console.error('countdownAlerts: playBeep() failed (short-interval countdown tick)', err);
+      console.error('countdownAlerts: speak() failed (countdown tick)', err);
     }
   }
 
@@ -95,6 +111,14 @@ export function handleTimerEvents(events, { workout, state, ftp, playBeep, speak
       console.error('countdownAlerts: showNextIntervalBanner() (intervalChanged) failed', err);
     }
   }
+}
+
+/** 目前這組「剩餘秒數」四捨五入到整數，用來報數（"5"「4」...「1」） */
+function computeCurrentCountdownDigit(workout, state) {
+  const iv = workout.intervals[state.currentIntervalIndex];
+  const remaining = iv.duration - state.elapsedInInterval;
+  const rounded = Math.round(remaining);
+  return rounded > 0 ? rounded : null;
 }
 
 /**
@@ -139,12 +163,17 @@ function formatCountdownBannerText(preview) {
   return `下一組：${preview.durationLabel} · ${pctLabel}`;
 }
 
-function formatCountdownSpeechText(preview) {
-  if (preview.finishing) return `10 秒後${COUNTDOWN_FINISHING_SOON_TEXT}`;
-  if (preview.freeride) return `10 秒後進入下一組，${INTERVAL_TYPE_LABELS.freeride}，持續 ${preview.durationLabel}`;
+/**
+ * 「下一組」語音預告，刻意精簡（不像 formatCountdownBannerText() 那樣完整），
+ * 搭配 FAST_PREVIEW_SPEECH_RATE 加快的語速，盡量在 5 秒內講完，好讓緊接著
+ * 的 5 秒逐秒報數準確接上下一組開始，例如「下一組 75% 5 分鐘」。
+ */
+function formatFastCountdownSpeechText(preview) {
+  if (preview.finishing) return COUNTDOWN_FINISHING_SOON_TEXT;
+  if (preview.freeride) return `下一組 ${INTERVAL_TYPE_LABELS.freeride} ${preview.durationLabel}`;
 
-  const pctLabel = preview.isRange ? `${preview.startPct}% 到 ${preview.endPct}% FTP` : `${preview.startPct}% FTP`;
-  return `10 秒後進入下一組，${pctLabel}，持續 ${preview.durationLabel}`;
+  const pctLabel = preview.isRange ? `${preview.startPct}% 到 ${preview.endPct}%` : `${preview.startPct}%`;
+  return `下一組 ${pctLabel} ${preview.durationLabel}`;
 }
 
 /** 切組瞬間的下一組資訊（規格既有格式，mm:ss ＋ watts，沒有變動） */
@@ -188,12 +217,18 @@ export function playCountdownBeep() {
   oscillator.stop(ctx.currentTime + 0.3);
 }
 
-/** 真正的語音實作：SpeechSynthesis API，瀏覽器不支援就靜默跳過 */
-export function speakCountdownWarning(text) {
+/**
+ * 真正的語音實作：SpeechSynthesis API，瀏覽器不支援就靜默跳過。
+ * @param {string} text
+ * @param {number} [rate] - 語速倍率，預設 1（正常語速）；下一組快速預告會傳
+ *   FAST_PREVIEW_SPEECH_RATE 加快，5-4-3-2-1 報數維持預設正常語速。
+ */
+export function speakCountdownWarning(text, rate = 1) {
   if (typeof window === 'undefined' || !window.speechSynthesis || typeof SpeechSynthesisUtterance === 'undefined') return;
 
   const utterance = new SpeechSynthesisUtterance(text);
   utterance.lang = 'zh-TW';
+  utterance.rate = rate;
   window.speechSynthesis.speak(utterance);
 }
 

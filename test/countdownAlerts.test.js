@@ -36,8 +36,11 @@ function makeDeps() {
   return { playBeep: vi.fn(), speak: vi.fn(), showNextIntervalBanner: vi.fn() };
 }
 
-describe('handleTimerEvents: countdownWarning (10 seconds before the CURRENT interval ends)', () => {
-  it('plays a beep and shows/speaks a preview of the upcoming steady interval (duration + %FTP)', () => {
+// countdownWarning 觸發時，語音預告用加快的語速講精簡內容（見 countdownAlerts.js）
+const FAST_PREVIEW_SPEECH_RATE = 1.35;
+
+describe('handleTimerEvents: countdownWarning (10 seconds before the CURRENT interval ends, only for segments >20s)', () => {
+  it('plays a beep and shows a banner + speaks a fast, terse preview of the upcoming steady interval', () => {
     const deps = makeDeps();
     // currentIntervalIndex 0 (warmup) is about to end; the upcoming interval is index 1 (steady, 88%)
     const state = makeState({ currentIntervalIndex: 0 });
@@ -45,12 +48,14 @@ describe('handleTimerEvents: countdownWarning (10 seconds before the CURRENT int
 
     expect(deps.playBeep).toHaveBeenCalledTimes(1);
     expect(deps.showNextIntervalBanner).toHaveBeenCalledTimes(1);
+    // banner text stays the fuller existing format - no speech-timing constraint on visual text
     expect(deps.showNextIntervalBanner).toHaveBeenCalledWith('下一組：20 秒 · 88% FTP', COUNTDOWN_PREVIEW_BANNER_MS);
     expect(deps.speak).toHaveBeenCalledTimes(1);
-    expect(deps.speak).toHaveBeenCalledWith('10 秒後進入下一組，88% FTP，持續 20 秒');
+    // spoken preview is terser and spoken faster, so it has a chance to finish before the 5-second tick countdown begins
+    expect(deps.speak).toHaveBeenCalledWith('下一組 88% 20 秒', FAST_PREVIEW_SPEECH_RATE);
   });
 
-  it('shows/speaks the preview banner for at least the full 10-second countdown window (regression: the default 5s auto-hide left a blank gap for half the countdown)', () => {
+  it('shows the preview banner for at least the full 10-second countdown window (regression: the default 5s auto-hide left a blank gap for half the countdown)', () => {
     const deps = makeDeps();
     const state = makeState({ currentIntervalIndex: 0 });
     handleTimerEvents([TIMER_EVENTS.COUNTDOWN_WARNING], { workout: makeWorkout(), state, ftp: 200, ...deps });
@@ -59,7 +64,7 @@ describe('handleTimerEvents: countdownWarning (10 seconds before the CURRENT int
     expect(durationArg).toBeGreaterThanOrEqual(10000);
   });
 
-  it('matches the "下一組：5 分鐘 · 75% FTP" example format for a minute-scale steady interval', () => {
+  it('matches the "下一組：5 分鐘 · 75% FTP" banner format for a minute-scale steady interval', () => {
     const deps = makeDeps();
     const workout = {
       ...makeWorkout(),
@@ -72,16 +77,17 @@ describe('handleTimerEvents: countdownWarning (10 seconds before the CURRENT int
     handleTimerEvents([TIMER_EVENTS.COUNTDOWN_WARNING], { workout, state, ftp: 200, ...deps });
 
     expect(deps.showNextIntervalBanner).toHaveBeenCalledWith('下一組：5 分鐘 · 75% FTP', COUNTDOWN_PREVIEW_BANNER_MS);
+    expect(deps.speak).toHaveBeenCalledWith('下一組 75% 5 分鐘', FAST_PREVIEW_SPEECH_RATE);
   });
 
-  it('shows a "XX% -> YY% FTP" range (not a single number) when the upcoming interval ramps', () => {
+  it('shows/speaks a "XX% -> YY%" range (not a single number) when the upcoming interval ramps', () => {
     const deps = makeDeps();
     // currentIntervalIndex 2 (freeride) is about to end; upcoming is index 3 (cooldown, 60% -> 40%)
     const state = makeState({ currentIntervalIndex: 2 });
     handleTimerEvents([TIMER_EVENTS.COUNTDOWN_WARNING], { workout: makeWorkout(), state, ftp: 200, ...deps });
 
     expect(deps.showNextIntervalBanner).toHaveBeenCalledWith('下一組：15 秒 · 60% → 40% FTP', COUNTDOWN_PREVIEW_BANNER_MS);
-    expect(deps.speak).toHaveBeenCalledWith('10 秒後進入下一組，60% 到 40% FTP，持續 15 秒');
+    expect(deps.speak).toHaveBeenCalledWith('下一組 60% 到 40% 15 秒', FAST_PREVIEW_SPEECH_RATE);
   });
 
   it('applies the user\'s power adjustment to the previewed percentage', () => {
@@ -92,17 +98,17 @@ describe('handleTimerEvents: countdownWarning (10 seconds before the CURRENT int
     expect(deps.showNextIntervalBanner).toHaveBeenCalledWith('下一組：20 秒 · 93% FTP', COUNTDOWN_PREVIEW_BANNER_MS);
   });
 
-  it('shows "自由騎乘" with no percentage when the upcoming interval is freeride', () => {
+  it('shows/speaks "自由騎乘" with no percentage when the upcoming interval is freeride', () => {
     const deps = makeDeps();
     // currentIntervalIndex 1 (steady) is about to end; upcoming is index 2 (freeride)
     const state = makeState({ currentIntervalIndex: 1 });
     handleTimerEvents([TIMER_EVENTS.COUNTDOWN_WARNING], { workout: makeWorkout(), state, ftp: 200, ...deps });
 
     expect(deps.showNextIntervalBanner).toHaveBeenCalledWith('下一組：自由騎乘 · 10 秒', COUNTDOWN_PREVIEW_BANNER_MS);
-    expect(deps.speak).toHaveBeenCalledWith('10 秒後進入下一組，自由騎乘，持續 10 秒');
+    expect(deps.speak).toHaveBeenCalledWith('下一組 自由騎乘 10 秒', FAST_PREVIEW_SPEECH_RATE);
   });
 
-  it('shows "即將完成" instead of a nonexistent next interval when the CURRENT interval is the last one', () => {
+  it('shows/speaks "即將完成" instead of a nonexistent next interval when the CURRENT interval is the last one', () => {
     const deps = makeDeps();
     // currentIntervalIndex 3 (cooldown) is the last interval - there is no "next" interval
     const state = makeState({ currentIntervalIndex: 3 });
@@ -110,7 +116,7 @@ describe('handleTimerEvents: countdownWarning (10 seconds before the CURRENT int
 
     expect(deps.showNextIntervalBanner).toHaveBeenCalledWith(COUNTDOWN_FINISHING_SOON_TEXT, COUNTDOWN_PREVIEW_BANNER_MS);
     expect(deps.showNextIntervalBanner).toHaveBeenCalledWith('即將完成', COUNTDOWN_PREVIEW_BANNER_MS);
-    expect(deps.speak).toHaveBeenCalledWith('10 秒後即將完成');
+    expect(deps.speak).toHaveBeenCalledWith('即將完成', FAST_PREVIEW_SPEECH_RATE);
   });
 });
 
@@ -143,6 +149,8 @@ describe('handleTimerEvents: multiple events in the same batch', () => {
 
     expect(deps.playBeep).toHaveBeenCalledTimes(1);
     expect(deps.speak).toHaveBeenCalledTimes(1);
+    // currentIntervalIndex=1 (steady) -> the upcoming/previewed interval is index 2 (freeride)
+    expect(deps.speak).toHaveBeenCalledWith('下一組 自由騎乘 10 秒', FAST_PREVIEW_SPEECH_RATE);
     // both the countdown preview and the interval-changed banner fire; the last call is what's visible
     expect(deps.showNextIntervalBanner).toHaveBeenCalledTimes(2);
     expect(deps.showNextIntervalBanner).toHaveBeenLastCalledWith('下一組：穩定 · 0:20 · 88% FTP · 176W');
@@ -159,50 +167,79 @@ describe('handleTimerEvents: multiple events in the same batch', () => {
   });
 });
 
-describe('handleTimerEvents: shortCountdownTick (短間歇例外，組別時長 <= 20 秒：只播提示音，不唸下一組預告)', () => {
-  it('plays a beep but does not speak or show a banner', () => {
+describe('handleTimerEvents: countdownTick (最後 5 秒逐秒語音報數，兩條路徑都有：不唸下一組預告，不顯示 banner，不 beep)', () => {
+  it('speaks the current remaining second as a digit (e.g. "5"), not a beep', () => {
     const deps = makeDeps();
-    const state = makeState({ currentIntervalIndex: 1 });
-    handleTimerEvents([TIMER_EVENTS.SHORT_COUNTDOWN_TICK], { workout: makeWorkout(), state, ftp: 200, ...deps });
+    // interval 1 (steady, duration 20) with elapsedInInterval=15 -> remaining=5
+    const state = makeState({ currentIntervalIndex: 1, elapsedInInterval: 15 });
+    handleTimerEvents([TIMER_EVENTS.COUNTDOWN_TICK], { workout: makeWorkout(), state, ftp: 200, ...deps });
 
-    expect(deps.playBeep).toHaveBeenCalledTimes(1);
-    expect(deps.speak).not.toHaveBeenCalled();
+    expect(deps.playBeep).not.toHaveBeenCalled();
+    expect(deps.speak).toHaveBeenCalledTimes(1);
+    expect(deps.speak).toHaveBeenCalledWith('5');
     expect(deps.showNextIntervalBanner).not.toHaveBeenCalled();
   });
 
-  it('plays one beep per occurrence when multiple shortCountdownTick events arrive in the same batch (throttled tab catch-up)', () => {
+  it('speaks the digit at normal (default) speech rate, not the fast preview rate', () => {
     const deps = makeDeps();
-    const state = makeState({ currentIntervalIndex: 1 });
+    const state = makeState({ currentIntervalIndex: 1, elapsedInInterval: 16 }); // remaining=4
+    handleTimerEvents([TIMER_EVENTS.COUNTDOWN_TICK], { workout: makeWorkout(), state, ftp: 200, ...deps });
+
+    expect(deps.speak).toHaveBeenCalledWith('4');
+    expect(deps.speak.mock.calls[0]).toHaveLength(1); // no rate argument passed -> speakCountdownWarning()'s default rate=1 applies
+  });
+
+  it('speaks each of 5/4/3/2/1 correctly based on actual remaining time', () => {
+    const deps = makeDeps();
+    for (const [elapsedInInterval, expectedDigit] of [
+      [15, '5'],
+      [16, '4'],
+      [17, '3'],
+      [18, '2'],
+      [19, '1'],
+    ]) {
+      deps.speak.mockClear();
+      const state = makeState({ currentIntervalIndex: 1, elapsedInInterval });
+      handleTimerEvents([TIMER_EVENTS.COUNTDOWN_TICK], { workout: makeWorkout(), state, ftp: 200, ...deps });
+      expect(deps.speak).toHaveBeenCalledWith(expectedDigit);
+    }
+  });
+
+  it('collapses multiple countdownTick occurrences in one batch (throttled tab catch-up) into a single speak() using the current actual remaining time, not stale skipped digits', () => {
+    const deps = makeDeps();
+    // remaining=2 "now", even though the batch has 4 entries (5,4,3,2 all crossed in one throttled tick)
+    const state = makeState({ currentIntervalIndex: 1, elapsedInInterval: 18 });
     handleTimerEvents(
-      [TIMER_EVENTS.SHORT_COUNTDOWN_TICK, TIMER_EVENTS.SHORT_COUNTDOWN_TICK, TIMER_EVENTS.SHORT_COUNTDOWN_TICK],
+      [TIMER_EVENTS.COUNTDOWN_TICK, TIMER_EVENTS.COUNTDOWN_TICK, TIMER_EVENTS.COUNTDOWN_TICK, TIMER_EVENTS.COUNTDOWN_TICK],
       { workout: makeWorkout(), state, ftp: 200, ...deps }
     );
 
-    expect(deps.playBeep).toHaveBeenCalledTimes(3);
-    expect(deps.speak).not.toHaveBeenCalled();
+    expect(deps.speak).toHaveBeenCalledTimes(1);
+    expect(deps.speak).toHaveBeenCalledWith('2');
   });
 
   it('does not interact with countdownWarning/intervalChanged handling when they arrive in the same batch', () => {
     const deps = makeDeps();
     const state = makeState({ currentIntervalIndex: 1, elapsedInInterval: 0, elapsedTotal: 12 });
-    handleTimerEvents([TIMER_EVENTS.SHORT_COUNTDOWN_TICK, TIMER_EVENTS.INTERVAL_CHANGED], { workout: makeWorkout(), state, ftp: 200, ...deps });
+    handleTimerEvents([TIMER_EVENTS.COUNTDOWN_TICK, TIMER_EVENTS.INTERVAL_CHANGED], { workout: makeWorkout(), state, ftp: 200, ...deps });
 
-    expect(deps.playBeep).toHaveBeenCalledTimes(1);
-    expect(deps.speak).not.toHaveBeenCalled();
+    // elapsedInInterval=0 on a 20s interval -> remaining=20, not a real tick digit, but the
+    // event is present regardless (engine guarantees it only fires for real 5/4/3/2/1 crossings -
+    // this test only cares that intervalChanged's own banner still fires independently)
     expect(deps.showNextIntervalBanner).toHaveBeenCalledTimes(1);
     expect(deps.showNextIntervalBanner).toHaveBeenCalledWith('下一組：穩定 · 0:20 · 88% FTP · 176W');
   });
 
-  it('a playBeep() failure during a short-interval tick does not throw and is isolated per occurrence', () => {
+  it('a speak() failure during a countdown tick does not throw and is isolated', () => {
     const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
     const deps = makeDeps();
-    deps.playBeep.mockImplementation(() => {
-      throw new Error('AudioContext boom');
+    deps.speak.mockImplementation(() => {
+      throw new Error('SpeechSynthesis boom');
     });
-    const state = makeState({ currentIntervalIndex: 1 });
+    const state = makeState({ currentIntervalIndex: 1, elapsedInInterval: 15 });
 
     expect(() =>
-      handleTimerEvents([TIMER_EVENTS.SHORT_COUNTDOWN_TICK, TIMER_EVENTS.SHORT_COUNTDOWN_TICK], {
+      handleTimerEvents([TIMER_EVENTS.COUNTDOWN_TICK], {
         workout: makeWorkout(),
         state,
         ftp: 200,
@@ -210,14 +247,15 @@ describe('handleTimerEvents: shortCountdownTick (短間歇例外，組別時長 
       })
     ).not.toThrow();
 
-    expect(deps.playBeep).toHaveBeenCalledTimes(2);
-    expect(consoleErrorSpy).toHaveBeenCalledTimes(2);
+    expect(deps.speak).toHaveBeenCalledTimes(1);
+    expect(consoleErrorSpy).toHaveBeenCalledTimes(1);
     consoleErrorSpy.mockRestore();
   });
 
-  it('does nothing when shortCountdownTick is absent from the event list', () => {
+  it('does nothing when countdownTick is absent from the event list', () => {
     const deps = makeDeps();
     handleTimerEvents([TIMER_EVENTS.WORKOUT_FINISHED], { workout: makeWorkout(), state: makeState(), ftp: 200, ...deps });
+    expect(deps.speak).not.toHaveBeenCalled();
     expect(deps.playBeep).not.toHaveBeenCalled();
   });
 });
@@ -434,5 +472,52 @@ describe('playCountdownBeep (regression: iOS Safari can silently suspend the sha
     playCountdownBeep();
 
     expect(ctx.resume).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('speakCountdownWarning (regression: fast preview speech needs a controllable rate, digit countdown stays at normal rate)', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.resetModules();
+  });
+
+  function stubSpeechSynthesis() {
+    const speak = vi.fn();
+    vi.stubGlobal('speechSynthesis', { speak });
+    vi.stubGlobal(
+      'SpeechSynthesisUtterance',
+      class {
+        constructor(text) {
+          this.text = text;
+          this.lang = '';
+          this.rate = 1;
+        }
+      }
+    );
+    return { speak };
+  }
+
+  it('defaults to rate 1 (normal speed) when no rate argument is given', async () => {
+    const { speak } = stubSpeechSynthesis();
+    const { speakCountdownWarning } = await import('../src/ui/countdownAlerts.js');
+
+    speakCountdownWarning('5');
+
+    expect(speak).toHaveBeenCalledTimes(1);
+    expect(speak.mock.calls[0][0].rate).toBe(1);
+  });
+
+  it('applies a custom rate when given (used by the fast next-interval preview)', async () => {
+    const { speak } = stubSpeechSynthesis();
+    const { speakCountdownWarning } = await import('../src/ui/countdownAlerts.js');
+
+    speakCountdownWarning('下一組 75% 5 分鐘', 1.35);
+
+    expect(speak.mock.calls[0][0].rate).toBe(1.35);
+  });
+
+  it('does not throw when speechSynthesis is unavailable', async () => {
+    const { speakCountdownWarning } = await import('../src/ui/countdownAlerts.js');
+    expect(() => speakCountdownWarning('5')).not.toThrow();
   });
 });

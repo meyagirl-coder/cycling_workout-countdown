@@ -538,44 +538,48 @@ if (elapsedInInterval >= currentInterval.duration) {
 
 ### 4.4 倒數提示邏輯
 - 每組剩餘時間 = `duration - elapsedInInterval`
-- **組別時長 > 20 秒（正常規則）**：當剩餘時間從 >10 秒跨到 <=10 秒時觸發一次
-  `countdownWarning`：
-  - 播放提示音
-  - 畫面大字顯示倒數數字
-  - **顯示下一組預告**：`countdownAlerts.js` 的
-    `computeUpcomingIntervalPreview()` 算出 `currentIntervalIndex + 1`（現在
-    這組還沒結束，下一組還沒真的開始）長什麼樣子，用口語化的「X 分鐘」／
-    「X 秒」／「X 分 Y 秒」時長格式（`formatMinuteSecondLabel()`）：
-    - 一般組別：`下一組：5 分鐘 · 75% FTP`
-    - 起訖 %FTP 不同（漸變，例如 warmup/ramp/cooldown）：
-      `下一組：5 分鐘 · 40% → 105% FTP`（不是只顯示起始值）
-    - freeride：不顯示百分比，`下一組：自由騎乘 · 5 分鐘`
-    - **目前這組已經是最後一組**（沒有下一組）：顯示「即將完成」，不能顯示
-      不存在的「下一組」
-  - 觸發語音（`SpeechSynthesis` API），把上面同一份預告資訊唸出來，例如
-    「10 秒後進入下一組，75% FTP，持續 5 分鐘」；漸變唸成「A% 到 B% FTP」，
-    freeride 唸「自由騎乘」，最後一組唸「10 秒後即將完成」。
-- **組別時長 <= 20 秒（短間歇例外，新增）**：組別太短，插播一段「10 秒後
-  進入下一組...」語音會佔掉這組大半時間，改成只在最後 5 秒逐秒觸發一次
-  `shortCountdownTick`（剩餘時間跨過 5／4／3／2／1 秒各觸發一次），只播
-  提示音（5-4-3-2-1 逐秒提示音），不觸發語音、不顯示下一組預告 banner。跟
-  `countdownWarning` 互斥，同一組別只會走其中一條路徑（見
-  `timerEngine.js` 的 `SHORT_INTERVAL_THRESHOLD_SECONDS`）。分頁被降頻時
-  一次 tick 可能跨過不只一個秒數點，這種情況會一次送出對應數量的
-  `shortCountdownTick`，逐一播放提示音，不會漏拍。
+- **組別時長 > 20 秒（正常規則）**：
+  - 當剩餘時間從 >10 秒跨到 <=10 秒時觸發一次 `countdownWarning`：播放提示
+    音＋畫面顯示下一組預告 banner＋語音快速唸出精簡版下一組資訊（語速調快
+    到 `FAST_PREVIEW_SPEECH_RATE`＝1.35 倍，盡量在 5 秒內講完，例如
+    「下一組 75% 5 分鐘」——`countdownAlerts.js` 的
+    `formatFastCountdownSpeechText()`，跟下面 banner 用的完整格式
+    `formatCountdownBannerText()` 是兩種不同的文字，banner 沒有語速時間
+    限制，維持較完整的版本，例如「下一組：5 分鐘 · 75% FTP」）。
+    freeride 唸「下一組 自由騎乘 5 分鐘」，漸變唸「下一組 40% 到 105% 5
+    分鐘」，最後一組（沒有下一組）唸「即將完成」。
+  - 接著在最後 5 秒（剩餘 5／4／3／2／1 秒，各跨過一次觸發一次
+    `countdownTick`）逐秒語音報數「5」「4」「3」「2」「1」，正常語速
+    （不加快），唸完剛好接上下一組開始。
+- **組別時長 <= 20 秒（短間歇例外）**：組別太短，插播一段「下一組...」的
+  語音介紹會佔掉這組大半時間，不觸發 `countdownWarning`（沒有提示音、沒有
+  下一組預告語音或 banner），只有最後 5 秒一樣逐秒觸發 `countdownTick`
+  報數「5-4-3-2-1」。跟正常規則共用同一套 `countdownTick` 報數機制，唯一
+  差別是有沒有前面的 `countdownWarning` 預告（見 `timerEngine.js` 的
+  `SHORT_INTERVAL_THRESHOLD_SECONDS`；邊界值用 `>`／`<=`，剛好 20 秒的
+  組別走短間歇例外）。
+  - `countdownTick` 每次都用「當下實際剩餘秒數」現算現報（不是靠計數器
+    數第幾次觸發），分頁被降頻、一次 tick 跨過好幾個秒數點時，只報當下
+    正確的那個數字，不會報出過期／跳過的數字。
 - 切組瞬間（剩餘時間從 1 變 0）：
   - 大字顯示下一組資訊（時間／%FTP／瓦數）——這個既有格式（mm:ss，
     `formatNextIntervalText()`）沒有變動，跟倒數 10 秒預告是兩個獨立的
     文字格式（後者更口語化，適合唸出來；前者資訊更精確，適合切組當下閱讀）。
-- **倒數提示音／語音的錯誤處理（新增）**：`handleTimerEvents()` 裡提示音／
-  預告內容計算／語音／banner 四段各自獨立包 try-catch，任一段失敗只在
-  console 留錯誤、不會拖累其他段。`playCountdownBeep()` 每次播放前都主動
-  檢查並喚醒（`resume()`）共用的 AudioContext——iOS Safari 已知會在交替使用
+- **語速的技術限制**：瀏覽器不保證 `SpeechSynthesis` 唸完一段文字實際花
+  多久（不同裝置／語音包快慢不一），`FAST_PREVIEW_SPEECH_RATE` 只是盡力
+  而為，不是精確可控的保證值。`countdownTick` 的逐秒報數本身仍然是由
+  真正的計時器（`timerEngine.js` 的 `tick()`）逐秒觸發，不是接在預告語音
+  講完之後才開始，所以報數本身的時機永遠準確；頂多預告語音講比較久時，
+  會跟第一聲報數稍微重疊。
+- **倒數提示音／語音的錯誤處理**：`handleTimerEvents()` 裡提示音／預告內容
+  計算／語音／banner 各自獨立包 try-catch，任一段失敗只在 console 留錯誤、
+  不會拖累其他段。`playCountdownBeep()` 每次播放前都主動檢查並喚醒
+  （`resume()`）共用的 AudioContext——iOS Safari 已知會在交替使用
   SpeechSynthesis 之後悄悄中斷 AudioContext，且不會拋出任何例外可以 catch。
-- **剩餘 <=10 秒的倒數視覺提示（規格更新）**：大字倒數數字變色（金黃色
-  `#fbbf24` 加暗色描邊，跟功率區間顏色系統的 7 種顏色都拉開辨識度、確保
-  疊在任何區間顏色卡片上都清晰可辨），持續到這組結束或切到下一組為止；
-  不再有放大縮小的動畫效果（純顏色變化，不影響文字尺寸）。
+- **剩餘 <=10 秒的倒數視覺提示**：大字倒數數字變色（金黃色 `#fbbf24` 加暗色
+  描邊，跟功率區間顏色系統的 7 種顏色都拉開辨識度、確保疊在任何區間顏色
+  卡片上都清晰可辨），持續到這組結束或切到下一組為止；不再有放大縮小的
+  動畫效果（純顏色變化，不影響文字尺寸）。
 
 ### 4.5 課表完成流程（新增）
 
