@@ -220,7 +220,7 @@ describe('createWorkerRuntime', () => {
 
   it('emits countdownWarning once the interval fires past the 10s-remaining threshold (segment longer than 20s, see timerEngine.js short-interval exception)', () => {
     // makeSyntheticWorkout()'s 12s steady segment now takes the <=20s short-interval
-    // path (shortCountdownTick, tested below), not countdownWarning - need a segment
+    // path (countdownTick, tested below), not countdownWarning - need a segment
     // longer than 20s to exercise the "normal" path here (threshold details are
     // exhaustively covered in timerEngine.test.js; this is just a runtime pass-through check).
     const workout = {
@@ -246,7 +246,7 @@ describe('createWorkerRuntime', () => {
     expect(messages[0].events).toContain('countdownWarning');
   });
 
-  it('emits shortCountdownTick for a segment 20s or shorter (short-interval exception), not countdownWarning', () => {
+  it('emits countdownTick for a segment 20s or shorter (short-interval exception), not countdownWarning', () => {
     const clock = createFakeClock(0);
     const scheduler = createFakeScheduler();
     const { runtime, messages } = createHarness(clock, scheduler);
@@ -257,10 +257,10 @@ describe('createWorkerRuntime', () => {
     scheduler.fireAll();
 
     messages.length = 0;
-    clock.advance(7000); // remaining = 5s, crossed the first short-tick threshold
+    clock.advance(7000); // remaining = 5s, crossed the first tick threshold
     scheduler.fireAll();
 
-    expect(messages[0].events).toContain('shortCountdownTick');
+    expect(messages[0].events).toContain('countdownTick');
     expect(messages[0].events).not.toContain('countdownWarning');
   });
 
