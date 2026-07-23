@@ -132,4 +132,44 @@ describe('parseSpacePercentText', () => {
   it('does not accidentally match WhatsOnZwift-style "Xmin @ Y% FTP" lines (distinct grammar)', () => {
     expect(() => parseSpacePercentText('2min @ 50% FTP')).toThrow(/does not match the expected/);
   });
+
+  describe('optional trailing "N rpm" cadence', () => {
+    it('parses a standalone line with cadence ("3m 50% 90rpm")', () => {
+      const workout = parseSpacePercentText('3m 50% 90rpm');
+      expect(workout.intervals).toEqual([{ type: 'steady', duration: 180, powerStart: 50, powerEnd: 50, cadence: 90 }]);
+    });
+
+    it('also accepts a space before "rpm" ("3m 50% 90 rpm")', () => {
+      const workout = parseSpacePercentText('3m 50% 90 rpm');
+      expect(workout.intervals).toEqual([{ type: 'steady', duration: 180, powerStart: 50, powerEnd: 50, cadence: 90 }]);
+    });
+
+    it('still defaults cadence to null when rpm is omitted (no regression)', () => {
+      const workout = parseSpacePercentText('3m 50%');
+      expect(workout.intervals[0].cadence).toBeNull();
+    });
+
+    // 這是本次修正的重點：single line 跟「Nx」重複區塊底下的每一行，共用同一個
+    // parseIntervalLine()／SPACE_PERCENT_LINE_RE（見 spacePercentTextParser.js
+    // 開頭的說明），不是兩套獨立邏輯——rpm 支援理應在兩種情境下都生效。
+    it('also parses cadence on every line inside a "Nx" repeat block, not just standalone lines', () => {
+      const workout = parseSpacePercentText(['2x', '3m 70% 90rpm', '1m 90% 90rpm'].join('\n'));
+      const on = { type: 'steady', duration: 180, powerStart: 70, powerEnd: 70, cadence: 90 };
+      const off = { type: 'steady', duration: 60, powerStart: 90, powerEnd: 90, cadence: 90 };
+      expect(workout.intervals).toEqual([on, off, on, off]);
+    });
+
+    it('parses the exact user-reported case: standalone rpm line + blank line + "Nx" block with rpm on every line', () => {
+      const text = ['3m 50% 90rpm', '', '4x', '3m 70% 90rpm', '1m 90% 90rpm'].join('\n');
+      const workout = parseSpacePercentText(text);
+
+      const warmup = { type: 'steady', duration: 180, powerStart: 50, powerEnd: 50, cadence: 90 };
+      const on = { type: 'steady', duration: 180, powerStart: 70, powerEnd: 70, cadence: 90 };
+      const off = { type: 'steady', duration: 60, powerStart: 90, powerEnd: 90, cadence: 90 };
+
+      expect(workout.intervals).toEqual([warmup, on, off, on, off, on, off, on, off]);
+      expect(workout.intervals).toHaveLength(9);
+      expect(workout.totalDuration).toBe(180 + 4 * (180 + 60));
+    });
+  });
 });
