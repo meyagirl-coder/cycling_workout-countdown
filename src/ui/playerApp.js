@@ -39,12 +39,18 @@ const WHATSONZWIFT_PROXY_URL = '/api/whatsonzwift-workout';
  *   - 上傳畫面的「貼課表網址」「貼上課表文字內容」草稿內容 debounce 後存進
  *     localStorage（draftInputStore.js），開機時如果有存過就帶回輸入框。
  *   - 執行頁「目前這份課表＋目前進度」（不只是計時器狀態，課表資料本身也
- *     一起存）在每次 client.onUpdate() 收到新狀態時存進 localStorage
+ *     一起存）在 client.onUpdate() 收到新狀態時存進 localStorage
  *     （workoutProgressStore.js）；開機時如果沒有排程要復原，改檢查有沒有
  *     這筆進度，有的話透過 client.restore()（不是 client.init()）復原到
  *     「同一份課表、停在同一個進度點」，狀態固定回到 paused／idle／
  *     finished（永遠不會自動恢復成 running，見 timerEngine.js 的
  *     restore()）。使用者按下「回到主畫面」時清掉這筆進度（returnToHome()）。
+ *     存檔本身用 saveWorkoutProgressThrottled() 包一層：running 狀態下最多
+ *     每秒存一次（不是跟著 Worker 的 200ms tick 每次都存），復原精度上完全
+ *     夠用；任何失敗（例如瀏覽器判定 localStorage quota 已滿）只在 console
+ *     留錯誤，不會拋出去中斷同一個 tick 裡排在後面的畫面渲染／提示邏輯——
+ *     這是修過一次真實回報的當機（長時間播放中途畫面卡死不動）之後補上的
+ *     保護，跟 countdownAlerts.js 已經有的同類型錯誤隔離是同一套邏輯。
  *   - 兩者都用「當天」當簡單的過期規則（見 utils/localDate.js）：隔天重新
  *     整理不會忽然冒出好幾天前殘留的草稿或進度。
  *
@@ -85,6 +91,9 @@ export function initPlayerApp(rootEl) {
   // 計時器（見 scheduledStartRuntime.js），同時間最多只有一個在跑。
   let pendingScheduledStartTimestamp = null;
   let scheduleRuntime = null;
+
+  // saveWorkoutProgressThrottled() 用來判斷「這一整秒存過了沒」，見下方定義。
+  let lastSavedProgressElapsedSecond = null;
 
   const uploadView = createUploadView(uploadMount, {
     onFileSelected: (file) => handleFileSelected(file),
@@ -149,17 +158,49 @@ export function initPlayerApp(rootEl) {
     clearWorkoutProgress();
   }
 
+  /**
+   * saveWorkoutProgress() 的節流＋錯誤隔離包裝（規格：真實回報過長時間播放
+   * 中途畫面卡死不動，見上方模組說明）：
+   *   - running 狀態下，同一個「整數秒」只存一次，不是每個 200ms 的 Worker
+   *     tick 都存（88 分鐘的課表沒節流的話等於連續寫入 localStorage 兩萬多
+   *     次）——復原用途本來就只需要抓到大概的進度點，差個一秒以內完全感覺
+   *     不出來。非 running 狀態（idle／paused／finished）不節流，一定立刻
+   *     存，因為這類狀態改變是離散事件、不會像 running tick 一樣高頻重複
+   *     觸發，該存的時候（例如使用者按下暫停）要立刻反映，不能被節流延後。
+   *   - 呼叫本身包 try-catch：`localStorage.setItem()` 在某些情況下會丟出
+   *     例外（例如瀏覽器判定 quota 已滿），沒有這層保護的話，例外會一路
+   *     往外拋、中斷 client.onUpdate() 這個 callback 當下排在後面（甚至下
+   *     一輪 tick）的畫面渲染——這裡的呼叫點特意放在 playerView.update() 之
+   *     後，就算存檔失敗，畫面至少已經先更新過了。
+   */
+  function saveWorkoutProgressThrottled(workout, state) {
+    if (state.status === 'running') {
+      const currentSecond = Math.floor(state.elapsedTotal);
+      if (currentSecond === lastSavedProgressElapsedSecond) return;
+      lastSavedProgressElapsedSecond = currentSecond;
+    } else {
+      lastSavedProgressElapsedSecond = Math.floor(state.elapsedTotal);
+    }
+
+    try {
+      saveWorkoutProgress(workout, state);
+    } catch (err) {
+      console.error('playerApp: saveWorkoutProgress() failed', err);
+    }
+  }
+
   client.onUpdate((state, events) => {
     latestState = state;
     if (!currentWorkout) return;
 
-    // 課表資料＋目前進度一起存，不是只有計時器狀態——重新整理頁面後才能
-    // 回到「同一份課表、停在同一個進度點」，不是課表資料整個消失（見
-    // workoutProgressStore.js）。每次收到新狀態就存一次（包含 running 時
-    // 每個 tick），開銷很小（單一個 localStorage key，覆蓋寫入）。
-    saveWorkoutProgress(currentWorkout, state);
-
+    // 畫面渲染／提示邏輯放在存檔之前：存檔本身包了 try-catch（見下方
+    // saveWorkoutProgressThrottled()），但即使沒包，也不該讓存檔的失敗擋住
+    // 這次 tick 該做的畫面更新跟語音/嗶聲提示——這是這個專案已經在
+    // countdownAlerts.js 修過一次的同類型 bug（見該檔案「使用者回報過語音
+    // 播放中途出錯，後續提示全部消失」的說明），這裡的存檔呼叫也要有一樣
+    // 的隔離：任何一步的失敗都不該拖累其他步驟。
     playerView.update(currentWorkout, state, currentFtp);
+    saveWorkoutProgressThrottled(currentWorkout, state);
     handleTimerEvents(events, {
       workout: currentWorkout,
       state,
