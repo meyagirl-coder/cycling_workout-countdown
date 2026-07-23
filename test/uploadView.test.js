@@ -60,22 +60,23 @@ describe('createUploadView layout (four parallel source cards)', () => {
     expect(root.querySelectorAll('.upload-source-card')).toHaveLength(4);
   });
 
-  it('renders the url card\'s hint text listing both supported sites', () => {
+  it('renders the url card\'s hint text mentioning only TrainerDay (WhatsOnZwift fetch is blocked by anti-scraping, so it must not be advertised as supported)', () => {
     const { root } = setup();
     const urlCard = root.querySelectorAll('.upload-source-card')[0];
     const hint = urlCard.querySelector('.upload-source-hint');
     expect(hint).not.toBeNull();
     expect(hint.textContent).toContain('TrainerDay');
-    expect(hint.textContent).toContain('whatsonzwift.com');
+    expect(hint.textContent).not.toContain('Zwift');
+    expect(hint.textContent).not.toContain('whatsonzwift');
   });
 
-  it('shows a hint on the paste-text card mentioning both sites and pointing to the url card as an alternative', () => {
+  it('shows a hint on the paste-text card mentioning only TrainerDay and pointing to the url card as an alternative', () => {
     const { root } = setup();
     const pasteCard = root.querySelectorAll('.upload-source-card')[1];
     const hint = pasteCard.querySelector('.upload-source-hint');
     expect(hint).not.toBeNull();
     expect(hint.textContent).toContain('TrainerDay');
-    expect(hint.textContent).toContain('WhatsOnZwift');
+    expect(hint.textContent).not.toContain('Zwift');
   });
 
   it('keeps a single shared error area below all four cards', () => {

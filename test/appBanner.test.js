@@ -8,7 +8,9 @@ describe('createAppBanner', () => {
     createAppBanner(root);
 
     expect(root.querySelector('.app-banner-title').textContent).toBe('自行車訓練課表播放器');
-    expect(root.querySelector('.app-banner-subtitle').textContent).toBe('上傳課表檔案或連結 intervals.icu，開始你的結構化訓練');
+    expect(root.querySelector('.app-banner-subtitle').textContent).toBe(
+      '支援貼上課表網址、貼上課表文字、上傳 ZWO 檔案，或連結 intervals.icu，開始你的結構化訓練'
+    );
     expect(root.querySelector('.app-banner').classList.contains('hidden')).toBe(false);
   });
 
