@@ -7,13 +7,16 @@
  * timerEngine.js 的 COUNTDOWN_WARNING／COUNTDOWN_TICK）。切組瞬間顯示下一組
  * 資訊（intervalChanged，格式不變）。
  *
- * 全程只有語音，沒有任何提示音（beep）——早期版本在 countdownWarning 當下
- * 會先播一聲提示音再講語音，後來拿掉了，改成純語音；playCountdownBeep()／
- * AudioContext 相關的程式碼因此也一併移除，不留不會再被呼叫到的函式。
+ * 語音之外，最後 3 秒（兩條路徑都有）還會額外播放三聲「嗶」提示音
+ * （playCountdownBeeps()）——這是刻意加回來的：SpeechSynthesis 的音訊輸出
+ * 是系統層級的，不會被瀏覽器的「分頁音訊分享」（例如 Google Meet 畫面分享）
+ * 捕捉到（Chromium bug #1185527），但 Web Audio API 合成的音訊會走分頁自己
+ * 的媒體管線，可以被正確捕捉——語音內容本身沒辦法分享出去，但至少讓遠端
+ * 參與者能聽到「快到了」的提示音，補上語音分享不到的缺口。
  *
- * 這裡只負責「timer 事件 -> 該做什麼提示」的判斷邏輯，語音的實際播放實作
- * 是可注入的依賴（speak），方便在 jsdom 下用假函式測試觸發時機是否正確，
- * 不需要真的 SpeechSynthesis。
+ * 這裡只負責「timer 事件 -> 該做什麼提示」的判斷邏輯，語音／提示音的實際
+ * 播放實作是可注入的依賴（speak/playCountdownBeeps），方便在 jsdom 下用
+ * 假函式測試觸發時機是否正確，不需要真的 SpeechSynthesis／AudioContext。
  *
  * 三種不同時間點、三種不同格式：
  *   - countdownWarning（正常規則專用）：「下一組」還沒真的開始，只是預告，
@@ -24,7 +27,7 @@
  *   - countdownTick（兩條路徑都有）：最後 5 秒逐秒語音報數（"5"「4」...），
  *     正常語速，不額外顯示 banner——每次都用「目前實際剩餘秒數」現算現報
  *     （不是靠計數器猜第幾次），降頻分頁一次跳過好幾秒也不會報出過期的
- *     數字。
+ *     數字。剩餘 3 秒那一次額外觸發 playCountdownBeeps()（見上）。
  *   - intervalChanged：已經切到新的一組，維持原本 mm:ss ＋ watts 的詳細
  *     格式（formatNextIntervalText()），這個格式沒有變。
  */
@@ -55,9 +58,10 @@ const FAST_PREVIEW_SPEECH_RATE = 1.35;
  * @param {object} ctx.state - engine 的最新 state（含 currentIntervalIndex/powerAdjustPct）
  * @param {number} ctx.ftp
  * @param {(text: string, rate?: number) => void} ctx.speak
+ * @param {() => void} ctx.playCountdownBeeps
  * @param {(text: string, durationMs?: number) => void} ctx.showNextIntervalBanner
  */
-export function handleTimerEvents(events, { workout, state, ftp, speak, showNextIntervalBanner }) {
+export function handleTimerEvents(events, { workout, state, ftp, speak, playCountdownBeeps, showNextIntervalBanner }) {
   if (events.includes(TIMER_EVENTS.COUNTDOWN_WARNING)) {
     // 預告內容計算／語音／banner 各自獨立包 try-catch：使用者回報過「語音
     // 播放中途出錯，後續提示全部消失」的情況，最可能的原因是其中一段丟出
@@ -93,11 +97,31 @@ export function handleTimerEvents(events, { workout, state, ftp, speak, showNext
   // 的數字（例如卡在背景時一次從 5 跳到 2）反而更容易誤導使用者，不如只報
   // 當下正確的那一個。
   if (events.includes(TIMER_EVENTS.COUNTDOWN_TICK)) {
+    let digit = null;
     try {
-      const digit = computeCurrentCountdownDigit(workout, state);
-      if (digit !== null) speak(String(digit));
+      digit = computeCurrentCountdownDigit(workout, state);
     } catch (err) {
-      console.error('countdownAlerts: speak() failed (countdown tick)', err);
+      console.error('countdownAlerts: computeCurrentCountdownDigit() failed', err);
+    }
+
+    if (digit !== null) {
+      try {
+        speak(String(digit));
+      } catch (err) {
+        console.error('countdownAlerts: speak() failed (countdown tick)', err);
+      }
+
+      // 剩餘 3 秒那一刻額外觸發三聲「嗶」——只在這裡呼叫一次，
+      // playCountdownBeeps() 內部自己排程 3 聲的節奏，不是外部重複呼叫 3 次
+      // （見上方模組說明，這是為了 Google Meet 分頁音訊分享能捕捉到的
+      // Web Audio API 提示音，跟語音的分享限制無關，兩者互相獨立）。
+      if (digit === 3) {
+        try {
+          playCountdownBeeps();
+        } catch (err) {
+          console.error('countdownAlerts: playCountdownBeeps() failed', err);
+        }
+      }
     }
   }
 
@@ -186,6 +210,52 @@ function formatNextIntervalText(workout, state, ftp) {
   return `下一組：${typeLabel} · ${durationLabel} · ${Math.round(target.pct)}% FTP · ${target.watts}W`;
 }
 
+let sharedAudioContext = null;
+
+const BEEP_COUNT = 3;
+const BEEP_DURATION_SECONDS = 0.15; // 短促，聽感偏「嗶」而不是拖長的「嘟」
+const BEEP_INTERVAL_SECONDS = 1; // 每聲間隔 1 秒，落在剩餘 3／2／1 秒附近
+const BEEP_FREQUENCY_HZ = 1568; // 比舊版「嘟」的 880Hz 高一截，音色更尖銳清脆
+
+/**
+ * 最後 3 秒的「嗶嗶嗶」提示音：Web Audio API 合成（oscillator + gain），不是
+ * 播放音檔。跟 SpeechSynthesis 不同，這種合成音走的是分頁自己的音訊管線，
+ * 會被瀏覽器的分頁音訊分享（例如 Google Meet 的「分享此分頁音訊」）正確
+ * 捕捉到——加回這個提示音就是為了讓遠端參與者至少聽到一個聲音提示，補上
+ * 語音內容沒辦法分享出去的缺口（見模組開頭說明）。
+ *
+ * 3 聲的節奏是用 AudioContext 自己的時間軸（ctx.currentTime）一次排程好，
+ * 不是外部呼叫端迴圈呼叫 3 次——排程一旦送出，實際發聲時間由音訊渲染執行緒
+ * 精準處理，不會被呼叫當下 JS 主執行緒忙碌與否影響間隔精準度。
+ */
+export function playCountdownBeeps() {
+  const AudioContextCtor = typeof window !== 'undefined' && (window.AudioContext || window.webkitAudioContext);
+  if (!AudioContextCtor) return;
+
+  if (!sharedAudioContext) sharedAudioContext = new AudioContextCtor();
+  const ctx = sharedAudioContext;
+  // iOS Safari 已知行為：交替使用 SpeechSynthesis 之後，共用的 AudioContext
+  // 可能被瀏覽器悄悄中斷（suspended），之後即使程式碼正常執行、沒有拋出任何
+  // 例外，oscillator 也不會真的發出聲音——每次播放前都主動 resume 一次，跟
+  // unlockAudioAndSpeechForAutoplay() 的作法一致，不能只靠一開始 unlock 那一次。
+  if (typeof ctx.resume === 'function' && ctx.state === 'suspended') ctx.resume();
+
+  for (let i = 0; i < BEEP_COUNT; i++) {
+    const startTime = ctx.currentTime + i * BEEP_INTERVAL_SECONDS;
+    const oscillator = ctx.createOscillator();
+    const gain = ctx.createGain();
+    oscillator.connect(gain);
+    gain.connect(ctx.destination);
+
+    oscillator.frequency.value = BEEP_FREQUENCY_HZ;
+    gain.gain.setValueAtTime(0.2, startTime);
+    gain.gain.exponentialRampToValueAtTime(0.0001, startTime + BEEP_DURATION_SECONDS);
+
+    oscillator.start(startTime);
+    oscillator.stop(startTime + BEEP_DURATION_SECONDS);
+  }
+}
+
 /**
  * 真正的語音實作：SpeechSynthesis API，瀏覽器不支援就靜默跳過。
  * @param {string} text
@@ -203,19 +273,36 @@ export function speakCountdownWarning(text, rate = 1) {
 
 /**
  * 團體訓練排程功能用：使用者「設定開始時間」這個動作本身觸發一次幾乎無聲的
- * 語音播放，藉此解鎖瀏覽器的自動播放權限——瀏覽器（尤其 iOS Safari）通常只
- * 允許在真正的使用者互動（點擊／按鍵）當下、同步呼叫堆疊裡第一次呼叫
- * SpeechSynthesis，之後排程時間到、由 setInterval／setTimeout 自動觸發播放
- * 時已經沒有使用者互動了，如果是第一次使用，很容易被瀏覽器悄悄擋掉——必須
- * 在呼叫端的按鈕 click handler「當下」同步呼叫這個函式（不能包在 async
- * 函式的 await 之後、或 setTimeout 裡，那樣就不算使用者互動的當下了），
- * 才能讓後續真正自動觸發的語音正常播放。
+ * 音效／語音播放，藉此解鎖瀏覽器的自動播放權限——瀏覽器（尤其 iOS Safari）
+ * 通常只允許在真正的使用者互動（點擊／按鍵）當下、同步呼叫堆疊裡建立或
+ * 播放音訊，之後排程時間到、由 setInterval／setTimeout 自動觸發播放時已經
+ * 沒有使用者互動了，如果 AudioContext／SpeechSynthesis 是第一次使用，很
+ * 容易被瀏覽器悄悄擋掉——必須在呼叫端的按鈕 click handler「當下」同步呼叫
+ * 這個函式（不能包在 async 函式的 await 之後、或 setTimeout 裡，那樣就不算
+ * 使用者互動的當下了），才能讓後續真正自動觸發的提示音／語音正常播放。
  *
- * 唸一次音量 0 的極短內容來解鎖之後的語音播放（Safari／iOS 對第一次呼叫
- * speak() 比較嚴格，這是常見的繞過方式）。全程只有語音、沒有提示音（beep），
- * 所以這裡不再需要建立／解鎖 AudioContext。
+ * playCountdownBeeps() 共用同一個 sharedAudioContext，這裡建立／resume 它，
+ * 並播放一段音量為 0 的極短音效——單純呼叫 new AudioContext() 在部分瀏覽器
+ * 還不夠「解鎖」，需要真的播放一次（即使無聲）才算數。SpeechSynthesis 也
+ * 一樣，唸一次音量 0 的極短內容來解鎖之後的語音播放（Safari／iOS 對第一次
+ * 呼叫 speak() 比較嚴格，這是常見的繞過方式）。
  */
 export function unlockAudioAndSpeechForAutoplay() {
+  const AudioContextCtor = typeof window !== 'undefined' && (window.AudioContext || window.webkitAudioContext);
+  if (AudioContextCtor) {
+    if (!sharedAudioContext) sharedAudioContext = new AudioContextCtor();
+    const ctx = sharedAudioContext;
+    if (typeof ctx.resume === 'function' && ctx.state === 'suspended') ctx.resume();
+
+    const oscillator = ctx.createOscillator();
+    const gain = ctx.createGain();
+    oscillator.connect(gain);
+    gain.connect(ctx.destination);
+    gain.gain.setValueAtTime(0, ctx.currentTime); // 無聲
+    oscillator.start();
+    oscillator.stop(ctx.currentTime + 0.05);
+  }
+
   if (typeof window !== 'undefined' && window.speechSynthesis && typeof SpeechSynthesisUtterance !== 'undefined') {
     const utterance = new SpeechSynthesisUtterance(' ');
     utterance.volume = 0;

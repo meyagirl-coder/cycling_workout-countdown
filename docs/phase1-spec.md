@@ -538,8 +538,18 @@ if (elapsedInInterval >= currentInterval.duration) {
 
 ### 4.4 倒數提示邏輯
 - 每組剩餘時間 = `duration - elapsedInInterval`
-- **全程只有語音，沒有任何提示音（beep）**——早期版本在 `countdownWarning`
-  當下會先播一聲提示音，後來拿掉了。
+- **語音 + 剩餘 3 秒的「嗶嗶嗶」提示音**：主要提示都是語音，但最後 3 秒
+  （剩餘 3／2／1 秒那一次 `countdownTick`，兩條路徑都有）額外播放三聲
+  「嗶」——這是刻意加回來、且跟語音走完全不同的播放技術：`SpeechSynthesis`
+  的音訊輸出是系統層級的，不會被瀏覽器的分頁音訊分享（例如 Google Meet
+  「分享此分頁音訊」）捕捉到（Chromium bug #1185527），但 Web Audio API
+  合成的音訊（`playCountdownBeeps()`，`AudioContext` 的 oscillator + gain，
+  不是播放音檔）走的是分頁自己的媒體管線，會被正確捕捉——語音內容本身還是
+  沒辦法分享出去，但這三聲「嗶」至少能讓遠端參與者聽到「快到了」的提示。
+  3 聲的節奏是用 `AudioContext` 自己的時間軸一次排程好（頻率 1568Hz，每聲
+  0.15 秒，間隔 1 秒），不受 JS 主執行緒忙碌與否影響間隔精準度；
+  `playCountdownBeeps()` 只在 `countdownTick` 的 digit===3 那一次呼叫一次，
+  不是外部重複呼叫 3 次。
 - **組別時長 > 20 秒（正常規則）**：
   - 當剩餘時間從 >10 秒跨到 <=10 秒時觸發一次 `countdownWarning`：畫面顯示
     下一組預告 banner＋語音快速唸出精簡版下一組資訊（語速調快到
@@ -562,7 +572,10 @@ if (elapsedInInterval >= currentInterval.duration) {
   組別走短間歇例外）。
   - `countdownTick` 每次都用「當下實際剩餘秒數」現算現報（不是靠計數器
     數第幾次觸發），分頁被降頻、一次 tick 跨過好幾個秒數點時，只報當下
-    正確的那個數字，不會報出過期／跳過的數字。
+    正確的那個數字，不會報出過期／跳過的數字——`playCountdownBeeps()` 也
+    是同一套邏輯：只在算出來的數字剛好是 3 時才觸發，降頻跳過 3 這個數字
+    的極端情況下（例如直接從剩餘 4 秒跳到剩餘 2 秒）就不會補放這三聲嗶，
+    跟報過期數字一樣，寧可不觸發也不要誤導使用者。
 - 切組瞬間（剩餘時間從 1 變 0）：
   - 大字顯示下一組資訊（時間／%FTP／瓦數）——這個既有格式（mm:ss，
     `formatNextIntervalText()`）沒有變動，跟倒數 10 秒預告是兩個獨立的
@@ -573,8 +586,9 @@ if (elapsedInInterval >= currentInterval.duration) {
   真正的計時器（`timerEngine.js` 的 `tick()`）逐秒觸發，不是接在預告語音
   講完之後才開始，所以報數本身的時機永遠準確；頂多預告語音講比較久時，
   會跟第一聲報數稍微重疊。
-- **倒數語音的錯誤處理**：`handleTimerEvents()` 裡預告內容計算／語音／banner
-  各自獨立包 try-catch，任一段失敗只在 console 留錯誤、不會拖累其他段。
+- **倒數語音／提示音的錯誤處理**：`handleTimerEvents()` 裡預告內容計算／
+  語音／提示音／banner 各自獨立包 try-catch，任一段失敗只在 console 留
+  錯誤、不會拖累其他段。
 - **剩餘 <=10 秒的倒數視覺提示**：大字倒數數字變色（金黃色 `#fbbf24` 加暗色
   描邊，跟功率區間顏色系統的 7 種顏色都拉開辨識度、確保疊在任何區間顏色
   卡片上都清晰可辨），持續到這組結束或切到下一組為止；不再有放大縮小的
@@ -709,10 +723,11 @@ App 一打開，使用者第一眼看到的畫面：
   這個暫存值決定要不要進排程流程。
 - **設定當下解鎖自動播放權限**：使用者按下「設定」按鈕的當下（同一個 click
   事件的呼叫堆疊內，中間不能有任何 `async`/`await`/`setTimeout`），
-  `unlockAudioAndSpeechForAutoplay()`（`src/ui/countdownAlerts.js`）會唸一句
-  音量 0 的 `SpeechSynthesisUtterance`——目的是利用瀏覽器「使用者互動」這個
-  當下解鎖之後自動播放的權限，這樣真正自動觸發開始（沒有使用者當下點擊）
-  時，倒數語音才不會被瀏覽器擋掉。
+  `unlockAudioAndSpeechForAutoplay()`（`src/ui/countdownAlerts.js`）會建立／
+  恢復一個 `AudioContext` 並播放一段音量 0 的靜音音效、加上唸一句音量 0 的
+  `SpeechSynthesisUtterance`——目的是利用瀏覽器「使用者互動」這個當下解鎖
+  之後自動播放的權限，這樣真正自動觸發開始（沒有使用者當下點擊）時，倒數
+  提示音效／語音才不會被瀏覽器擋掉。
 - **開始時間已過去 → 立刻播放**：`armSchedule()` 比對設定的時間戳跟
   `Date.now()`，已經過去就直接 `switchToPlayerScreen()` + `client.play()`，
   不經過等待畫面。
