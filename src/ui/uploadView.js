@@ -1,3 +1,4 @@
+import { VALID_ALERT_MODES } from './alertModeStore.js';
 import { getLocalDateString } from '../utils/localDate.js';
 import { parseScheduledStartTimeInput } from './scheduledStartTimeParser.js';
 
@@ -30,6 +31,10 @@ import { parseScheduledStartTimeInput } from './scheduledStartTimeParser.js';
  *   onScheduledStartTimeSet(date)     「設定開始時間」輸入合法格式後按下「設定」
  *   onScheduledStartTimeCancel()      按下「設定開始時間」旁的「取消」
  *   onFtpChange(ftp)                  FTP 欄位改成一個合法的正數（呼叫端負責存 localStorage）
+ *   onAlertModeChange(mode)           倒數提示模式切換成 'voice'（下一組提示倒數／
+ *                                     語音報數）或 'beep'（逼逼聲倒數）其中一個，
+ *                                     兩者互斥（呼叫端負責存 localStorage，見
+ *                                     alertModeStore.js）
  *   onDraftInputChange({url, pasteText})  「貼課表網址」／「貼上課表文字內容」
  *                                     任一欄位輸入內容改變，debounce 過後才觸發
  *                                     （呼叫端負責存 localStorage，見
@@ -46,7 +51,7 @@ import { parseScheduledStartTimeInput } from './scheduledStartTimeParser.js';
  * 環境呼叫」的問題，如果還是 403，屬於預期內的結果，不是程式碼的問題。
  *
  * @param {HTMLElement} rootEl
- * @param {{onFileSelected: (file: File) => void, onIntervalsIcuSubmit: (rawText: string) => void, onPasteTextSubmit: (rawText: string) => void, onTrainerDayUrlSubmit: (url: string) => void, onWhatsOnZwiftUrlSubmit: (url: string) => void, onScheduledStartTimeSet: (date: Date) => void, onScheduledStartTimeCancel: () => void, onFtpChange: (ftp: number) => void, onDraftInputChange: (draft: {url: string, pasteText: string}) => void}} handlers
+ * @param {{onFileSelected: (file: File) => void, onIntervalsIcuSubmit: (rawText: string) => void, onPasteTextSubmit: (rawText: string) => void, onTrainerDayUrlSubmit: (url: string) => void, onWhatsOnZwiftUrlSubmit: (url: string) => void, onScheduledStartTimeSet: (date: Date) => void, onScheduledStartTimeCancel: () => void, onFtpChange: (ftp: number) => void, onAlertModeChange: (mode: 'voice'|'beep') => void, onDraftInputChange: (draft: {url: string, pasteText: string}) => void}} handlers
  */
 export function createUploadView(rootEl, handlers) {
   rootEl.innerHTML = `
@@ -59,6 +64,15 @@ export function createUploadView(rootEl, handlers) {
         </div>
       </div>
       <p class="upload-ftp-hint">之後可以隨時回來這裡修改，瓦數會立即依新的 FTP 重新計算</p>
+
+      <div class="upload-alertmode-row">
+        <span class="upload-alertmode-label">倒數提示</span>
+        <div class="upload-alertmode-toggle" role="group" aria-label="倒數提示模式">
+          <button type="button" class="upload-alertmode-btn" data-mode="voice">下一組提示倒數</button>
+          <button type="button" class="upload-alertmode-btn" data-mode="beep">逼逼聲倒數</button>
+        </div>
+      </div>
+      <p class="upload-alertmode-hint">兩者擇一：「下一組提示倒數」用語音報數；「逼逼聲倒數」改用三聲提示音，適合視訊分享畫面時讓對方也能聽到聲音提示</p>
 
       <div class="upload-schedule-row">
         <label class="upload-schedule-label" for="upload-schedule-input">設定開始時間</label>
@@ -165,6 +179,7 @@ export function createUploadView(rootEl, handlers) {
   const intervalsSubmitBtn = rootEl.querySelector('.upload-intervals-submit');
   const lookupLink = rootEl.querySelector('.upload-intervals-lookup-link');
   const ftpInput = rootEl.querySelector('.upload-ftp-input');
+  const alertModeBtns = rootEl.querySelectorAll('.upload-alertmode-btn');
   const pasteForm = rootEl.querySelector('.upload-paste-form');
   const pasteTextarea = rootEl.querySelector('.upload-paste-textarea');
   const urlForm = rootEl.querySelector('.upload-url-form');
@@ -244,6 +259,23 @@ export function createUploadView(rootEl, handlers) {
     if (Number.isFinite(value) && value > 0) handlers.onFtpChange(Math.round(value));
   });
 
+  // 語音報數／逼逼聲倒數互斥切換：跟 themeToggle.js 同一套 pill 按鈕操作方式，
+  // 點哪個就套用哪個的 .is-active，另一個移除。
+  function applyAlertModeButtonState(mode) {
+    alertModeBtns.forEach((btn) => {
+      btn.classList.toggle('is-active', btn.dataset.mode === mode);
+    });
+  }
+
+  alertModeBtns.forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const mode = btn.dataset.mode;
+      if (!VALID_ALERT_MODES.includes(mode)) return;
+      applyAlertModeButtonState(mode);
+      handlers.onAlertModeChange(mode);
+    });
+  });
+
   // 「貼課表網址」「貼上課表文字內容」草稿：debounce 過後才通知呼叫端存
   // localStorage，避免使用者每打一個字就寫一次；兩個欄位共用同一個計時器、
   // 每次都送出兩個欄位「目前」的完整內容（不是只送剛剛改的那個），呼叫端
@@ -321,6 +353,10 @@ export function createUploadView(rootEl, handlers) {
     },
     setFtpValue(ftp) {
       ftpInput.value = ftp;
+    },
+    /** 從外部（例如剛從 localStorage 復原的模式）設定目前啟用中的倒數提示模式按鈕 */
+    setAlertMode(mode) {
+      applyAlertModeButtonState(mode);
     },
     /** 從外部（例如剛從 localStorage 復原的草稿）帶回「貼課表網址」「貼上課表文字內容」的內容 */
     setDraftInputs({ url, pasteText }) {

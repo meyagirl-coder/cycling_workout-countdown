@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { TIMER_EVENTS } from '../src/engine/timerEngine.js';
+import { ALERT_MODE_BEEP, ALERT_MODE_VOICE } from '../src/ui/alertModeStore.js';
 import { COUNTDOWN_FINISHING_SOON_TEXT, handleTimerEvents } from '../src/ui/countdownAlerts.js';
 
 /** 倒數預告 banner 要撐過完整的 10 秒倒數，比 renderPlayer.js 預設的 5 秒久（見 countdownAlerts.js） */
@@ -32,14 +33,14 @@ function makeState(overrides = {}) {
   };
 }
 
-function makeDeps() {
-  return { speak: vi.fn(), showNextIntervalBanner: vi.fn() };
+function makeDeps(alertMode = ALERT_MODE_VOICE) {
+  return { alertMode, speak: vi.fn(), playCountdownBeeps: vi.fn(), showNextIntervalBanner: vi.fn() };
 }
 
 // countdownWarning 觸發時，語音預告用加快的語速講精簡內容（見 countdownAlerts.js）
 const FAST_PREVIEW_SPEECH_RATE = 1.35;
 
-describe('handleTimerEvents: countdownWarning (10 seconds before the CURRENT interval ends, only for segments >20s; voice only, no beep)', () => {
+describe('handleTimerEvents: countdownWarning (10 seconds before the CURRENT interval ends, only for segments >20s; voice only, no beep at this point)', () => {
   it('shows a banner + speaks a fast, terse preview of the upcoming steady interval (no beep)', () => {
     const deps = makeDeps();
     // currentIntervalIndex 0 (warmup) is about to end; the upcoming interval is index 1 (steady, 88%)
@@ -52,6 +53,8 @@ describe('handleTimerEvents: countdownWarning (10 seconds before the CURRENT int
     expect(deps.speak).toHaveBeenCalledTimes(1);
     // spoken preview is terser and spoken faster, so it has a chance to finish before the 5-second tick countdown begins
     expect(deps.speak).toHaveBeenCalledWith('下一組 88% 20 秒', FAST_PREVIEW_SPEECH_RATE);
+    // the beep sequence only triggers off countdownTick at digit=3, not off countdownWarning
+    expect(deps.playCountdownBeeps).not.toHaveBeenCalled();
   });
 
   it('shows the preview banner for at least the full 10-second countdown window (regression: the default 5s auto-hide left a blank gap for half the countdown)', () => {
@@ -163,8 +166,8 @@ describe('handleTimerEvents: multiple events in the same batch', () => {
   });
 });
 
-describe('handleTimerEvents: countdownTick (最後 5 秒逐秒語音報數，兩條路徑都有：不唸下一組預告，不顯示 banner)', () => {
-  it('speaks the current remaining second as a digit (e.g. "5")', () => {
+describe('handleTimerEvents: countdownTick (最後 5 秒逐秒語音報數，兩條路徑都有：不唸下一組預告，不顯示 banner；剩餘 3 秒額外觸發 playCountdownBeeps())', () => {
+  it('speaks the current remaining second as a digit (e.g. "5"), no beep yet at digit 5', () => {
     const deps = makeDeps();
     // interval 1 (steady, duration 20) with elapsedInInterval=15 -> remaining=5
     const state = makeState({ currentIntervalIndex: 1, elapsedInInterval: 15 });
@@ -172,6 +175,7 @@ describe('handleTimerEvents: countdownTick (最後 5 秒逐秒語音報數，兩
 
     expect(deps.speak).toHaveBeenCalledTimes(1);
     expect(deps.speak).toHaveBeenCalledWith('5');
+    expect(deps.playCountdownBeeps).not.toHaveBeenCalled();
     expect(deps.showNextIntervalBanner).not.toHaveBeenCalled();
   });
 
@@ -182,10 +186,11 @@ describe('handleTimerEvents: countdownTick (最後 5 秒逐秒語音報數，兩
 
     expect(deps.speak).toHaveBeenCalledWith('4');
     expect(deps.speak.mock.calls[0]).toHaveLength(1); // no rate argument passed -> speakCountdownWarning()'s default rate=1 applies
+    expect(deps.playCountdownBeeps).not.toHaveBeenCalled();
   });
 
-  it('speaks each of 5/4/3/2/1 correctly based on actual remaining time', () => {
-    const deps = makeDeps();
+  it('speaks each of 5/4/3/2/1 correctly based on actual remaining time, never triggering playCountdownBeeps() (voice mode is beep-free even at digit 3)', () => {
+    const deps = makeDeps(ALERT_MODE_VOICE);
     for (const [elapsedInInterval, expectedDigit] of [
       [15, '5'],
       [16, '4'],
@@ -194,9 +199,11 @@ describe('handleTimerEvents: countdownTick (最後 5 秒逐秒語音報數，兩
       [19, '1'],
     ]) {
       deps.speak.mockClear();
+      deps.playCountdownBeeps.mockClear();
       const state = makeState({ currentIntervalIndex: 1, elapsedInInterval });
       handleTimerEvents([TIMER_EVENTS.COUNTDOWN_TICK], { workout: makeWorkout(), state, ftp: 200, ...deps });
       expect(deps.speak).toHaveBeenCalledWith(expectedDigit);
+      expect(deps.playCountdownBeeps).not.toHaveBeenCalled();
     }
   });
 
@@ -211,6 +218,27 @@ describe('handleTimerEvents: countdownTick (最後 5 秒逐秒語音報數，兩
 
     expect(deps.speak).toHaveBeenCalledTimes(1);
     expect(deps.speak).toHaveBeenCalledWith('2');
+    // digit collapsed to "2", not "3" - the beep should NOT fire here even though a
+    // threshold of 3 was technically skipped over in this throttled batch
+    expect(deps.playCountdownBeeps).not.toHaveBeenCalled();
+  });
+
+  it('(beep mode) a playCountdownBeeps() failure at digit 3 does not throw and is isolated', () => {
+    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const deps = makeDeps(ALERT_MODE_BEEP);
+    deps.playCountdownBeeps.mockImplementation(() => {
+      throw new Error('AudioContext boom');
+    });
+    const state = makeState({ currentIntervalIndex: 1, elapsedInInterval: 17 }); // remaining=3
+
+    expect(() =>
+      handleTimerEvents([TIMER_EVENTS.COUNTDOWN_TICK], { workout: makeWorkout(), state, ftp: 200, ...deps })
+    ).not.toThrow();
+
+    expect(deps.speak).not.toHaveBeenCalled();
+    expect(deps.playCountdownBeeps).toHaveBeenCalledTimes(1);
+    expect(consoleErrorSpy).toHaveBeenCalled();
+    consoleErrorSpy.mockRestore();
   });
 
   it('does not interact with countdownWarning/intervalChanged handling when they arrive in the same batch', () => {
@@ -251,6 +279,88 @@ describe('handleTimerEvents: countdownTick (最後 5 秒逐秒語音報數，兩
     const deps = makeDeps();
     handleTimerEvents([TIMER_EVENTS.WORKOUT_FINISHED], { workout: makeWorkout(), state: makeState(), ftp: 200, ...deps });
     expect(deps.speak).not.toHaveBeenCalled();
+    expect(deps.playCountdownBeeps).not.toHaveBeenCalled();
+  });
+});
+
+describe('handleTimerEvents: mode exclusivity (ALERT_MODE_VOICE vs ALERT_MODE_BEEP, 使用者在首頁二選一，見 alertModeStore.js)', () => {
+  it('(beep mode) countdownWarning never calls speak(), but still shows the visual preview banner', () => {
+    const deps = makeDeps(ALERT_MODE_BEEP);
+    const state = makeState({ currentIntervalIndex: 0 });
+    handleTimerEvents([TIMER_EVENTS.COUNTDOWN_WARNING], { workout: makeWorkout(), state, ftp: 200, ...deps });
+
+    expect(deps.speak).not.toHaveBeenCalled();
+    expect(deps.showNextIntervalBanner).toHaveBeenCalledTimes(1);
+    expect(deps.showNextIntervalBanner).toHaveBeenCalledWith('下一組：20 秒 · 88% FTP', COUNTDOWN_PREVIEW_BANNER_MS);
+    expect(deps.playCountdownBeeps).not.toHaveBeenCalled();
+  });
+
+  it('(beep mode) countdownTick never calls speak() for any digit, and triggers playCountdownBeeps() exactly once, only at digit 3', () => {
+    for (const [elapsedInInterval, expectedDigit] of [
+      [15, '5'],
+      [16, '4'],
+      [17, '3'],
+      [18, '2'],
+      [19, '1'],
+    ]) {
+      const deps = makeDeps(ALERT_MODE_BEEP);
+      const state = makeState({ currentIntervalIndex: 1, elapsedInInterval });
+      handleTimerEvents([TIMER_EVENTS.COUNTDOWN_TICK], { workout: makeWorkout(), state, ftp: 200, ...deps });
+      expect(deps.speak).not.toHaveBeenCalled();
+      expect(deps.playCountdownBeeps).toHaveBeenCalledTimes(expectedDigit === '3' ? 1 : 0);
+    }
+  });
+
+  it('(beep mode) intervalChanged banner still shows (purely visual, unaffected by alertMode)', () => {
+    const deps = makeDeps(ALERT_MODE_BEEP);
+    const state = makeState({ currentIntervalIndex: 1, elapsedInInterval: 0, elapsedTotal: 12 });
+    handleTimerEvents([TIMER_EVENTS.INTERVAL_CHANGED], { workout: makeWorkout(), state, ftp: 200, ...deps });
+
+    expect(deps.showNextIntervalBanner).toHaveBeenCalledWith('下一組：穩定 · 0:20 · 88% FTP · 176W');
+    expect(deps.speak).not.toHaveBeenCalled();
+  });
+
+  it('(voice mode) never calls playCountdownBeeps(), even across a full countdownWarning + countdownTick sequence', () => {
+    const deps = makeDeps(ALERT_MODE_VOICE);
+    const warningState = makeState({ currentIntervalIndex: 0 });
+    handleTimerEvents([TIMER_EVENTS.COUNTDOWN_WARNING], { workout: makeWorkout(), state: warningState, ftp: 200, ...deps });
+    const tickState = makeState({ currentIntervalIndex: 1, elapsedInInterval: 17 }); // remaining=3
+    handleTimerEvents([TIMER_EVENTS.COUNTDOWN_TICK], { workout: makeWorkout(), state: tickState, ftp: 200, ...deps });
+
+    expect(deps.speak).toHaveBeenCalledTimes(2);
+    expect(deps.playCountdownBeeps).not.toHaveBeenCalled();
+  });
+
+  it('switching alertMode between calls immediately changes behaviour, with no leftover state from the previous mode', () => {
+    const speak = vi.fn();
+    const playCountdownBeeps = vi.fn();
+    const showNextIntervalBanner = vi.fn();
+    const tickState = makeState({ currentIntervalIndex: 1, elapsedInInterval: 17 }); // remaining=3
+
+    handleTimerEvents([TIMER_EVENTS.COUNTDOWN_TICK], {
+      workout: makeWorkout(),
+      state: tickState,
+      ftp: 200,
+      alertMode: ALERT_MODE_VOICE,
+      speak,
+      playCountdownBeeps,
+      showNextIntervalBanner,
+    });
+    expect(speak).toHaveBeenCalledTimes(1);
+    expect(playCountdownBeeps).not.toHaveBeenCalled();
+
+    speak.mockClear();
+    handleTimerEvents([TIMER_EVENTS.COUNTDOWN_TICK], {
+      workout: makeWorkout(),
+      state: tickState,
+      ftp: 200,
+      alertMode: ALERT_MODE_BEEP,
+      speak,
+      playCountdownBeeps,
+      showNextIntervalBanner,
+    });
+    expect(speak).not.toHaveBeenCalled();
+    expect(playCountdownBeeps).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -323,10 +433,52 @@ describe('handleTimerEvents: error isolation (regression - user reported "voice 
   });
 });
 
-describe('unlockAudioAndSpeechForAutoplay (團體訓練排程：「設定開始時間」當下解鎖自動播放權限；voice only, no AudioContext)', () => {
+describe('unlockAudioAndSpeechForAutoplay (團體訓練排程：「設定開始時間」當下解鎖自動播放權限)', () => {
+  // countdownAlerts.js 的 sharedAudioContext 是模組層級變數，playCountdownBeeps()
+  // 也共用它——每個測試都用 vi.resetModules() + 動態 import 拿一份全新的模組
+  // 實例，避免某個測試建立過 AudioContext 之後，後面的測試誤判成「沒有再建立
+  // 一個新的」。
   afterEach(() => {
     vi.unstubAllGlobals();
     vi.resetModules();
+  });
+
+  function stubAudioContext() {
+    const oscillator = { connect: vi.fn(), start: vi.fn(), stop: vi.fn(), frequency: {} };
+    const gain = { connect: vi.fn(), gain: { setValueAtTime: vi.fn(), exponentialRampToValueAtTime: vi.fn() } };
+    const ctx = {
+      createOscillator: vi.fn(() => oscillator),
+      createGain: vi.fn(() => gain),
+      destination: {},
+      currentTime: 0,
+      state: 'suspended',
+      resume: vi.fn(),
+    };
+    const AudioContextCtor = vi.fn(() => ctx);
+    vi.stubGlobal('AudioContext', AudioContextCtor);
+    return { AudioContextCtor, ctx, oscillator, gain };
+  }
+
+  it('creates and resumes an AudioContext, then plays a silent (zero-gain) blip to fully unlock it', async () => {
+    const { AudioContextCtor, ctx, oscillator, gain } = stubAudioContext();
+    const { unlockAudioAndSpeechForAutoplay } = await import('../src/ui/countdownAlerts.js');
+
+    unlockAudioAndSpeechForAutoplay();
+
+    expect(AudioContextCtor).toHaveBeenCalledTimes(1);
+    expect(ctx.resume).toHaveBeenCalledTimes(1);
+    expect(gain.gain.setValueAtTime).toHaveBeenCalledWith(0, ctx.currentTime); // silent, not the audible 0.2 level playCountdownBeeps uses
+    expect(oscillator.start).toHaveBeenCalledTimes(1);
+  });
+
+  it('reuses the same shared AudioContext across multiple calls instead of creating a new one each time', async () => {
+    const { AudioContextCtor } = stubAudioContext();
+    const { unlockAudioAndSpeechForAutoplay } = await import('../src/ui/countdownAlerts.js');
+
+    unlockAudioAndSpeechForAutoplay();
+    unlockAudioAndSpeechForAutoplay();
+
+    expect(AudioContextCtor).toHaveBeenCalledTimes(1);
   });
 
   it('speaks a near-silent (volume 0) utterance to unlock SpeechSynthesis for later automatic warnings', async () => {
@@ -350,9 +502,89 @@ describe('unlockAudioAndSpeechForAutoplay (團體訓練排程：「設定開始�
     expect(utterance.volume).toBe(0);
   });
 
-  it('does not throw when speechSynthesis is unavailable (e.g. an unsupported browser)', async () => {
+  it('does not throw when AudioContext/speechSynthesis are unavailable (e.g. an unsupported browser)', async () => {
     const { unlockAudioAndSpeechForAutoplay } = await import('../src/ui/countdownAlerts.js');
     expect(() => unlockAudioAndSpeechForAutoplay()).not.toThrow();
+  });
+});
+
+describe('playCountdownBeeps (regression: Google Meet tab-audio sharing does not capture SpeechSynthesis, but does capture Web Audio API output)', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.resetModules();
+  });
+
+  function stubAudioContext(initialState) {
+    const oscillators = [];
+    const gains = [];
+    const ctx = {
+      createOscillator: vi.fn(() => {
+        const oscillator = { connect: vi.fn(), start: vi.fn(), stop: vi.fn(), frequency: {} };
+        oscillators.push(oscillator);
+        return oscillator;
+      }),
+      createGain: vi.fn(() => {
+        const gain = { connect: vi.fn(), gain: { setValueAtTime: vi.fn(), exponentialRampToValueAtTime: vi.fn() } };
+        gains.push(gain);
+        return gain;
+      }),
+      destination: {},
+      currentTime: 100, // arbitrary non-zero baseline to prove offsets are relative, not absolute
+      state: initialState,
+      resume: vi.fn(),
+    };
+    const AudioContextCtor = vi.fn(() => ctx);
+    vi.stubGlobal('AudioContext', AudioContextCtor);
+    return { AudioContextCtor, ctx, oscillators, gains };
+  }
+
+  it('schedules exactly 3 short tones at 1-second offsets from the current AudioContext time', async () => {
+    const { ctx, oscillators } = stubAudioContext('running');
+    const { playCountdownBeeps } = await import('../src/ui/countdownAlerts.js');
+
+    playCountdownBeeps();
+
+    expect(oscillators).toHaveLength(3);
+    expect(oscillators[0].start).toHaveBeenCalledWith(100);
+    expect(oscillators[1].start).toHaveBeenCalledWith(101);
+    expect(oscillators[2].start).toHaveBeenCalledWith(102);
+    // each tone stops shortly after it starts (short "beep", not a sustained tone)
+    expect(oscillators[0].stop).toHaveBeenCalledWith(100.15);
+  });
+
+  it('uses a higher pitch than the old single tone (crisper "beep" rather than a duller "boop")', async () => {
+    const { oscillators } = stubAudioContext('running');
+    const { playCountdownBeeps } = await import('../src/ui/countdownAlerts.js');
+
+    playCountdownBeeps();
+
+    for (const oscillator of oscillators) {
+      expect(oscillator.frequency.value).toBeGreaterThan(880); // old tone was 880Hz
+    }
+  });
+
+  it('calls ctx.resume() before scheduling when the shared AudioContext is suspended (e.g. after SpeechSynthesis interrupted it)', async () => {
+    const { ctx, oscillators } = stubAudioContext('suspended');
+    const { playCountdownBeeps } = await import('../src/ui/countdownAlerts.js');
+
+    playCountdownBeeps();
+
+    expect(ctx.resume).toHaveBeenCalledTimes(1);
+    expect(oscillators).toHaveLength(3);
+  });
+
+  it('does not call ctx.resume() when the context is already running (no unnecessary calls)', async () => {
+    const { ctx } = stubAudioContext('running');
+    const { playCountdownBeeps } = await import('../src/ui/countdownAlerts.js');
+
+    playCountdownBeeps();
+
+    expect(ctx.resume).not.toHaveBeenCalled();
+  });
+
+  it('does not throw when AudioContext is unavailable (e.g. an unsupported browser)', async () => {
+    const { playCountdownBeeps } = await import('../src/ui/countdownAlerts.js');
+    expect(() => playCountdownBeeps()).not.toThrow();
   });
 });
 

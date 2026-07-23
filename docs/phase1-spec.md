@@ -18,7 +18,7 @@
 - 播放控制：播放/暫停/跳組/重做本組/提早結束
 - 微調瓦數（±1%）
 - FTP／體重設定（localStorage）
-- 10 秒倒數提示（音效＋語音＋大字）
+- 10 秒倒數提示（大字＋語音報數／逼逼聲兩種互斥模式可選，見 4.4 節）
 
 **這個 Phase 不做：**
 - 藍牙連接訓練台（ERG 控制）— 留到後面 Phase
@@ -538,31 +538,54 @@ if (elapsedInInterval >= currentInterval.duration) {
 
 ### 4.4 倒數提示邏輯
 - 每組剩餘時間 = `duration - elapsedInInterval`
-- **全程只有語音，沒有任何提示音（beep）**——早期版本在 `countdownWarning`
-  當下會先播一聲提示音，後來拿掉了。
+- **兩個互斥的提示模式，使用者在首頁二選一**（`alertModeStore.js`，
+  localStorage key `countdown_alert_mode`，見 5.1／6 節的 UI 與儲存說明；
+  預設 `ALERT_MODE_VOICE`，不影響既有使用者的體驗）：
+  - **模式 A `ALERT_MODE_VOICE`「下一組提示倒數」**：語音報數，完全沒有
+    嗶聲。
+  - **模式 B `ALERT_MODE_BEEP`「逼逼聲倒數」**：完全不語音——「下一組
+    預告」只顯示文字 banner（不唸動態內容），最後 3 秒改成播放三聲「嗶」
+    （`playCountdownBeeps()`）取代逐秒語音報數。
+  - 兩者互斥：同一時刻只會啟用其中一個，不會語音跟嗶聲同時出現。
+  - **為什麼要加嗶聲模式**：`SpeechSynthesis` 的音訊輸出是系統層級的，
+    不會被瀏覽器的分頁音訊分享（例如 Google Meet「分享此分頁音訊」）
+    捕捉到（Chromium bug #1185527），但 Web Audio API 合成的音訊
+    （`playCountdownBeeps()`，`AudioContext` 的 oscillator + gain，不是
+    播放音檔）走的是分頁自己的媒體管線，會被正確捕捉——語音模式適合自己
+    一個人騎、想聽到完整口語內容；嗶聲模式適合團體訓練透過視訊分享畫面
+    帶練，至少能讓遠端參與者聽到聲音提示。3 聲的節奏是用 `AudioContext`
+    自己的時間軸一次排程好（頻率 1568Hz，每聲 0.15 秒，間隔 1 秒），不受
+    JS 主執行緒忙碌與否影響間隔精準度；`playCountdownBeeps()` 只在
+    `countdownTick` 的 digit===3 那一次呼叫一次，不是外部重複呼叫 3 次。
 - **組別時長 > 20 秒（正常規則）**：
-  - 當剩餘時間從 >10 秒跨到 <=10 秒時觸發一次 `countdownWarning`：畫面顯示
-    下一組預告 banner＋語音快速唸出精簡版下一組資訊（語速調快到
+  - 當剩餘時間從 >10 秒跨到 <=10 秒時觸發一次 `countdownWarning`：畫面
+    永遠顯示下一組預告 banner（純文字，兩個模式都一樣）；只有模式 A 會
+    額外語音快速唸出精簡版下一組資訊（語速調快到
     `FAST_PREVIEW_SPEECH_RATE`＝1.35 倍，盡量在 5 秒內講完，例如
     「下一組 75% 5 分鐘」——`countdownAlerts.js` 的
-    `formatFastCountdownSpeechText()`，跟下面 banner 用的完整格式
+    `formatFastCountdownSpeechText()`，跟 banner 用的完整格式
     `formatCountdownBannerText()` 是兩種不同的文字，banner 沒有語速時間
     限制，維持較完整的版本，例如「下一組：5 分鐘 · 75% FTP」）。
     freeride 唸「下一組 自由騎乘 5 分鐘」，漸變唸「下一組 40% 到 105% 5
-    分鐘」，最後一組（沒有下一組）唸「即將完成」。
+    分鐘」，最後一組（沒有下一組）唸「即將完成」。模式 B 不語音唸這段，
+    只看 banner 文字。
   - 接著在最後 5 秒（剩餘 5／4／3／2／1 秒，各跨過一次觸發一次
-    `countdownTick`）逐秒語音報數「5」「4」「3」「2」「1」，正常語速
-    （不加快），唸完剛好接上下一組開始。
+    `countdownTick`）：模式 A 逐秒語音報數「5」「4」「3」「2」「1」，
+    正常語速（不加快），唸完剛好接上下一組開始；模式 B 不報數，改成在
+    digit===3 那一次觸發三聲「嗶」（見上）。
 - **組別時長 <= 20 秒（短間歇例外）**：組別太短，插播一段「下一組...」的
-  語音介紹會佔掉這組大半時間，不觸發 `countdownWarning`（沒有下一組預告
-  語音或 banner），只有最後 5 秒一樣逐秒觸發 `countdownTick` 報數
-  「5-4-3-2-1」。跟正常規則共用同一套 `countdownTick` 報數機制，唯一
-  差別是有沒有前面的 `countdownWarning` 預告（見 `timerEngine.js` 的
-  `SHORT_INTERVAL_THRESHOLD_SECONDS`；邊界值用 `>`／`<=`，剛好 20 秒的
-  組別走短間歇例外）。
+  介紹（不管語音還是純文字 banner）會佔掉這組大半時間，不觸發
+  `countdownWarning`，只有最後 5 秒一樣逐秒觸發 `countdownTick`（模式 A
+  報數「5-4-3-2-1」，模式 B 在 digit===3 觸發嗶聲）。跟正常規則共用同一套
+  `countdownTick` 機制，唯一差別是有沒有前面的 `countdownWarning` 預告
+  （見 `timerEngine.js` 的 `SHORT_INTERVAL_THRESHOLD_SECONDS`；邊界值用
+  `>`／`<=`，剛好 20 秒的組別走短間歇例外）。
   - `countdownTick` 每次都用「當下實際剩餘秒數」現算現報（不是靠計數器
     數第幾次觸發），分頁被降頻、一次 tick 跨過好幾個秒數點時，只報當下
-    正確的那個數字，不會報出過期／跳過的數字。
+    正確的那個數字，不會報出過期／跳過的數字——`playCountdownBeeps()` 也
+    是同一套邏輯：只在算出來的數字剛好是 3 時才觸發，降頻跳過 3 這個數字
+    的極端情況下（例如直接從剩餘 4 秒跳到剩餘 2 秒）就不會補放這三聲嗶，
+    跟報過期數字一樣，寧可不觸發也不要誤導使用者。
 - 切組瞬間（剩餘時間從 1 變 0）：
   - 大字顯示下一組資訊（時間／%FTP／瓦數）——這個既有格式（mm:ss，
     `formatNextIntervalText()`）沒有變動，跟倒數 10 秒預告是兩個獨立的
@@ -573,8 +596,9 @@ if (elapsedInInterval >= currentInterval.duration) {
   真正的計時器（`timerEngine.js` 的 `tick()`）逐秒觸發，不是接在預告語音
   講完之後才開始，所以報數本身的時機永遠準確；頂多預告語音講比較久時，
   會跟第一聲報數稍微重疊。
-- **倒數語音的錯誤處理**：`handleTimerEvents()` 裡預告內容計算／語音／banner
-  各自獨立包 try-catch，任一段失敗只在 console 留錯誤、不會拖累其他段。
+- **倒數語音／提示音的錯誤處理**：`handleTimerEvents()` 裡預告內容計算／
+  語音／提示音／banner 各自獨立包 try-catch，任一段失敗只在 console 留
+  錯誤、不會拖累其他段。
 - **剩餘 <=10 秒的倒數視覺提示**：大字倒數數字變色（金黃色 `#fbbf24` 加暗色
   描邊，跟功率區間顏色系統的 7 種顏色都拉開辨識度、確保疊在任何區間顏色
   卡片上都清晰可辨），持續到這組結束或切到下一組為止；不再有放大縮小的
@@ -611,6 +635,11 @@ App 一打開，使用者第一眼看到的畫面：
   - 一句簡短說明副標，例如「上傳課表檔案或連結 intervals.icu，開始你的結構化訓練」
   - 只在首頁（上傳畫面）顯示；進到執行頁後隱藏，把畫面空間讓給倒數計時跟
     target watt，這兩個在騎車時才是使用者真正需要一直盯著看的內容。
+- **倒數提示模式切換**：FTP 設定列下方有一列「倒數提示」切換 UI（見
+  4.4 節的兩個互斥模式），跟右上角深色／淺色／自動主題切換按鈕同一套
+  pill 按鈕視覺（`.upload-alertmode-btn`／`.is-active`），但這裡不是
+  `position: fixed` 的全域懸浮元件，是首頁內容區塊內跟著捲動的一列
+  （`uploadView.js`），選擇存進 `localStorage`（見 6 節）。
 - **四個平行的課表載入方式**：FTP 設定列下方是四張視覺上完全對等的卡片
   （同一套 `.upload-source-card` 樣式：一致的標題字級／字重、一致的提示文字
   字級、一致的卡片邊框與間距），依序排列，讓使用者一眼看出這是四個平行選項，
@@ -709,10 +738,11 @@ App 一打開，使用者第一眼看到的畫面：
   這個暫存值決定要不要進排程流程。
 - **設定當下解鎖自動播放權限**：使用者按下「設定」按鈕的當下（同一個 click
   事件的呼叫堆疊內，中間不能有任何 `async`/`await`/`setTimeout`），
-  `unlockAudioAndSpeechForAutoplay()`（`src/ui/countdownAlerts.js`）會唸一句
-  音量 0 的 `SpeechSynthesisUtterance`——目的是利用瀏覽器「使用者互動」這個
-  當下解鎖之後自動播放的權限，這樣真正自動觸發開始（沒有使用者當下點擊）
-  時，倒數語音才不會被瀏覽器擋掉。
+  `unlockAudioAndSpeechForAutoplay()`（`src/ui/countdownAlerts.js`）會建立／
+  恢復一個 `AudioContext` 並播放一段音量 0 的靜音音效、加上唸一句音量 0 的
+  `SpeechSynthesisUtterance`——目的是利用瀏覽器「使用者互動」這個當下解鎖
+  之後自動播放的權限，這樣真正自動觸發開始（沒有使用者當下點擊）時，倒數
+  提示音效／語音才不會被瀏覽器擋掉。
 - **開始時間已過去 → 立刻播放**：`armSchedule()` 比對設定的時間戳跟
   `Date.now()`，已經過去就直接 `switchToPlayerScreen()` + `client.play()`，
   不經過等待畫面。
@@ -792,8 +822,12 @@ App 一打開，使用者第一眼看到的畫面：
 - FTP、體重：`localStorage`，key 建議 `user_ftp`、`user_weight`，App 啟動時讀取，沒有就跳出設定畫面
 - 團體訓練排程（課表＋開始時間）：`localStorage` key `scheduled_workout`，見 5.3 節
 - 主題選擇（dark／light／auto）：`localStorage` key `user_theme`，見 5.4 節
+- 倒數提示模式（語音報數／逼逼聲倒數，兩者互斥）：`localStorage` key
+  `countdown_alert_mode`（`alertModeStore.js`），值為 `voice`（預設）或
+  `beep`，見 4.4／5.1 節
 - 首頁輸入草稿（「貼課表網址」「貼上課表文字內容」）：`localStorage` key `upload_draft_inputs`（`draftInputStore.js`）。使用者打字時 debounce 400ms 後把兩個欄位目前的完整內容一起存下去，App 開機時（`playerApp.js`）如果有存過（而且是今天存的）就自動帶回輸入框，不用重新打字。只在「當天」有效（用瀏覽器本地日期判斷，見 `utils/localDate.js`），跨天視為過期。
-- 執行中課表進度：`localStorage` key `workout_progress`（`workoutProgressStore.js`）。課表資料本身（不只是計時器狀態）連同目前進度（`elapsedTotal`、`powerAdjustPct`、`status`）在每次收到計時器新狀態時整包存下去，重新整理頁面或切分頁再切回來時，App 開機會用 `client.restore()`（而不是 `client.init()`）復原到「同一份課表、停在同一個進度點」——狀態固定回到 `paused`／`idle`／`finished`，不會自動恢復成 `running`（就算存檔當下正在跑，也需要使用者自己按播放）。同樣只在「當天」有效；使用者按下「回到主畫面」時會主動清掉，不用等過期。這筆進度的復原順序在團體訓練排程之後：兩者理論上不會同時有意義的資料，但如果剛好都有，排程（使用者更晚、更明確設定的動作）優先。
+- 執行中課表進度：`localStorage` key `workout_progress`（`workoutProgressStore.js`）。課表資料本身（不只是計時器狀態）連同目前進度（`elapsedTotal`、`powerAdjustPct`、`status`）整包存下去，重新整理頁面或切分頁再切回來時，App 開機會用 `client.restore()`（而不是 `client.init()`）復原到「同一份課表、停在同一個進度點」——狀態固定回到 `paused`／`idle`／`finished`，不會自動恢復成 `running`（就算存檔當下正在跑，也需要使用者自己按播放）。同樣只在「當天」有效；使用者按下「回到主畫面」時會主動清掉，不用等過期。這筆進度的復原順序在團體訓練排程之後：兩者理論上不會同時有意義的資料，但如果剛好都有，排程（使用者更晚、更明確設定的動作）優先。
+  - **存檔頻率與錯誤隔離**（regression：真實使用者回報過長時間播放中途畫面卡死不動，見下方說明）：`playerApp.js` 的 `saveWorkoutProgressThrottled()` 不是每個 Worker tick（200ms）都存一次，`running` 狀態下同一個整數秒只存一次，避免長課表（例如 88 分鐘）連續寫入 localStorage 兩萬多次；`idle`／`paused`／`finished` 這類離散的狀態改變不節流，一定立刻存。存檔呼叫本身包 try-catch，且刻意排在 `playerView.update()` 之後——`localStorage.setItem()` 在某些情況下會丟出例外（例如瀏覽器判定 quota 已滿），沒有這層保護的話，例外會中斷同一個 tick 裡排在後面的畫面渲染／語音提示邏輯，而且因為這是每個 tick 都會重新觸發的呼叫，一旦踩到就會持續發生，畫面會卡在「上一次成功渲染」的樣子不再更新——這正是使用者在正式站回報過的當機症狀（畫面停住不動、瓦數卡在初始的 `--`）。跟 `countdownAlerts.js` 的 `handleTimerEvents()` 已經有的同類型錯誤隔離是同一套邏輯。
 - 這個 Phase 還不用 IndexedDB（留給 Phase 2 存課表清單／群組用）
 
 ---

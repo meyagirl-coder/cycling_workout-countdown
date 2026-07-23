@@ -16,6 +16,7 @@ function makeHandlers(overrides = {}) {
     onScheduledStartTimeSet: vi.fn(),
     onScheduledStartTimeCancel: vi.fn(),
     onFtpChange: vi.fn(),
+    onAlertModeChange: vi.fn(),
     onDraftInputChange: vi.fn(),
     ...overrides,
   };
@@ -129,6 +130,60 @@ describe('createUploadView: FTP field', () => {
     ftpInput.dispatchEvent(new Event('input'));
 
     expect(handlers.onFtpChange).toHaveBeenCalledWith(200);
+  });
+});
+
+describe('createUploadView: 倒數提示模式 (voice/beep toggle, mirrors the theme-toggle pill button style, positioned right below FTP)', () => {
+  it('renders two mutually-exclusive pill buttons labeled 下一組提示倒數 / 逼逼聲倒數, positioned after the FTP row', () => {
+    const { root } = setup();
+    const buttons = root.querySelectorAll('.upload-alertmode-btn');
+    expect(buttons).toHaveLength(2);
+    expect(Array.from(buttons).map((btn) => btn.textContent)).toEqual(['下一組提示倒數', '逼逼聲倒數']);
+    expect(Array.from(buttons).map((btn) => btn.dataset.mode)).toEqual(['voice', 'beep']);
+
+    const positions = Array.from(root.querySelectorAll('.upload-ftp-row, .upload-alertmode-row, .upload-schedule-row')).map(
+      (el) => el.className
+    );
+    expect(positions).toEqual(['upload-ftp-row', 'upload-alertmode-row', 'upload-schedule-row']);
+  });
+
+  it('calls onAlertModeChange with "voice" or "beep" when the corresponding button is clicked', () => {
+    const { root, handlers } = setup();
+    const [voiceBtn, beepBtn] = root.querySelectorAll('.upload-alertmode-btn');
+
+    beepBtn.click();
+    expect(handlers.onAlertModeChange).toHaveBeenCalledTimes(1);
+    expect(handlers.onAlertModeChange).toHaveBeenCalledWith('beep');
+
+    voiceBtn.click();
+    expect(handlers.onAlertModeChange).toHaveBeenCalledTimes(2);
+    expect(handlers.onAlertModeChange).toHaveBeenLastCalledWith('voice');
+  });
+
+  it('toggles the "is-active" class between the two buttons on click, mutually exclusive', () => {
+    const { root } = setup();
+    const [voiceBtn, beepBtn] = root.querySelectorAll('.upload-alertmode-btn');
+
+    beepBtn.click();
+    expect(beepBtn.classList.contains('is-active')).toBe(true);
+    expect(voiceBtn.classList.contains('is-active')).toBe(false);
+
+    voiceBtn.click();
+    expect(voiceBtn.classList.contains('is-active')).toBe(true);
+    expect(beepBtn.classList.contains('is-active')).toBe(false);
+  });
+
+  it('view.setAlertMode() lets the caller drive the active button externally (e.g. after restoring the saved mode from localStorage)', () => {
+    const { root, view } = setup();
+    const [voiceBtn, beepBtn] = root.querySelectorAll('.upload-alertmode-btn');
+
+    view.setAlertMode('beep');
+    expect(beepBtn.classList.contains('is-active')).toBe(true);
+    expect(voiceBtn.classList.contains('is-active')).toBe(false);
+
+    view.setAlertMode('voice');
+    expect(voiceBtn.classList.contains('is-active')).toBe(true);
+    expect(beepBtn.classList.contains('is-active')).toBe(false);
   });
 });
 

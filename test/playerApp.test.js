@@ -419,6 +419,58 @@ describe('initPlayerApp: 頁面狀態保存 (page state persistence across reloa
     expect(savedAfterReload.elapsedTotal).toBe(savedWhileRunning.elapsedTotal);
   });
 
+  it('throttles progress saves while running to at most once per elapsed second, instead of on every 200ms worker tick (regression: a real user reported the player freezing mid-workout after a long, uninterrupted play session — writing to localStorage 5x/second for the full duration was suspected of eventually tripping some browser-side limit)', () => {
+    const { root } = setup();
+    submitPasteText(root, '10m 60%');
+    root.querySelector('.btn-play-pause').click();
+
+    const setItemSpy = vi.spyOn(Storage.prototype, 'setItem');
+    setItemSpy.mockClear();
+
+    vi.advanceTimersByTime(3000); // 15 worker ticks (200ms each) while running
+
+    const progressWrites = setItemSpy.mock.calls.filter(([key]) => key === 'workout_progress');
+    // ~3 seconds of running time should produce ~3 saves (once per whole second
+    // crossed), not 15 - one per 200ms tick would defeat the whole point of throttling.
+    expect(progressWrites.length).toBeGreaterThan(0);
+    expect(progressWrites.length).toBeLessThanOrEqual(4);
+
+    setItemSpy.mockRestore();
+  });
+
+  it('does not throttle a status-changing save (e.g. pause) - it always saves immediately regardless of the elapsed-second throttle', () => {
+    const { root } = setup();
+    submitPasteText(root, '10m 60%');
+    root.querySelector('.btn-play-pause').click();
+    vi.advanceTimersByTime(1000); // lands on a whole-second boundary, already saved as "running"
+
+    root.querySelector('.btn-play-pause').click(); // pause - same elapsed second, but a real status change
+
+    const saved = JSON.parse(window.localStorage.getItem('workout_progress'));
+    expect(saved.status).toBe('paused');
+  });
+
+  it('a saveWorkoutProgress() failure (e.g. a browser rejecting the write) does not stop the player screen from continuing to render subsequent ticks (regression for the reported mid-workout freeze)', () => {
+    const { root } = setup();
+    submitPasteText(root, '10m 60%');
+    root.querySelector('.btn-play-pause').click();
+
+    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const setItemSpy = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new Error('QuotaExceededError (simulated)');
+    });
+
+    vi.advanceTimersByTime(2000); // several ticks while every save attempt throws
+
+    // the countdown/elapsed-time display must keep advancing even though every
+    // save attempt during this window threw - rendering must not be blocked by it
+    expect(root.querySelector('.elapsed-time').textContent).toContain('2');
+    expect(consoleErrorSpy).toHaveBeenCalled();
+
+    setItemSpy.mockRestore();
+    consoleErrorSpy.mockRestore();
+  });
+
   it('clears the saved workout progress when returning home, so a subsequent reload shows the upload screen again', () => {
     const { root } = setup();
     submitPasteText(root, '5m 60%');
