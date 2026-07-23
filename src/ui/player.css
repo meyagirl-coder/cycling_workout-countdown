@@ -177,11 +177,16 @@ body {
   color: var(--on-zone-text);
 }
 
-/* App 品牌識別橫幅（規格 §5.1）：整個 App 最上方，只在首頁顯示 */
+/* App 品牌識別橫幅（規格 §5.1）：整個 App 最上方，只在首頁顯示。padding-top
+   刻意加大到蓋過右上角 .theme-toggle（position: fixed，大約在 top: 0.75rem
+   往下 40px 左右的高度範圍內）——標題文字置中橫跨全寬，窄螢幕上標題右側
+   很容易伸進主題切換按鈕的區域，被蓋住／重疊，讓標題整個從按鈕下方開始
+   才能避開。下方 padding-bottom 縮小，跟 .upload-screen 的 padding-top 一起
+   縮短標題區塊到下面「你的 FTP」之間的空白，版面更緊湊。 */
 .app-banner {
   max-width: 480px;
   margin: 0 auto;
-  padding: 2.5rem 1.25rem 0.5rem;
+  padding: 3.75rem 1.25rem 0.25rem;
   text-align: center;
 }
 
@@ -202,7 +207,7 @@ body {
 .upload-screen {
   max-width: 480px;
   margin: 0 auto;
-  padding: 3rem 1.25rem;
+  padding: 1.5rem 1.25rem 3rem;
   display: flex;
   flex-direction: column;
   align-items: center;

@@ -96,13 +96,13 @@ export function createUploadView(rootEl, handlers) {
               <button type="submit" class="upload-url-submit">載入</button>
             </div>
           </form>
-          <p class="upload-source-hint">目前支援 TrainerDay、Zwift（whatsonzwift.com）</p>
+          <p class="upload-source-hint">目前支援 TrainerDay</p>
         </div>
 
         <div class="upload-source-card">
           <h2 class="upload-source-title">貼上課表文字內容</h2>
           <p class="upload-source-hint">
-            支援 TrainerDay、WhatsOnZwift 格式：請到課表網站的頁面上複製課表文字，貼在下方即可；也可以改用上方的「貼課表網址」直接貼網址，如果自動抓取失敗會提示改回這裡手動貼上。
+            支援 TrainerDay 格式：請到課表網站的頁面上複製課表文字，貼在下方即可；也可以改用上方的「貼課表網址」直接貼網址，如果自動抓取失敗會提示改回這裡手動貼上。
           </p>
           <form class="upload-paste-form">
             <textarea

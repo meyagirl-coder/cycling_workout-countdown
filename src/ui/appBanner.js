@@ -9,7 +9,7 @@ export function createAppBanner(rootEl) {
   rootEl.innerHTML = `
     <header class="app-banner">
       <h1 class="app-banner-title">自行車訓練課表播放器</h1>
-      <p class="app-banner-subtitle">上傳課表檔案或連結 intervals.icu，開始你的結構化訓練</p>
+      <p class="app-banner-subtitle">支援貼上課表網址、貼上課表文字、上傳 ZWO 檔案，或連結 intervals.icu，開始你的結構化訓練</p>
     </header>
   `;
 
