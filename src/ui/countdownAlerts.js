@@ -1,8 +1,11 @@
 /**
- * 倒數提示（規格 §4.4）：剩餘 10 秒時同時觸發提示音＋語音＋下一組預告；切組
- * 瞬間顯示下一組資訊。這裡只負責「timer 事件 -> 該做什麼提示」的判斷邏輯，
- * 音效／語音的實際播放實作是可注入的依賴（playBeep/speak），方便在 jsdom 下
- * 用假函式測試觸發時機是否正確，不需要真的 AudioContext／SpeechSynthesis。
+ * 倒數提示（規格 §4.4）：組別時長 > 20 秒的正常規則——剩餘 10 秒時同時觸發
+ * 提示音＋語音＋下一組預告；切組瞬間顯示下一組資訊。組別時長 <= 20 秒的
+ * 短間歇例外——只在最後 5 秒逐秒觸發提示音（5-4-3-2-1），不觸發語音／
+ * banner（見 timerEngine.js 的 SHORT_COUNTDOWN_TICK）。這裡只負責「timer
+ * 事件 -> 該做什麼提示」的判斷邏輯，音效／語音的實際播放實作是可注入的
+ * 依賴（playBeep/speak），方便在 jsdom 下用假函式測試觸發時機是否正確，
+ * 不需要真的 AudioContext／SpeechSynthesis。
  *
  * 倒數 10 秒的預告（countdownWarning）跟切組瞬間的顯示（intervalChanged）
  * 是兩個不同時間點、格式也不同：
@@ -37,14 +40,60 @@ const COUNTDOWN_PREVIEW_BANNER_MS = 11000;
  */
 export function handleTimerEvents(events, { workout, state, ftp, playBeep, speak, showNextIntervalBanner }) {
   if (events.includes(TIMER_EVENTS.COUNTDOWN_WARNING)) {
-    playBeep();
-    const preview = computeUpcomingIntervalPreview(workout, state, ftp);
-    speak(formatCountdownSpeechText(preview));
-    showNextIntervalBanner(formatCountdownBannerText(preview), COUNTDOWN_PREVIEW_BANNER_MS);
+    // 提示音／預告內容計算／語音／banner 各自獨立包 try-catch：使用者回報過
+    // 「只聽到一聲提示音，之後語音跟後續提示音全部消失」的情況，最可能的
+    // 原因是其中一段丟出例外，把同一個 tick 裡排在後面的程式碼整個中斷掉
+    // （沒被 catch 住的例外會一路往外拋，中斷當下這次 handleTimerEvents()
+    // 呼叫）。這裡讓四段互不拖累：任一段失敗只在 console 留下錯誤方便除錯，
+    // 不會讓提示音這種最基本的功能也跟著遭殃。
+    try {
+      playBeep();
+    } catch (err) {
+      console.error('countdownAlerts: playBeep() failed', err);
+    }
+
+    let preview = null;
+    try {
+      preview = computeUpcomingIntervalPreview(workout, state, ftp);
+    } catch (err) {
+      console.error('countdownAlerts: computeUpcomingIntervalPreview() failed', err);
+    }
+
+    if (preview) {
+      try {
+        speak(formatCountdownSpeechText(preview));
+      } catch (err) {
+        console.error('countdownAlerts: speak() failed', err);
+      }
+
+      try {
+        showNextIntervalBanner(formatCountdownBannerText(preview), COUNTDOWN_PREVIEW_BANNER_MS);
+      } catch (err) {
+        console.error('countdownAlerts: showNextIntervalBanner() failed', err);
+      }
+    }
+  }
+
+  // 短間歇例外（組別時長 <= 20 秒，見 timerEngine.js）：最後 5 秒逐秒觸發一次
+  // SHORT_COUNTDOWN_TICK，只播提示音（5-4-3-2-1），刻意不算預告內容、不語音、
+  // 不顯示 banner——組別太短，插播一段「10 秒後進入下一組...」語音反而佔掉
+  //這組大半時間。降頻分頁一次 tick 可能跨過不只一個秒數點，events 陣列裡會
+  // 有對應次數的 SHORT_COUNTDOWN_TICK，這裡就播對應次數的提示音，不會漏拍。
+  const shortTickCount = events.filter((event) => event === TIMER_EVENTS.SHORT_COUNTDOWN_TICK).length;
+  for (let i = 0; i < shortTickCount; i++) {
+    try {
+      playBeep();
+    } catch (err) {
+      console.error('countdownAlerts: playBeep() failed (short-interval countdown tick)', err);
+    }
   }
 
   if (events.includes(TIMER_EVENTS.INTERVAL_CHANGED)) {
-    showNextIntervalBanner(formatNextIntervalText(workout, state, ftp));
+    try {
+      showNextIntervalBanner(formatNextIntervalText(workout, state, ftp));
+    } catch (err) {
+      console.error('countdownAlerts: showNextIntervalBanner() (intervalChanged) failed', err);
+    }
   }
 }
 
@@ -120,6 +169,11 @@ export function playCountdownBeep() {
 
   if (!sharedAudioContext) sharedAudioContext = new AudioContextCtor();
   const ctx = sharedAudioContext;
+  // iOS Safari 已知行為：交替使用 SpeechSynthesis 之後，共用的 AudioContext
+  // 可能被瀏覽器悄悄中斷（suspended），之後即使程式碼正常執行、沒有拋出任何
+  // 例外，oscillator 也不會真的發出聲音——每次播放前都主動 resume 一次，跟
+  // unlockAudioAndSpeechForAutoplay() 的作法一致，不能只靠一開始 unlock 那一次。
+  if (typeof ctx.resume === 'function' && ctx.state === 'suspended') ctx.resume();
 
   const oscillator = ctx.createOscillator();
   const gain = ctx.createGain();

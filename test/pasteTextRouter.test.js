@@ -57,6 +57,14 @@ describe('parseAutoDetectedPasteText', () => {
     expect(workout.intervals).toHaveLength(6);
   });
 
+  it('routes and parses a space-percent line with trailing "N rpm" cadence, including inside a "Nx" block (regression: first line\'s rpm suffix used to fail routing entirely)', () => {
+    const text = ['3m 50% 90rpm', '', '4x', '3m 70% 90rpm', '1m 90% 90rpm'].join('\n');
+    const workout = parseAutoDetectedPasteText(text);
+    expect(workout.source).toBe('paste-percent');
+    expect(workout.intervals).toHaveLength(9);
+    expect(workout.intervals.every((iv) => iv.cadence === 90)).toBe(true);
+  });
+
   it('parses the full user-provided space-percent example end to end (14 intervals)', () => {
     const text = [
       '5m 50%',

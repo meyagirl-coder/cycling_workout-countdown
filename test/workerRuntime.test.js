@@ -218,7 +218,35 @@ describe('createWorkerRuntime', () => {
     expect(runtime.isLoopRunning()).toBe(false);
   });
 
-  it('emits countdownWarning once the interval fires past the 10s-remaining threshold', () => {
+  it('emits countdownWarning once the interval fires past the 10s-remaining threshold (segment longer than 20s, see timerEngine.js short-interval exception)', () => {
+    // makeSyntheticWorkout()'s 12s steady segment now takes the <=20s short-interval
+    // path (shortCountdownTick, tested below), not countdownWarning - need a segment
+    // longer than 20s to exercise the "normal" path here (threshold details are
+    // exhaustively covered in timerEngine.test.js; this is just a runtime pass-through check).
+    const workout = {
+      id: 'long-segment',
+      name: 'Long Segment Workout',
+      source: 'zwo',
+      totalDuration: 30,
+      intervals: [{ type: 'steady', duration: 30, powerStart: 70, powerEnd: 70, cadence: null }],
+    };
+    const clock = createFakeClock(0);
+    const scheduler = createFakeScheduler();
+    const { runtime, messages } = createHarness(clock, scheduler);
+    runtime.handleMessage({ type: 'init', workout });
+    runtime.handleMessage({ type: 'play' });
+
+    clock.advance(16_000); // remaining = 14s, not yet crossed
+    scheduler.fireAll();
+
+    messages.length = 0;
+    clock.advance(4000); // remaining = 10s, crossed the 10s threshold
+    scheduler.fireAll();
+
+    expect(messages[0].events).toContain('countdownWarning');
+  });
+
+  it('emits shortCountdownTick for a segment 20s or shorter (short-interval exception), not countdownWarning', () => {
     const clock = createFakeClock(0);
     const scheduler = createFakeScheduler();
     const { runtime, messages } = createHarness(clock, scheduler);
@@ -229,10 +257,11 @@ describe('createWorkerRuntime', () => {
     scheduler.fireAll();
 
     messages.length = 0;
-    clock.advance(4000); // remaining = 8s, crossed the 10s threshold
+    clock.advance(7000); // remaining = 5s, crossed the first short-tick threshold
     scheduler.fireAll();
 
-    expect(messages[0].events).toContain('countdownWarning');
+    expect(messages[0].events).toContain('shortCountdownTick');
+    expect(messages[0].events).not.toContain('countdownWarning');
   });
 
   it('accumulates adjustPower and reflects it in getState()', () => {
