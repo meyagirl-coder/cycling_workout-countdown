@@ -23,7 +23,7 @@
  * 少一個或格式錯誤都要丟出清楚的錯誤訊息，不能悄悄忽略、也不能誤判成別的
  * 東西——使用者點連結卡在一個看不懂發生什麼事的畫面，比清楚的錯誤訊息更糟。
  */
-import { parseScheduledStartTimeInput } from './scheduledStartTimeParser.js';
+import { normalizeFullWidthDigits, parseScheduledStartTimeInput } from './scheduledStartTimeParser.js';
 
 /** source 代碼 -> 顯示用名稱，目前只支援 TrainerDay；未來擴充 TP／intervals.icu 時加在這裡 */
 export const SUPPORTED_GROUP_JOIN_SOURCES = { TD: 'TrainerDay' };
@@ -117,6 +117,11 @@ export function buildGroupJoinLink(baseUrl, { source = 'TD', sourceUrl, startTim
   const url = new URL(baseUrl);
   url.searchParams.set('source', source);
   url.searchParams.set('source_url', sourceUrl.trim());
-  url.searchParams.set('startTime', startTimeText.trim());
+  // 存進連結的是正規化過的半形數字，不是使用者輸入的原始文字——輸入法在
+  // 全形模式下打出來的全形數字（見 scheduledStartTimeParser.js 的
+  // normalizeFullWidthDigits()）雖然驗證通過，但直接原樣存進連結會讓
+  // 產生出來的網址帶著肉眼看不出來的全形字元，不乾淨；正規化過的版本
+  // 才是使用者「真正輸入的日期時間」該有的樣子。
+  url.searchParams.set('startTime', normalizeFullWidthDigits(startTimeText.trim()));
   return url.toString();
 }

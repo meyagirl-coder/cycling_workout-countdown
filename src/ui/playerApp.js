@@ -8,6 +8,7 @@ import { loadAlertMode, saveAlertMode } from './alertModeStore.js';
 import { createAppBanner } from './appBanner.js';
 import { handleTimerEvents, playCountdownBeeps, speakCountdownWarning, unlockAudioAndSpeechForAutoplay } from './countdownAlerts.js';
 import { clearDraftInputs, loadDraftInputs, saveDraftInputs } from './draftInputStore.js';
+import { formatMinuteSecondLabel } from './formatTime.js';
 import { DEFAULT_FTP, loadFtp, saveFtp } from './ftpStore.js';
 import { parseGroupJoinParams } from './groupJoinLinkParser.js';
 import { createPlayerView } from './renderPlayer.js';
@@ -291,17 +292,46 @@ export function initPlayerApp(rootEl) {
    */
   function armSchedule(workout, startTimestamp) {
     if (startTimestamp <= Date.now()) {
-      startScheduledWorkoutNow(workout);
+      startScheduledWorkoutNow(workout, startTimestamp);
     } else {
       enterWaitingScreen(workout, startTimestamp);
     }
   }
 
-  /** 排定時間到了（或一開機就發現已經過去）：清掉排程紀錄，直接切到執行頁並開始播放 */
-  function startScheduledWorkoutNow(workout) {
+  /**
+   * 排定時間已經到了或已經過去（一開機就發現已經過去、等待畫面倒數到 0、
+   * 或一鍵開團連結帶的 startTime 已經過去）：清掉排程紀錄，跳到「現在時間
+   * 減掉排定時間」等於過去了幾秒對應的組別／組內剩餘秒數，直接動態進行中
+   * 繼續播放——不是從第一組、0 分鐘重新開始（regression：使用者實測遲到
+   * 35 分鐘點開開團連結，畫面卻從頭播放，遲到的人完全跟不上團練當下真正
+   * 在跑的組別），也不是靜靜停在那個時間點暫停（那樣使用者還要自己按一次
+   * 播放才會動）。
+   *
+   * `client.restore()` 本身設計上永遠不會把狀態設回 running（是給「重新
+   * 整理頁面」用，需要使用者自己按播放才會恢復播放，見 timerEngine.js 的
+   * restore() 說明）——這裡緊接著呼叫 client.play()，讓它從剛剛還原的
+   * elapsedTotal 這個位置往前跑：play() 是用「現在時間 - elapsedTotal」
+   * 反推 startTimestamp，之後 tick() 就會自然地從這個位置即時往前推進，
+   * 達到「跳到對應組別＋動態進行中」的效果，不需要另外設計一個新的引擎
+   * API。
+   *
+   * 過去的時間如果已經超過整份課表的總時長（例如課表只有 30 分鐘但已經
+   * 過去 40 分鐘），沒有一個「對應的組別」可以跳，顯示「課表已結束」提示，
+   * 停留在目前畫面（通常是上傳畫面），不會嘗試切到執行頁。
+   */
+  function startScheduledWorkoutNow(workout, startTimestamp) {
     stopScheduleRuntimeIfRunning();
     clearSchedule();
-    switchToPlayerScreen(workout);
+
+    const elapsedSeconds = Math.max(0, (Date.now() - startTimestamp) / 1000);
+    if (elapsedSeconds >= workout.totalDuration) {
+      uploadView.showError(
+        `課表已結束：設定的開始時間已經過去 ${formatMinuteSecondLabel(elapsedSeconds)}，超過這份課表 ${formatMinuteSecondLabel(workout.totalDuration)} 的總時長，請重新設定開始時間，或直接手動開始播放。`
+      );
+      return;
+    }
+
+    switchToPlayerScreen(workout, { elapsedTotal: elapsedSeconds, powerAdjustPct: 0, status: 'paused' });
     client.play();
   }
 
@@ -317,7 +347,7 @@ export function initPlayerApp(rootEl) {
     scheduleRuntime = createScheduledStartRuntime({
       startTimestamp,
       onTick: (remainingMs) => waitingView.update(workout, remainingMs),
-      onReached: () => startScheduledWorkoutNow(workout),
+      onReached: () => startScheduledWorkoutNow(workout, startTimestamp),
     });
     scheduleRuntime.start();
   }

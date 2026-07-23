@@ -197,15 +197,45 @@ describe('initPlayerApp: 團體訓練排程 (group-ride scheduling)', () => {
   });
 
   it('starts playing immediately (skips the waiting screen) when the scheduled time is already in the past', () => {
-    vi.setSystemTime(new Date(2026, 6, 24, 10, 10, 0));
+    vi.setSystemTime(new Date(2026, 6, 24, 10, 2, 0));
     const { root } = setup();
 
-    setScheduleTime(root, '202607241000'); // 10 minutes in the past
+    setScheduleTime(root, '202607241000'); // 2 minutes in the past, workout is 5 minutes long
     submitPasteText(root, '5m 60%');
 
     expect(root.querySelector('.player-mount').classList.contains('hidden')).toBe(false);
     expect(root.querySelector('.waiting-mount').classList.contains('hidden')).toBe(true);
     expect(root.querySelector('.upload-mount').classList.contains('hidden')).toBe(true);
+  });
+
+  it('jumps straight to the live "catch-up" position (elapsed = now - startTime), not a restart from 0, and is actively running (not paused) at that position (regression: a late joiner reported the player restarting from interval 1 / 0:00 instead of catching up to the group\'s actual progress)', () => {
+    vi.stubGlobal('Worker', RealisticMockWorker);
+    vi.setSystemTime(new Date(2026, 6, 24, 10, 0, 0));
+    const { root } = setup();
+
+    // 10-minute workout, two 5-minute intervals; scheduled 7 minutes in the past ->
+    // should land inside the 2nd interval, 2 minutes into it (420s elapsed)
+    setScheduleTime(root, '202607240953'); // 09:53, 7 minutes before "now" (10:00)
+    submitPasteText(root, '5m 60%\n5m 70%');
+
+    expect(root.querySelector('.player-mount').classList.contains('hidden')).toBe(false);
+    expect(root.querySelector('.interval-progress').textContent).toContain('第 2 / 2 組');
+    expect(root.querySelector('.interval-progress').textContent).toContain('進行中'); // actively running, not paused
+    expect(root.querySelector('.elapsed-time').textContent).toContain('7:00'); // 7 minutes total elapsed
+  });
+
+  it('shows "課表已結束" and stays on the current screen instead of jumping to a nonexistent point when the elapsed time exceeds the workout\'s total duration', () => {
+    vi.setSystemTime(new Date(2026, 6, 24, 10, 40, 0));
+    const { root } = setup();
+
+    setScheduleTime(root, '202607241000'); // 40 minutes in the past, but the workout is only 5 minutes long
+    submitPasteText(root, '5m 60%');
+
+    expect(root.querySelector('.player-mount').classList.contains('hidden')).toBe(true);
+    expect(root.querySelector('.waiting-mount').classList.contains('hidden')).toBe(true);
+    const errorEl = root.querySelector('.upload-error');
+    expect(errorEl.classList.contains('hidden')).toBe(false);
+    expect(errorEl.textContent).toMatch(/課表已結束/);
   });
 
   it('does not show the waiting screen when no start time was set (existing manual-start behavior is unchanged)', () => {
@@ -265,7 +295,7 @@ describe('initPlayerApp: 團體訓練排程 (group-ride scheduling)', () => {
   });
 
   it('immediately starts playing on boot when the restored schedule\'s time has already passed', () => {
-    vi.setSystemTime(new Date(2026, 6, 24, 10, 10, 0));
+    vi.setSystemTime(new Date(2026, 6, 24, 10, 2, 0));
     const workout = {
       id: 'restored-past-workout',
       name: 'Restored Past Ride',
@@ -393,7 +423,7 @@ describe('initPlayerApp: 一鍵開團連結 (group-join link via URL params: sou
 
   it('auto-loads the workout and starts playing immediately when FTP is already set and startTime is already in the past', async () => {
     window.localStorage.setItem('user_ftp', '250');
-    vi.setSystemTime(new Date(2026, 6, 24, 20, 30, 0));
+    vi.setSystemTime(new Date(2026, 6, 24, 20, 2, 0));
     setUrlSearch('source=TD&source_url=' + encodeURIComponent(TRAINERDAY_URL) + '&startTime=202607242000');
     stubTrainerDayFetch();
 

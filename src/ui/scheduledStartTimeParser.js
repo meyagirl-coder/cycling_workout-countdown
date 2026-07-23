@@ -19,6 +19,17 @@ const FORMAT_RE = /^(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})$/;
 const FORMAT_ERROR_MESSAGE = '日期時間格式錯誤，請用「202607242000」這種格式（年月日時分連續 12 位數字，不含空格或冒號，24 小時制）';
 
 /**
+ * 全形數字（０-９，U+FF10–FF19）→ 半形 ASCII 數字。中文／日文輸入法在切到
+ * 全形模式時，即使欄位設了 `inputmode="numeric"`，打出來的數字字元還是可能
+ * 是全形——肉眼在小小的輸入框裡幾乎看不出跟半形數字的差異（使用者會很確信
+ * 自己「輸入的就是 202607242000」），但 `\d` 只吃半形數字，會被判定成格式
+ * 錯誤。轉換一次能吃下這種輸入，不用強迫使用者切輸入法。
+ */
+export function normalizeFullWidthDigits(text) {
+  return text.replace(/[０-９]/g, (ch) => String.fromCharCode(ch.charCodeAt(0) - 0xfee0));
+}
+
+/**
  * @param {string} text - 使用者輸入的文字，例如 "202607242000"
  * @returns {Date}
  */
@@ -27,7 +38,7 @@ export function parseScheduledStartTimeInput(text) {
     throw new Error(FORMAT_ERROR_MESSAGE);
   }
 
-  const trimmed = text.trim();
+  const trimmed = normalizeFullWidthDigits(text.trim());
   const match = trimmed.match(FORMAT_RE);
   if (!match) {
     throw new Error(FORMAT_ERROR_MESSAGE);

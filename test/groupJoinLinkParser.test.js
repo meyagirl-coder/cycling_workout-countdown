@@ -94,6 +94,16 @@ describe('buildGroupJoinLink', () => {
     expect(link).toContain('source_url=https%3A%2F%2Fapp.trainerday.com');
   });
 
+  it('normalizes full-width digits in startTimeText to half-width before embedding in the link (regression: a generated link kept the user\'s raw full-width input, which is visually indistinguishable but not clean ASCII)', () => {
+    const link = buildGroupJoinLink(BASE_URL, {
+      sourceUrl: 'https://app.trainerday.com/workouts/abc',
+      startTimeText: '２０２６０７２４２０００',
+    });
+
+    const url = new URL(link);
+    expect(url.searchParams.get('startTime')).toBe('202607242000');
+  });
+
   it('the generated link round-trips through parseGroupJoinParams back to the same values', () => {
     const link = buildGroupJoinLink(BASE_URL, {
       sourceUrl: 'https://app.trainerday.com/workouts/abc?x=1&y=2',

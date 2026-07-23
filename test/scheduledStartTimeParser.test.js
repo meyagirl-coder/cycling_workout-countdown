@@ -17,6 +17,21 @@ describe('parseScheduledStartTimeInput', () => {
     expect(date.getFullYear()).toBe(2026);
   });
 
+  it('accepts full-width digits (regression: CJK input methods in full-width mode produce these even with inputmode="numeric", visually indistinguishable from ASCII digits in a small field)', () => {
+    const date = parseScheduledStartTimeInput('２０２６０７２４２０００');
+    expect(date.getFullYear()).toBe(2026);
+    expect(date.getMonth()).toBe(6);
+    expect(date.getDate()).toBe(24);
+    expect(date.getHours()).toBe(20);
+    expect(date.getMinutes()).toBe(0);
+  });
+
+  it('accepts a mix of full-width and half-width digits', () => {
+    const date = parseScheduledStartTimeInput('２０2607242０00');
+    expect(date.getFullYear()).toBe(2026);
+    expect(date.getHours()).toBe(20);
+  });
+
   it('accepts midnight (00:00) and one-minute-before-midnight (23:59) boundary times', () => {
     expect(parseScheduledStartTimeInput('202601010000').getHours()).toBe(0);
     expect(parseScheduledStartTimeInput('202601012359').getMinutes()).toBe(59);
