@@ -40,6 +40,10 @@ function makeDeps(alertMode = ALERT_MODE_VOICE) {
 // countdownWarning 觸發時，語音預告用加快的語速講精簡內容（見 countdownAlerts.js）
 const FAST_PREVIEW_SPEECH_RATE = 1.35;
 
+// countdownTick 逐秒報數用比預告更快的語速，確保單一個數字唸完的時間跟畫面
+// 倒數的 1 秒節奏對得上（見 countdownAlerts.js 的 DIGIT_SPEECH_RATE 說明）
+const DIGIT_SPEECH_RATE = 1.8;
+
 describe('handleTimerEvents: countdownWarning (10 seconds before the CURRENT interval ends, only for segments >20s; voice only, no beep at this point)', () => {
   it('shows a banner + speaks a fast, terse preview of the upcoming steady interval (no beep)', () => {
     const deps = makeDeps();
@@ -174,22 +178,21 @@ describe('handleTimerEvents: countdownTick (最後 5 秒逐秒語音報數，兩
     handleTimerEvents([TIMER_EVENTS.COUNTDOWN_TICK], { workout: makeWorkout(), state, ftp: 200, ...deps });
 
     expect(deps.speak).toHaveBeenCalledTimes(1);
-    expect(deps.speak).toHaveBeenCalledWith('5');
+    expect(deps.speak).toHaveBeenCalledWith('5', DIGIT_SPEECH_RATE);
     expect(deps.playCountdownBeeps).not.toHaveBeenCalled();
     expect(deps.showNextIntervalBanner).not.toHaveBeenCalled();
   });
 
-  it('speaks the digit at normal (default) speech rate, not the fast preview rate', () => {
+  it('speaks the digit at the faster DIGIT_SPEECH_RATE, not the default rate (regression: default rate=1 made a single digit take noticeably longer than the 1-second on-screen cadence, so the reported speech fell increasingly behind the visible countdown)', () => {
     const deps = makeDeps();
     const state = makeState({ currentIntervalIndex: 1, elapsedInInterval: 16 }); // remaining=4
     handleTimerEvents([TIMER_EVENTS.COUNTDOWN_TICK], { workout: makeWorkout(), state, ftp: 200, ...deps });
 
-    expect(deps.speak).toHaveBeenCalledWith('4');
-    expect(deps.speak.mock.calls[0]).toHaveLength(1); // no rate argument passed -> speakCountdownWarning()'s default rate=1 applies
+    expect(deps.speak).toHaveBeenCalledWith('4', DIGIT_SPEECH_RATE);
     expect(deps.playCountdownBeeps).not.toHaveBeenCalled();
   });
 
-  it('speaks each of 5/4/3/2/1 correctly based on actual remaining time, never triggering playCountdownBeeps() (voice mode is beep-free even at digit 3)', () => {
+  it('speaks each of 5/4/3/2/1 correctly (at DIGIT_SPEECH_RATE) based on actual remaining time, never triggering playCountdownBeeps() (voice mode is beep-free even at digit 3)', () => {
     const deps = makeDeps(ALERT_MODE_VOICE);
     for (const [elapsedInInterval, expectedDigit] of [
       [15, '5'],
@@ -202,7 +205,7 @@ describe('handleTimerEvents: countdownTick (最後 5 秒逐秒語音報數，兩
       deps.playCountdownBeeps.mockClear();
       const state = makeState({ currentIntervalIndex: 1, elapsedInInterval });
       handleTimerEvents([TIMER_EVENTS.COUNTDOWN_TICK], { workout: makeWorkout(), state, ftp: 200, ...deps });
-      expect(deps.speak).toHaveBeenCalledWith(expectedDigit);
+      expect(deps.speak).toHaveBeenCalledWith(expectedDigit, DIGIT_SPEECH_RATE);
       expect(deps.playCountdownBeeps).not.toHaveBeenCalled();
     }
   });
@@ -217,7 +220,7 @@ describe('handleTimerEvents: countdownTick (最後 5 秒逐秒語音報數，兩
     );
 
     expect(deps.speak).toHaveBeenCalledTimes(1);
-    expect(deps.speak).toHaveBeenCalledWith('2');
+    expect(deps.speak).toHaveBeenCalledWith('2', DIGIT_SPEECH_RATE);
     // digit collapsed to "2", not "3" - the beep should NOT fire here even though a
     // threshold of 3 was technically skipped over in this throttled batch
     expect(deps.playCountdownBeeps).not.toHaveBeenCalled();
@@ -445,7 +448,7 @@ describe('unlockAudioAndSpeechForAutoplay (團體訓練排程：「設定開始�
 
   function stubAudioContext() {
     const oscillator = { connect: vi.fn(), start: vi.fn(), stop: vi.fn(), frequency: {} };
-    const gain = { connect: vi.fn(), gain: { setValueAtTime: vi.fn(), exponentialRampToValueAtTime: vi.fn() } };
+    const gain = { connect: vi.fn(), gain: { setValueAtTime: vi.fn(), linearRampToValueAtTime: vi.fn() } };
     const ctx = {
       createOscillator: vi.fn(() => oscillator),
       createGain: vi.fn(() => gain),
@@ -467,7 +470,7 @@ describe('unlockAudioAndSpeechForAutoplay (團體訓練排程：「設定開始�
 
     expect(AudioContextCtor).toHaveBeenCalledTimes(1);
     expect(ctx.resume).toHaveBeenCalledTimes(1);
-    expect(gain.gain.setValueAtTime).toHaveBeenCalledWith(0, ctx.currentTime); // silent, not the audible 0.2 level playCountdownBeeps uses
+    expect(gain.gain.setValueAtTime).toHaveBeenCalledWith(0, ctx.currentTime); // silent, not the audible peak gain playCountdownBeeps uses
     expect(oscillator.start).toHaveBeenCalledTimes(1);
   });
 
@@ -524,7 +527,7 @@ describe('playCountdownBeeps (regression: Google Meet tab-audio sharing does not
         return oscillator;
       }),
       createGain: vi.fn(() => {
-        const gain = { connect: vi.fn(), gain: { setValueAtTime: vi.fn(), exponentialRampToValueAtTime: vi.fn() } };
+        const gain = { connect: vi.fn(), gain: { setValueAtTime: vi.fn(), linearRampToValueAtTime: vi.fn() } };
         gains.push(gain);
         return gain;
       }),
@@ -549,7 +552,7 @@ describe('playCountdownBeeps (regression: Google Meet tab-audio sharing does not
     expect(oscillators[1].start).toHaveBeenCalledWith(101);
     expect(oscillators[2].start).toHaveBeenCalledWith(102);
     // each tone stops shortly after it starts (short "beep", not a sustained tone)
-    expect(oscillators[0].stop).toHaveBeenCalledWith(100.15);
+    expect(oscillators[0].stop).toHaveBeenCalledWith(100.25);
   });
 
   it('uses a higher pitch than the old single tone (crisper "beep" rather than a duller "boop")', async () => {
@@ -561,6 +564,28 @@ describe('playCountdownBeeps (regression: Google Meet tab-audio sharing does not
     for (const oscillator of oscillators) {
       expect(oscillator.frequency.value).toBeGreaterThan(880); // old tone was 880Hz
     }
+  });
+
+  it('uses an attack/sustain/release gain envelope, not an instant jump to peak followed by continuous decay (regression: users reported the old envelope sounding like a "噹" bell/chime hit rather than a flat "嗶" beep)', async () => {
+    const { gains } = stubAudioContext('running');
+    const { playCountdownBeeps } = await import('../src/ui/countdownAlerts.js');
+
+    playCountdownBeeps();
+
+    expect(gains).toHaveLength(3);
+    const [firstGain] = gains;
+
+    // starts silent, ramps up to peak (attack) - not an instant step to peak
+    expect(firstGain.gain.setValueAtTime).toHaveBeenCalledWith(0, 100);
+    expect(firstGain.gain.linearRampToValueAtTime).toHaveBeenCalledWith(expect.any(Number), 100.01);
+    const [attackPeakGain] = firstGain.gain.linearRampToValueAtTime.mock.calls[0];
+    expect(attackPeakGain).toBeGreaterThan(0.2); // louder than the old 0.2 peak gain
+
+    // holds flat at peak for a sustain window before releasing, not decaying continuously
+    expect(firstGain.gain.setValueAtTime).toHaveBeenCalledWith(attackPeakGain, 100.2); // 100 + (0.25 duration - 0.05 release)
+
+    // releases down to near-zero only at the very end
+    expect(firstGain.gain.linearRampToValueAtTime).toHaveBeenCalledWith(0.0001, 100.25);
   });
 
   it('calls ctx.resume() before scheduling when the shared AudioContext is suspended (e.g. after SpeechSynthesis interrupted it)', async () => {
@@ -588,7 +613,7 @@ describe('playCountdownBeeps (regression: Google Meet tab-audio sharing does not
   });
 });
 
-describe('speakCountdownWarning (regression: fast preview speech needs a controllable rate, digit countdown stays at normal rate)', () => {
+describe('speakCountdownWarning (regression: fast preview speech and digit countdown speech both need controllable, non-default rates)', () => {
   afterEach(() => {
     vi.unstubAllGlobals();
     vi.resetModules();

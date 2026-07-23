@@ -554,9 +554,14 @@ if (elapsedInInterval >= currentInterval.duration) {
     播放音檔）走的是分頁自己的媒體管線，會被正確捕捉——語音模式適合自己
     一個人騎、想聽到完整口語內容；嗶聲模式適合團體訓練透過視訊分享畫面
     帶練，至少能讓遠端參與者聽到聲音提示。3 聲的節奏是用 `AudioContext`
-    自己的時間軸一次排程好（頻率 1568Hz，每聲 0.15 秒，間隔 1 秒），不受
+    自己的時間軸一次排程好（頻率 1000Hz，每聲 0.25 秒，間隔 1 秒），不受
     JS 主執行緒忙碌與否影響間隔精準度；`playCountdownBeeps()` 只在
     `countdownTick` 的 digit===3 那一次呼叫一次，不是外部重複呼叫 3 次。
+    音量包絡（gain envelope）是起音斜坡（0.01 秒）→ 滿音量平台 → 收尾斜坡
+    （0.05 秒）這種形狀，不是瞬間跳到滿音量後立刻連續衰減——實測回報過
+    「瞬間起音 + 全程衰減」的舊版聽起來像「噹」（敲擊聲/鐘聲）而不是平穩
+    的「嗶」，改成這種形狀之後才是使用者確認過的聽感。峰值音量
+    `BEEP_PEAK_GAIN`＝0.4（舊版 0.2 的兩倍，同樣是實測回報偏小之後調整）。
 - **組別時長 > 20 秒（正常規則）**：
   - 當剩餘時間從 >10 秒跨到 <=10 秒時觸發一次 `countdownWarning`：畫面
     永遠顯示下一組預告 banner（純文字，兩個模式都一樣）；只有模式 A 會
@@ -570,9 +575,13 @@ if (elapsedInInterval >= currentInterval.duration) {
     分鐘」，最後一組（沒有下一組）唸「即將完成」。模式 B 不語音唸這段，
     只看 banner 文字。
   - 接著在最後 5 秒（剩餘 5／4／3／2／1 秒，各跨過一次觸發一次
-    `countdownTick`）：模式 A 逐秒語音報數「5」「4」「3」「2」「1」，
-    正常語速（不加快），唸完剛好接上下一組開始；模式 B 不報數，改成在
-    digit===3 那一次觸發三聲「嗶」（見上）。
+    `countdownTick`）：模式 A 逐秒語音報數「5」「4」「3」「2」「1」，語速
+    調快到 `DIGIT_SPEECH_RATE`＝1.8 倍（不是預設語速 1 倍——實測回報過預設
+    語速唸完一個數字的實際時間比畫面上的 1 秒還久，5 個數字累計下來明顯
+    超過 5 秒、跟畫面倒數的節奏對不上，念單一個數字這種極短句子，TTS 引擎
+    本身的啟動/收尾開銷占比遠比長句子高，需要比 `FAST_PREVIEW_SPEECH_RATE`
+    更快才夠），唸完剛好接上下一組開始；模式 B 不報數，改成在 digit===3
+    那一次觸發三聲「嗶」（見上）。
 - **組別時長 <= 20 秒（短間歇例外）**：組別太短，插播一段「下一組...」的
   介紹（不管語音還是純文字 banner）會佔掉這組大半時間，不觸發
   `countdownWarning`，只有最後 5 秒一樣逐秒觸發 `countdownTick`（模式 A
@@ -591,11 +600,14 @@ if (elapsedInInterval >= currentInterval.duration) {
     `formatNextIntervalText()`）沒有變動，跟倒數 10 秒預告是兩個獨立的
     文字格式（後者更口語化，適合唸出來；前者資訊更精確，適合切組當下閱讀）。
 - **語速的技術限制**：瀏覽器不保證 `SpeechSynthesis` 唸完一段文字實際花
-  多久（不同裝置／語音包快慢不一），`FAST_PREVIEW_SPEECH_RATE` 只是盡力
-  而為，不是精確可控的保證值。`countdownTick` 的逐秒報數本身仍然是由
-  真正的計時器（`timerEngine.js` 的 `tick()`）逐秒觸發，不是接在預告語音
-  講完之後才開始，所以報數本身的時機永遠準確；頂多預告語音講比較久時，
-  會跟第一聲報數稍微重疊。
+  多久（不同裝置／語音包快慢不一），`FAST_PREVIEW_SPEECH_RATE`／
+  `DIGIT_SPEECH_RATE` 都只是盡力而為調出來的估計值，不是精確可控的保證值
+  ——這兩個常數目前的數字是這個開發環境（沒有真的 TTS 引擎可以實測音檔
+  長度）根據「單字短句 TTS 通常有不成比例高的固定啟動開銷」推算出來的，
+  如果實際裝置上聽起來還是不夠快／太趕，只要調整常數即可。`countdownTick`
+  的逐秒報數本身仍然是由真正的計時器（`timerEngine.js` 的 `tick()`）逐秒
+  觸發，不是接在預告語音講完之後才開始，所以報數本身的時機永遠準確；頂多
+  預告語音講比較久時，會跟第一聲報數稍微重疊。
 - **倒數語音／提示音的錯誤處理**：`handleTimerEvents()` 裡預告內容計算／
   語音／提示音／banner 各自獨立包 try-catch，任一段失敗只在 console 留
   錯誤、不會拖累其他段。
@@ -720,11 +732,13 @@ App 一打開，使用者第一眼看到的畫面：
 時間一起開始）。
 
 - **輸入格式**：文字輸入框（不是瀏覽器原生的日期選擇器），格式是「年月日
-  連續 8 位數字 + 空格 + 24 小時制時間」，例如 `20260724 20:00`；輸入框旁有
-  提示文字說明這個格式範例。`parseScheduledStartTimeInput()`
-  （`src/ui/scheduledStartTimeParser.js`）驗證格式，用
-  `new Date(year, monthIndex, day, hour, minute)` 建構子（吃使用者裝置本地
-  時區的年月日時分，不是 UTC）產生 `Date`，並且會：
+  時分連續 12 位數字，不含空格或冒號」（`yyyyMMddHHmm`），例如
+  `202607242000` 代表 2026/07/24 20:00；輸入框旁有提示文字說明這個格式
+  範例。這個純數字格式是刻意跟下面「一鍵開團連結」網址參數的 `startTime`
+  統一，兩邊共用同一套 `parseScheduledStartTimeInput()`
+  （`src/ui/scheduledStartTimeParser.js`）解析函式，不用各自維護一份格式
+  規則。此函式用 `new Date(year, monthIndex, day, hour, minute)` 建構子（吃
+  使用者裝置本地時區的年月日時分，不是 UTC）產生 `Date`，並且會：
   - 檢查月份 1–12、時 00–23、分 00–59 的範圍
   - 額外把建構出來的 `Date` 的 getter 值跟輸入比對一次，抓出像 2 月 30 日
     這種「格式合法但日期不存在」、`Date` 建構子會默默進位到 3 月的情況
@@ -765,6 +779,69 @@ App 一打開，使用者第一眼看到的畫面：
   排程被消費（自動開始觸發）或使用者主動取消時會清掉這筆記錄，不會有已經
   失效的排程殘留。這個持久化方式**無法保證**分頁被完全關閉或裝置長時間
   背景休眠後還能自動觸發——這正是上面「限制提醒」要明確告知使用者的原因。
+
+#### 5.3.1 一鍵開團連結（新增）
+
+團體訓練排程的延伸：不用每個參加者自己貼課表網址、自己輸入開始時間，
+帶隊者可以先產生一個連結分享出去，其他人點連結就直接進等待畫面（或已過去
+就直接開始播放）。
+
+- **網址格式**：
+  ```
+  https://cycling-workout-countdown.vercel.app/?source=TD&source_url={課表網址}&startTime={yyyyMMddHHmm}
+  ```
+  三個 query 參數：
+  - `source`：課表來源代碼，目前只支援 `TD`（TrainerDay）；未來擴充
+    `TP`（TrainingPeaks）／`interval`（intervals.icu）時只要在
+    `SUPPORTED_GROUP_JOIN_SOURCES`（`src/ui/groupJoinLinkParser.js`）加一筆，
+    `playerApp.js` 的 `startGroupJoinFlow()` 接上對應的下載/解析 handler
+    即可，解析／驗證邏輯不用改。傳入不支援的值會顯示清楚的錯誤訊息，不會
+    靜默失敗或誤判成別的格式。
+  - `source_url`：課表網址本身，含有 `:`／`/`／`?` 等特殊字元，一定要做過
+    URL encode。用 `URLSearchParams` 组／解析 query string 時會自動處理
+    encode/decode，不需要手動處理。
+  - `startTime`：跟「設定開始時間」欄位統一格式（`yyyyMMddHHmm`），直接共用
+    `parseScheduledStartTimeInput()`。
+- **解析與驗證**：`parseGroupJoinParams()`（`src/ui/groupJoinLinkParser.js`，
+  純函式，不碰 DOM／fetch）對完全沒帶任何開團參數的一般網址回傳 `null`
+  （不是錯誤——一般手動貼課表本來就不會帶這些參數）；但只要偵測到任何一個
+  開團參數存在，三個參數就都要合法，少一個、格式錯誤、`source_url` 不是
+  合法的 http(s) 網址、或（`source=TD` 時）主機不是 `app.trainerday.com`，
+  都會丟出清楚指出問題的錯誤，顯示在上傳畫面的 `.upload-error` 區——不會讓
+  使用者卡在一個看不懂發生什麼事的畫面。
+- **App 開機時的處理流程**（`playerApp.js` 的 `handleGroupJoinLinkBoot()`）：
+  只有在沒有排程、也沒有進行中課表進度可以復原的全新開機才會檢查網址參數
+  （避免蓋掉使用者原本已經在進行中的狀態）。合法的話：
+  1. 檢查這台裝置有沒有設定過 FTP（`loadFtp() === null`）：
+     - **沒設定過**：顯示提示 banner（`.upload-ftp-prompt`）「偵測到開團
+       連結，請先確認你的 FTP」，並提供「先跳過，使用 100W」按鈕
+       （`GROUP_JOIN_DEFAULT_FTP`，刻意跟一般情境下 FTP 欄位顯示的預設值
+       `DEFAULT_FTP`＝200 分開，用一個保守的低預設值，不影響一般使用者）。
+       使用者可以直接在 FTP 欄位輸入自己的數字（沿用既有 `onFtpChange`
+       行為），或按「先跳過」——不管哪條路，FTP 確定後才真正繼續下載課表／
+       設定排程，不會被卡住無法進入等待畫面。
+     - **已經設定過**：直接繼續，不顯示提示。
+  2. FTP 確定後，`startGroupJoinFlow()` 把 `startTime` 存進
+     `pendingScheduledStartTimestamp`，並依 `source` 呼叫對應的課表下載流程
+     （`source=TD` 呼叫既有的 `handleTrainerDayUrlSubmit()`）——完全沿用
+     「手動貼網址前先按過『設定開始時間』」的既有邏輯（`loadWorkout()`
+     偵測到 `pendingScheduledStartTimestamp` 就會自動走 `armSchedule()`：
+     `startTime` 已經過去就立刻開始播放，還沒到就進等待畫面倒數），不用
+     另外重新實作一次排程判斷。
+  3. **已知限制**：這個流程是頁面載入當下自動觸發，不是使用者按鈕點擊的
+     當下，瀏覽器的自動播放權限解鎖（`unlockAudioAndSpeechForAutoplay()`）
+     需要「使用者互動當下」的呼叫堆疊才有效，這裡沒有那個時機，所以不會
+     呼叫——倒數提示的語音／嗶聲可能要等使用者在頁面上做過一次真正的互動
+     （例如點擊任何按鈕）之後才會正常播放，這是瀏覽器自動播放政策的既有
+     限制。
+- **產生分享連結的小工具**：上傳畫面「設定開始時間」區塊下方新增「產生
+  開團分享連結」（`.share-link-tool`），輸入課表網址（目前僅支援
+  TrainerDay）＋開始時間（`yyyyMMddHHmm`），按「產生連結」用
+  `buildGroupJoinLink()`（同一個 `groupJoinLinkParser.js`）組出完整、正確
+  encode 過的分享連結，顯示在唯讀輸入框裡並提供「複製連結」按鈕
+  （`navigator.clipboard.writeText()`，失敗時輸入框本身仍可手動選取
+  複製，不會卡住）。輸入格式錯誤（不是合法的 TrainerDay 網址、開始時間
+  格式不對）會顯示清楚的行內錯誤，不產生連結。
 
 ### 5.4 主題切換：dark／light／auto（新增）
 
