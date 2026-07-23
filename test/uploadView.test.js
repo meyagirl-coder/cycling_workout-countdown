@@ -16,6 +16,7 @@ function makeHandlers(overrides = {}) {
     onScheduledStartTimeSet: vi.fn(),
     onScheduledStartTimeCancel: vi.fn(),
     onFtpChange: vi.fn(),
+    onFtpSkipToDefault: vi.fn(),
     onAlertModeChange: vi.fn(),
     onDraftInputChange: vi.fn(),
     ...overrides,
@@ -133,6 +134,33 @@ describe('createUploadView: FTP field', () => {
   });
 });
 
+describe('createUploadView: FTP 設定提示（一鍵開團連結偵測到 FTP 尚未設定時顯示，含「先跳過」選項）', () => {
+  it('is hidden by default', () => {
+    const { root } = setup();
+    expect(root.querySelector('.upload-ftp-prompt').classList.contains('hidden')).toBe(true);
+  });
+
+  it('view.showFtpSetupPrompt() / hideFtpSetupPrompt() let the caller drive the banner externally', () => {
+    const { root, view } = setup();
+    const prompt = root.querySelector('.upload-ftp-prompt');
+
+    view.showFtpSetupPrompt();
+    expect(prompt.classList.contains('hidden')).toBe(false);
+
+    view.hideFtpSetupPrompt();
+    expect(prompt.classList.contains('hidden')).toBe(true);
+  });
+
+  it('calls onFtpSkipToDefault when the skip button is clicked', () => {
+    const { root, view, handlers } = setup();
+    view.showFtpSetupPrompt();
+
+    root.querySelector('.upload-ftp-skip-btn').click();
+
+    expect(handlers.onFtpSkipToDefault).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe('createUploadView: 倒數提示模式 (voice/beep toggle, mirrors the theme-toggle pill button style, positioned right below FTP)', () => {
   it('renders two mutually-exclusive pill buttons labeled 下一組提示倒數 / 逼逼聲倒數, positioned after the FTP row', () => {
     const { root } = setup();
@@ -199,18 +227,18 @@ describe('createUploadView: 設定開始時間 (group-ride scheduling, positione
     expect(positions).toEqual(['upload-ftp-row', 'upload-schedule-row', 'upload-source-list']);
   });
 
-  it('shows a hint with the exact example format "20260724 20:00"', () => {
+  it('shows a hint with the exact example format "202607242000"', () => {
     const { root } = setup();
-    expect(root.querySelector('.upload-schedule-hint').textContent).toContain('20260724 20:00');
-    expect(root.querySelector('.upload-schedule-input').getAttribute('placeholder')).toBe('20260724 20:00');
+    expect(root.querySelector('.upload-schedule-hint').textContent).toContain('202607242000');
+    expect(root.querySelector('.upload-schedule-input').getAttribute('placeholder')).toBe('202607242000');
   });
 
-  it('calls onScheduledStartTimeSet with a Date when the input has the valid "YYYYMMDD HH:mm" format', () => {
+  it('calls onScheduledStartTimeSet with a Date when the input has the valid "yyyyMMddHHmm" format', () => {
     const { root, handlers } = setup();
     const input = root.querySelector('.upload-schedule-input');
     const submitBtn = root.querySelector('.upload-schedule-submit');
 
-    input.value = '20260724 20:00';
+    input.value = '202607242000';
     submitBtn.click();
 
     expect(handlers.onScheduledStartTimeSet).toHaveBeenCalledTimes(1);
@@ -225,7 +253,7 @@ describe('createUploadView: 設定開始時間 (group-ride scheduling, positione
     const input = root.querySelector('.upload-schedule-input');
     const submitBtn = root.querySelector('.upload-schedule-submit');
 
-    input.value = '20260724 20:00';
+    input.value = '202607242000';
     submitBtn.click();
 
     const status = root.querySelector('.upload-schedule-status');
@@ -265,7 +293,7 @@ describe('createUploadView: 設定開始時間 (group-ride scheduling, positione
     const input = root.querySelector('.upload-schedule-input');
     const submitBtn = root.querySelector('.upload-schedule-submit');
 
-    input.value = '20260724 20:00';
+    input.value = '202607242000';
     submitBtn.click();
 
     root.querySelector('.upload-schedule-cancel').click();
@@ -286,6 +314,69 @@ describe('createUploadView: 設定開始時間 (group-ride scheduling, positione
 
     view.clearScheduleStatus();
     expect(root.querySelector('.upload-schedule-status').classList.contains('hidden')).toBe(true);
+  });
+});
+
+describe('createUploadView: 產生開團分享連結 (share-link generator tool, positioned below 設定開始時間)', () => {
+  it('is positioned after the schedule row and before the four source cards', () => {
+    const { root } = setup();
+    const positions = Array.from(root.querySelectorAll('.upload-schedule-row, .share-link-tool, .upload-source-list')).map(
+      (el) => el.className
+    );
+    expect(positions).toEqual(['upload-schedule-row', 'share-link-tool', 'upload-source-list']);
+  });
+
+  it('generates a correctly-encoded share link from a workout URL and start time, and shows it in a readonly result field', () => {
+    const { root } = setup();
+    root.querySelector('.share-link-url-input').value = 'https://app.trainerday.com/workouts/abc?x=1';
+    root.querySelector('.share-link-time-input').value = '202607242000';
+    root.querySelector('.share-link-generate').click();
+
+    const resultInput = root.querySelector('.share-link-result-input');
+    expect(root.querySelector('.share-link-result').classList.contains('hidden')).toBe(false);
+    expect(resultInput.value).toContain('source=TD');
+    expect(resultInput.value).toContain('startTime=202607242000');
+    expect(resultInput.value).toContain(encodeURIComponent('https://app.trainerday.com/workouts/abc?x=1'));
+    expect(resultInput.hasAttribute('readonly')).toBe(true);
+  });
+
+  it('shows a clear inline error for an invalid workout URL, without showing a stale result', () => {
+    const { root } = setup();
+    root.querySelector('.share-link-url-input').value = 'https://example.com/not-trainerday';
+    root.querySelector('.share-link-time-input').value = '202607242000';
+    root.querySelector('.share-link-generate').click();
+
+    expect(root.querySelector('.share-link-error').classList.contains('hidden')).toBe(false);
+    expect(root.querySelector('.share-link-error').textContent).toMatch(/只支援 TrainerDay/);
+    expect(root.querySelector('.share-link-result').classList.contains('hidden')).toBe(true);
+  });
+
+  it('shows a clear inline error for an invalid start time format', () => {
+    const { root } = setup();
+    root.querySelector('.share-link-url-input').value = 'https://app.trainerday.com/workouts/abc';
+    root.querySelector('.share-link-time-input').value = '2026-07-24 20:00';
+    root.querySelector('.share-link-generate').click();
+
+    expect(root.querySelector('.share-link-error').classList.contains('hidden')).toBe(false);
+    expect(root.querySelector('.share-link-error').textContent).toMatch(/日期時間格式錯誤/);
+  });
+
+  it('copies the generated link to the clipboard and shows a "已複製" confirmation when the copy button is clicked', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
+
+    const { root } = setup();
+    root.querySelector('.share-link-url-input').value = 'https://app.trainerday.com/workouts/abc';
+    root.querySelector('.share-link-time-input').value = '202607242000';
+    root.querySelector('.share-link-generate').click();
+    const expectedLink = root.querySelector('.share-link-result-input').value;
+
+    root.querySelector('.share-link-copy').click();
+    await vi.waitFor(() => {
+      expect(root.querySelector('.share-link-copied').classList.contains('hidden')).toBe(false);
+    });
+
+    expect(writeText).toHaveBeenCalledWith(expectedLink);
   });
 });
 

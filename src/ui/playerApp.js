@@ -9,6 +9,7 @@ import { createAppBanner } from './appBanner.js';
 import { handleTimerEvents, playCountdownBeeps, speakCountdownWarning, unlockAudioAndSpeechForAutoplay } from './countdownAlerts.js';
 import { clearDraftInputs, loadDraftInputs, saveDraftInputs } from './draftInputStore.js';
 import { DEFAULT_FTP, loadFtp, saveFtp } from './ftpStore.js';
+import { parseGroupJoinParams } from './groupJoinLinkParser.js';
 import { createPlayerView } from './renderPlayer.js';
 import { createScheduledStartRuntime } from './scheduledStartRuntime.js';
 import { clearSchedule, loadSchedule, saveSchedule } from './scheduleStore.js';
@@ -20,6 +21,13 @@ import { clearWorkoutProgress, loadWorkoutProgress, saveWorkoutProgress } from '
 const INTERVALS_ICU_PROXY_URL = '/api/intervals-zwo';
 const TRAINERDAY_PROXY_URL = '/api/trainerday-workout';
 const WHATSONZWIFT_PROXY_URL = '/api/whatsonzwift-workout';
+
+// 「一鍵開團連結」偵測到這台裝置從沒設定過 FTP 時，「先跳過」選項存的預設值
+// ——刻意跟一般（沒有透過開團連結進來時）FTP 欄位顯示的預設值 DEFAULT_FTP
+// （200）分開：這裡的目的是讓使用者能先加入團練、之後隨時回來調整，用一個
+// 保守、不會讓瓦數建議偏高的低預設值比較合理，不是「猜一個接近真實 FTP 的
+// 數字」。
+const GROUP_JOIN_DEFAULT_FTP = 100;
 
 /**
  * 執行頁的組裝入口：先顯示上傳畫面，使用者可以選 .zwo 檔案、貼 intervals.icu
@@ -92,6 +100,11 @@ export function initPlayerApp(rootEl) {
   let pendingScheduledStartTimestamp = null;
   let scheduleRuntime = null;
 
+  // 「一鍵開團連結」進來時，如果這台裝置還沒設定過 FTP，先把解析好的開團
+  // 資訊記在這裡，等使用者透過 FTP 欄位輸入或按下「先跳過」解決 FTP 之後
+  // 才真正繼續（見 resumePendingGroupJoinIfAny()）。
+  let pendingGroupJoin = null;
+
   // saveWorkoutProgressThrottled() 用來判斷「這一整秒存過了沒」，見下方定義。
   let lastSavedProgressElapsedSecond = null;
 
@@ -110,6 +123,13 @@ export function initPlayerApp(rootEl) {
       if (currentWorkout && latestState) {
         playerView.update(currentWorkout, latestState, currentFtp);
       }
+      resumePendingGroupJoinIfAny();
+    },
+    onFtpSkipToDefault: () => {
+      currentFtp = GROUP_JOIN_DEFAULT_FTP;
+      saveFtp(GROUP_JOIN_DEFAULT_FTP);
+      uploadView.setFtpValue(GROUP_JOIN_DEFAULT_FTP);
+      resumePendingGroupJoinIfAny();
     },
     onAlertModeChange: (mode) => {
       currentAlertMode = mode;
@@ -324,6 +344,74 @@ export function initPlayerApp(rootEl) {
     pendingScheduledStartTimestamp = null;
   }
 
+  /**
+   * 「一鍵開團連結」網址參數解析成功、且 FTP 也確定好了（不管是使用者輸入
+   * 還是按了「先跳過」）之後才真正繼續：設定排程開始時間，並依 source 呼叫
+   * 對應的課表下載/解析流程——這條路完全沿用「手動貼網址前先按過『設定開始
+   * 時間』」的既有邏輯（loadWorkout() 偵測到 pendingScheduledStartTimestamp
+   * 就會自動走 armSchedule()），不用另外重新實作一次排程判斷。
+   */
+  function startGroupJoinFlow({ source, sourceUrl, startTime }) {
+    pendingScheduledStartTimestamp = startTime.getTime();
+
+    // 跟 handleScheduledStartTimeSet() 不同：這裡是頁面載入當下自動觸發，不是
+    // 使用者按鈕點擊的當下，瀏覽器的自動播放權限解鎖
+    // （unlockAudioAndSpeechForAutoplay()）需要「使用者互動當下」的呼叫堆疊
+    // 才有效，這裡沒有那個時機，所以不呼叫——語音／嗶聲提示可能要等使用者在
+    // 頁面上做過一次真正的互動（例如點擊任何按鈕）之後才會正常播放，這是
+    // 瀏覽器自動播放政策的既有限制，不是這裡漏寫。
+
+    // source 目前只支援 'TD'（parseGroupJoinParams() 已經驗證過，這裡不會是
+    // 其他值），未來擴充 TP／intervals.icu 時在這裡加對應的呼叫就好。
+    if (source === 'TD') {
+      handleTrainerDayUrlSubmit(sourceUrl);
+    }
+  }
+
+  /** FTP 確定好了，如果有暫存的開團連結資訊就收起提示、繼續執行 */
+  function resumePendingGroupJoinIfAny() {
+    if (!pendingGroupJoin) return;
+    const groupJoin = pendingGroupJoin;
+    pendingGroupJoin = null;
+    uploadView.hideFtpSetupPrompt();
+    startGroupJoinFlow(groupJoin);
+  }
+
+  /**
+   * App 開機時檢查網址有沒有帶「一鍵開團連結」參數（source／source_url／
+   * startTime，見 groupJoinLinkParser.js）——只有在沒有排程／進度可以復原的
+   * 全新開機才會走到這裡（見下方呼叫處），避免蓋掉使用者原本正在進行中的
+   * 排程或課表。
+   *
+   * 三種結果：
+   *   1. 網址完全沒帶開團參數（一般開啟方式）：parseGroupJoinParams() 回傳
+   *      null，什麼都不做，正常顯示上傳畫面。
+   *   2. 帶了但格式錯誤／缺漏／來源不支援：丟出例外，直接顯示清楚的錯誤
+   *      訊息在上傳畫面，不會讓使用者卡在一個看不懂發生什麼事的畫面。
+   *   3. 合法：檢查這台裝置有沒有設定過 FTP，沒有就先跳出提示（可以先跳過用
+   *      100W），有設定過就直接繼續（下載課表＋設定排程）。
+   */
+  function handleGroupJoinLinkBoot() {
+    const searchParams = new URLSearchParams(window.location.search);
+
+    let groupJoin;
+    try {
+      groupJoin = parseGroupJoinParams(searchParams);
+    } catch (err) {
+      uploadView.showError(err.message);
+      return;
+    }
+    if (!groupJoin) return;
+
+    if (loadFtp() === null) {
+      pendingGroupJoin = groupJoin;
+      uploadView.showFtpSetupPrompt();
+      return;
+    }
+
+    startGroupJoinFlow(groupJoin);
+  }
+
   /** 等待畫面「取消排程」：清掉排程紀錄，回到上傳畫面 */
   function handleCancelSchedule() {
     stopScheduleRuntimeIfRunning();
@@ -471,6 +559,10 @@ export function initPlayerApp(rootEl) {
         powerAdjustPct: restoredProgress.powerAdjustPct,
         status: restoredProgress.status,
       });
+    } else {
+      // 兩者都沒有時才檢查網址是不是「一鍵開團連結」——避免蓋掉使用者原本
+      // 已經在進行中的排程／課表進度（見 handleGroupJoinLinkBoot() 的說明）。
+      handleGroupJoinLinkBoot();
     }
   }
 

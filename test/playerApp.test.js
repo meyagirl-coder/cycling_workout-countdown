@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { initPlayerApp } from '../src/ui/playerApp.js';
+import { getLocalDateString } from '../src/utils/localDate.js';
 import { createWorkerRuntime } from '../src/worker/workerRuntime.js';
 
 /** jsdom has no real Worker; initPlayerApp only needs postMessage/onmessage to exist without throwing for these tests. */
@@ -157,7 +158,7 @@ describe('initPlayerApp: 團體訓練排程 (group-ride scheduling)', () => {
     vi.setSystemTime(new Date(2026, 6, 24, 10, 0, 0));
     const { root } = setup();
 
-    setScheduleTime(root, '20260724 10:05');
+    setScheduleTime(root, '202607241005');
     submitPasteText(root, '5m 60%');
 
     expect(root.querySelector('.waiting-mount').classList.contains('hidden')).toBe(false);
@@ -170,7 +171,7 @@ describe('initPlayerApp: 團體訓練排程 (group-ride scheduling)', () => {
     vi.setSystemTime(new Date(2026, 6, 24, 10, 0, 0));
     const { root } = setup();
 
-    setScheduleTime(root, '20260724 10:05');
+    setScheduleTime(root, '202607241005');
     submitPasteText(root, '5m 60%');
     expect(root.querySelector('.waiting-countdown').textContent).toBe('距離開始還有 5 分');
 
@@ -185,7 +186,7 @@ describe('initPlayerApp: 團體訓練排程 (group-ride scheduling)', () => {
     vi.setSystemTime(new Date(2026, 6, 24, 10, 0, 0));
     const { root } = setup();
 
-    setScheduleTime(root, '20260724 10:05');
+    setScheduleTime(root, '202607241005');
     submitPasteText(root, '5m 60%');
     expect(root.querySelector('.player-mount').classList.contains('hidden')).toBe(true);
 
@@ -199,7 +200,7 @@ describe('initPlayerApp: 團體訓練排程 (group-ride scheduling)', () => {
     vi.setSystemTime(new Date(2026, 6, 24, 10, 10, 0));
     const { root } = setup();
 
-    setScheduleTime(root, '20260724 10:00'); // 10 minutes in the past
+    setScheduleTime(root, '202607241000'); // 10 minutes in the past
     submitPasteText(root, '5m 60%');
 
     expect(root.querySelector('.player-mount').classList.contains('hidden')).toBe(false);
@@ -219,7 +220,7 @@ describe('initPlayerApp: 團體訓練排程 (group-ride scheduling)', () => {
     vi.setSystemTime(new Date(2026, 6, 24, 10, 0, 0));
     const { root } = setup();
 
-    setScheduleTime(root, '20260724 10:05');
+    setScheduleTime(root, '202607241005');
     submitPasteText(root, '5m 60%');
 
     const saved = JSON.parse(window.localStorage.getItem('scheduled_workout'));
@@ -232,7 +233,7 @@ describe('initPlayerApp: 團體訓練排程 (group-ride scheduling)', () => {
     vi.setSystemTime(new Date(2026, 6, 24, 10, 0, 0));
     const { root } = setup();
 
-    setScheduleTime(root, '20260724 10:05');
+    setScheduleTime(root, '202607241005');
     submitPasteText(root, '5m 60%');
     expect(window.localStorage.getItem('scheduled_workout')).not.toBeNull();
 
@@ -294,7 +295,7 @@ describe('initPlayerApp: 團體訓練排程 (group-ride scheduling)', () => {
     vi.setSystemTime(new Date(2026, 6, 24, 10, 0, 0));
     const { root } = setup();
 
-    setScheduleTime(root, '20260724 10:05');
+    setScheduleTime(root, '202607241005');
     submitPasteText(root, '5m 60%');
     expect(root.querySelector('.waiting-mount').classList.contains('hidden')).toBe(false);
 
@@ -309,7 +310,7 @@ describe('initPlayerApp: 團體訓練排程 (group-ride scheduling)', () => {
     vi.setSystemTime(new Date(2026, 6, 24, 10, 0, 0));
     const { root } = setup();
 
-    setScheduleTime(root, '20260724 10:05');
+    setScheduleTime(root, '202607241005');
     submitPasteText(root, '5m 60%');
     root.querySelector('.btn-cancel-schedule').click();
 
@@ -317,6 +318,156 @@ describe('initPlayerApp: 團體訓練排程 (group-ride scheduling)', () => {
 
     expect(root.querySelector('.player-mount').classList.contains('hidden')).toBe(true);
     expect(root.querySelector('.upload-mount').classList.contains('hidden')).toBe(false);
+  });
+});
+
+describe('initPlayerApp: 一鍵開團連結 (group-join link via URL params: source/source_url/startTime)', () => {
+  const TRAINERDAY_URL = 'https://app.trainerday.com/workouts/abc';
+  const VALID_WORKOUT_STRUCTURE_TEXT = '5 min @ 50% (50w)';
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    window.localStorage.clear();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    window.localStorage.clear();
+    vi.unstubAllGlobals();
+    window.history.pushState(null, '', '/');
+  });
+
+  function setUrlSearch(search) {
+    window.history.pushState(null, '', `/?${search}`);
+  }
+
+  function stubTrainerDayFetch() {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200, text: async () => VALID_WORKOUT_STRUCTURE_TEXT });
+    vi.stubGlobal('fetch', fetchMock);
+    return fetchMock;
+  }
+
+  it('does nothing special (normal upload screen) when the URL has no group-join params at all', () => {
+    const { root } = setup();
+    expect(root.querySelector('.upload-mount').classList.contains('hidden')).toBe(false);
+    expect(root.querySelector('.upload-ftp-prompt').classList.contains('hidden')).toBe(true);
+  });
+
+  it('shows a clear error for an unsupported source value, without attempting any fetch', () => {
+    setUrlSearch('source=TP&source_url=' + encodeURIComponent(TRAINERDAY_URL) + '&startTime=202607242000');
+    const fetchMock = stubTrainerDayFetch();
+    const { root } = setup();
+
+    expect(root.querySelector('.upload-error').classList.contains('hidden')).toBe(false);
+    expect(root.querySelector('.upload-error').textContent).toMatch(/課表來源「TP」目前不支援/);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('shows a clear error for a malformed startTime, without attempting any fetch', () => {
+    setUrlSearch('source=TD&source_url=' + encodeURIComponent(TRAINERDAY_URL) + '&startTime=2026-07-24');
+    const fetchMock = stubTrainerDayFetch();
+    const { root } = setup();
+
+    expect(root.querySelector('.upload-error').classList.contains('hidden')).toBe(false);
+    expect(root.querySelector('.upload-error').textContent).toMatch(/startTime 開始時間格式錯誤/);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('auto-loads the workout and enters the waiting screen when FTP is already set and startTime is in the future', async () => {
+    window.localStorage.setItem('user_ftp', '250');
+    vi.setSystemTime(new Date(2026, 6, 24, 19, 0, 0));
+    setUrlSearch('source=TD&source_url=' + encodeURIComponent(TRAINERDAY_URL) + '&startTime=202607242000');
+    const fetchMock = stubTrainerDayFetch();
+
+    const { root } = setup();
+    await vi.waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+    await vi.waitFor(() => {
+      expect(root.querySelector('.waiting-mount').classList.contains('hidden')).toBe(false);
+    });
+
+    expect(root.querySelector('.upload-ftp-prompt').classList.contains('hidden')).toBe(true);
+    expect(fetchMock.mock.calls[0][0]).toContain(encodeURIComponent(TRAINERDAY_URL));
+  });
+
+  it('auto-loads the workout and starts playing immediately when FTP is already set and startTime is already in the past', async () => {
+    window.localStorage.setItem('user_ftp', '250');
+    vi.setSystemTime(new Date(2026, 6, 24, 20, 30, 0));
+    setUrlSearch('source=TD&source_url=' + encodeURIComponent(TRAINERDAY_URL) + '&startTime=202607242000');
+    stubTrainerDayFetch();
+
+    const { root } = setup();
+    await vi.waitFor(() => {
+      expect(root.querySelector('.player-mount').classList.contains('hidden')).toBe(false);
+    });
+    expect(root.querySelector('.waiting-mount').classList.contains('hidden')).toBe(true);
+  });
+
+  it('shows the FTP setup prompt (not an immediate fetch) when FTP has never been set on this device', () => {
+    setUrlSearch('source=TD&source_url=' + encodeURIComponent(TRAINERDAY_URL) + '&startTime=202607242000');
+    const fetchMock = stubTrainerDayFetch();
+
+    const { root } = setup();
+
+    expect(root.querySelector('.upload-ftp-prompt').classList.contains('hidden')).toBe(false);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('proceeds with the deferred group-join flow once the user types a valid FTP', async () => {
+    setUrlSearch('source=TD&source_url=' + encodeURIComponent(TRAINERDAY_URL) + '&startTime=202607242000');
+    const fetchMock = stubTrainerDayFetch();
+    vi.setSystemTime(new Date(2026, 6, 24, 19, 0, 0));
+
+    const { root } = setup();
+    expect(root.querySelector('.upload-ftp-prompt').classList.contains('hidden')).toBe(false);
+
+    const ftpInput = root.querySelector('.upload-ftp-input');
+    ftpInput.value = '230';
+    ftpInput.dispatchEvent(new Event('input'));
+
+    expect(root.querySelector('.upload-ftp-prompt').classList.contains('hidden')).toBe(true);
+    await vi.waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+    expect(window.localStorage.getItem('user_ftp')).toBe('230');
+  });
+
+  it('proceeds with the deferred group-join flow using 100W when "先跳過" is clicked', async () => {
+    setUrlSearch('source=TD&source_url=' + encodeURIComponent(TRAINERDAY_URL) + '&startTime=202607242000');
+    const fetchMock = stubTrainerDayFetch();
+    vi.setSystemTime(new Date(2026, 6, 24, 19, 0, 0));
+
+    const { root } = setup();
+    root.querySelector('.upload-ftp-skip-btn').click();
+
+    expect(root.querySelector('.upload-ftp-prompt').classList.contains('hidden')).toBe(true);
+    expect(root.querySelector('.upload-ftp-input').value).toBe('100');
+    expect(window.localStorage.getItem('user_ftp')).toBe('100');
+    await vi.waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+    await vi.waitFor(() => {
+      expect(root.querySelector('.waiting-mount').classList.contains('hidden')).toBe(false);
+    });
+  });
+
+  it('does not process the URL params at all when a schedule or in-progress workout is already saved (avoids clobbering existing state)', () => {
+    const workout = {
+      id: 'existing-workout',
+      name: 'Existing',
+      source: 'paste-percent',
+      totalDuration: 300,
+      intervals: [{ type: 'steady', duration: 300, powerStart: 60, powerEnd: 60, cadence: null }],
+    };
+    window.localStorage.setItem('workout_progress', JSON.stringify({ workout, elapsedTotal: 10, powerAdjustPct: 0, status: 'paused', savedAtDate: getLocalDateString() }));
+
+    setUrlSearch('source=TP&source_url=not-even-valid&startTime=bad'); // would normally throw a clear error
+    const { root } = setup();
+
+    // no error shown - the malformed group-join params were never even parsed, because
+    // a higher-priority restore (in-progress workout) took over first
+    expect(root.querySelector('.upload-error').classList.contains('hidden')).toBe(true);
   });
 });
 

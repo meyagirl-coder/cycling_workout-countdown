@@ -1,4 +1,5 @@
 import { VALID_ALERT_MODES } from './alertModeStore.js';
+import { buildGroupJoinLink } from './groupJoinLinkParser.js';
 import { getLocalDateString } from '../utils/localDate.js';
 import { parseScheduledStartTimeInput } from './scheduledStartTimeParser.js';
 
@@ -31,6 +32,9 @@ import { parseScheduledStartTimeInput } from './scheduledStartTimeParser.js';
  *   onScheduledStartTimeSet(date)     「設定開始時間」輸入合法格式後按下「設定」
  *   onScheduledStartTimeCancel()      按下「設定開始時間」旁的「取消」
  *   onFtpChange(ftp)                  FTP 欄位改成一個合法的正數（呼叫端負責存 localStorage）
+ *   onFtpSkipToDefault()              「一鍵開團連結」FTP 尚未設定時的提示裡按下
+ *                                     「先跳過，使用 100W」——呼叫端負責存一個
+ *                                     預設 FTP 值並繼續原本卡住的開團流程
  *   onAlertModeChange(mode)           倒數提示模式切換成 'voice'（下一組提示倒數／
  *                                     語音報數）或 'beep'（逼逼聲倒數）其中一個，
  *                                     兩者互斥（呼叫端負責存 localStorage，見
@@ -51,11 +55,16 @@ import { parseScheduledStartTimeInput } from './scheduledStartTimeParser.js';
  * 環境呼叫」的問題，如果還是 403，屬於預期內的結果，不是程式碼的問題。
  *
  * @param {HTMLElement} rootEl
- * @param {{onFileSelected: (file: File) => void, onIntervalsIcuSubmit: (rawText: string) => void, onPasteTextSubmit: (rawText: string) => void, onTrainerDayUrlSubmit: (url: string) => void, onWhatsOnZwiftUrlSubmit: (url: string) => void, onScheduledStartTimeSet: (date: Date) => void, onScheduledStartTimeCancel: () => void, onFtpChange: (ftp: number) => void, onAlertModeChange: (mode: 'voice'|'beep') => void, onDraftInputChange: (draft: {url: string, pasteText: string}) => void}} handlers
+ * @param {{onFileSelected: (file: File) => void, onIntervalsIcuSubmit: (rawText: string) => void, onPasteTextSubmit: (rawText: string) => void, onTrainerDayUrlSubmit: (url: string) => void, onWhatsOnZwiftUrlSubmit: (url: string) => void, onScheduledStartTimeSet: (date: Date) => void, onScheduledStartTimeCancel: () => void, onFtpChange: (ftp: number) => void, onFtpSkipToDefault: () => void, onAlertModeChange: (mode: 'voice'|'beep') => void, onDraftInputChange: (draft: {url: string, pasteText: string}) => void}} handlers
  */
 export function createUploadView(rootEl, handlers) {
   rootEl.innerHTML = `
     <div class="upload-screen">
+      <div class="upload-ftp-prompt hidden">
+        <p class="upload-ftp-prompt-text">偵測到開團連結，請先確認你的 FTP 才能加入排程</p>
+        <button type="button" class="upload-ftp-skip-btn">先跳過，使用 100W</button>
+      </div>
+
       <div class="upload-ftp-row">
         <label class="upload-ftp-label" for="upload-ftp-input">你的 FTP</label>
         <div class="upload-ftp-input-wrap">
@@ -81,19 +90,51 @@ export function createUploadView(rootEl, handlers) {
             type="text"
             id="upload-schedule-input"
             class="upload-schedule-input"
-            placeholder="20260724 20:00"
+            placeholder="202607242000"
+            inputmode="numeric"
+            maxlength="12"
             autocomplete="off"
           />
           <button type="button" class="upload-schedule-submit">設定</button>
         </div>
       </div>
       <p class="upload-schedule-hint">
-        選填，用於團體訓練排程：格式為年月日連續 8 位數字 + 空格 + 24 小時制時間，例如「20260724 20:00」。設定後，接下來載入的課表會依這個時間自動開始（時間已過就立刻開始播放，還沒到就顯示等待畫面倒數）。
+        選填，用於團體訓練排程：格式為年月日時分連續 12 位數字（不含空格或冒號），例如「202607242000」代表 2026/07/24 20:00。設定後，接下來載入的課表會依這個時間自動開始（時間已過就立刻開始播放，還沒到就顯示等待畫面倒數）。
       </p>
       <p class="upload-schedule-status hidden">
         已設定開始時間：<span class="upload-schedule-status-text"></span>
         <button type="button" class="upload-schedule-cancel">取消</button>
       </p>
+
+      <div class="share-link-tool">
+        <h2 class="share-link-title">產生開團分享連結</h2>
+        <p class="share-link-hint">
+          填入課表網址（目前支援 TrainerDay）跟開始時間，產生一個分享連結——別人點開連結會自動載入這份課表、設定好開始時間，不用手動貼網址或輸入時間。
+        </p>
+        <div class="share-link-row">
+          <input
+            type="text"
+            class="share-link-url-input"
+            placeholder="貼上 TrainerDay 課表網址"
+            autocomplete="off"
+          />
+          <input
+            type="text"
+            class="share-link-time-input"
+            placeholder="202607242000"
+            inputmode="numeric"
+            maxlength="12"
+            autocomplete="off"
+          />
+          <button type="button" class="share-link-generate">產生連結</button>
+        </div>
+        <p class="share-link-error hidden"></p>
+        <div class="share-link-result hidden">
+          <input type="text" class="share-link-result-input" readonly />
+          <button type="button" class="share-link-copy">複製連結</button>
+          <span class="share-link-copied hidden">已複製！</span>
+        </div>
+      </div>
 
       <div class="upload-source-list">
         <div class="upload-source-card">
@@ -179,6 +220,8 @@ export function createUploadView(rootEl, handlers) {
   const intervalsSubmitBtn = rootEl.querySelector('.upload-intervals-submit');
   const lookupLink = rootEl.querySelector('.upload-intervals-lookup-link');
   const ftpInput = rootEl.querySelector('.upload-ftp-input');
+  const ftpPrompt = rootEl.querySelector('.upload-ftp-prompt');
+  const ftpSkipBtn = rootEl.querySelector('.upload-ftp-skip-btn');
   const alertModeBtns = rootEl.querySelectorAll('.upload-alertmode-btn');
   const pasteForm = rootEl.querySelector('.upload-paste-form');
   const pasteTextarea = rootEl.querySelector('.upload-paste-textarea');
@@ -190,6 +233,14 @@ export function createUploadView(rootEl, handlers) {
   const scheduleStatus = rootEl.querySelector('.upload-schedule-status');
   const scheduleStatusText = rootEl.querySelector('.upload-schedule-status-text');
   const scheduleCancelBtn = rootEl.querySelector('.upload-schedule-cancel');
+  const shareLinkUrlInput = rootEl.querySelector('.share-link-url-input');
+  const shareLinkTimeInput = rootEl.querySelector('.share-link-time-input');
+  const shareLinkGenerateBtn = rootEl.querySelector('.share-link-generate');
+  const shareLinkError = rootEl.querySelector('.share-link-error');
+  const shareLinkResult = rootEl.querySelector('.share-link-result');
+  const shareLinkResultInput = rootEl.querySelector('.share-link-result-input');
+  const shareLinkCopyBtn = rootEl.querySelector('.share-link-copy');
+  const shareLinkCopiedLabel = rootEl.querySelector('.share-link-copied');
 
   function showErrorMessage(message) {
     errorEl.textContent = message;
@@ -257,6 +308,13 @@ export function createUploadView(rootEl, handlers) {
   ftpInput.addEventListener('input', () => {
     const value = Number(ftpInput.value);
     if (Number.isFinite(value) && value > 0) handlers.onFtpChange(Math.round(value));
+  });
+
+  // 「一鍵開團連結」FTP 尚未設定時的提示：按「先跳過」交給呼叫端存一個預設值
+  // 並繼續原本卡住的排程流程；使用者也可以不理會這個提示、直接在上面的 FTP
+  // 欄位打自己的數字（那條路走既有的 onFtpChange，這裡不用重複處理）。
+  ftpSkipBtn.addEventListener('click', () => {
+    handlers.onFtpSkipToDefault();
   });
 
   // 語音報數／逼逼聲倒數互斥切換：跟 themeToggle.js 同一套 pill 按鈕操作方式，
@@ -333,6 +391,50 @@ export function createUploadView(rootEl, handlers) {
     scheduleSubmitBtn.disabled = false;
   }
 
+  function showShareLinkError(message) {
+    shareLinkError.textContent = message;
+    shareLinkError.classList.remove('hidden');
+    shareLinkResult.classList.add('hidden');
+  }
+
+  function clearShareLinkError() {
+    shareLinkError.textContent = '';
+    shareLinkError.classList.add('hidden');
+  }
+
+  // 「產生連結」純粹是本機字串組合（buildGroupJoinLink()），不碰網路、不驗證
+  // source_url 抓不抓得到課表——只驗證格式（是不是合法的 TrainerDay 網址／
+  // yyyyMMddHHmm 時間），格式沒問題就能產生連結。
+  shareLinkGenerateBtn.addEventListener('click', () => {
+    clearShareLinkError();
+    let link;
+    try {
+      link = buildGroupJoinLink(`${window.location.origin}${window.location.pathname}`, {
+        sourceUrl: shareLinkUrlInput.value,
+        startTimeText: shareLinkTimeInput.value,
+      });
+    } catch (err) {
+      showShareLinkError(err.message);
+      return;
+    }
+
+    shareLinkResultInput.value = link;
+    shareLinkResult.classList.remove('hidden');
+    shareLinkCopiedLabel.classList.add('hidden');
+  });
+
+  shareLinkCopyBtn.addEventListener('click', async () => {
+    shareLinkResultInput.select();
+    try {
+      await navigator.clipboard.writeText(shareLinkResultInput.value);
+      shareLinkCopiedLabel.classList.remove('hidden');
+    } catch {
+      // 部分瀏覽器情境（例如沒有 HTTPS、使用者拒絕剪貼簿權限）clipboard API
+      // 會失敗——輸入框本身是唯讀但選取得到，使用者還是能自己按 Ctrl/Cmd+C
+      // 複製，不用因為這裡失敗就完全卡住，靜默略過即可。
+    }
+  });
+
   return {
     showError(message) {
       showErrorMessage(message);
@@ -353,6 +455,14 @@ export function createUploadView(rootEl, handlers) {
     },
     setFtpValue(ftp) {
       ftpInput.value = ftp;
+    },
+    /** 「一鍵開團連結」偵測到 FTP 尚未設定時顯示提示（含「先跳過，使用 100W」按鈕） */
+    showFtpSetupPrompt() {
+      ftpPrompt.classList.remove('hidden');
+    },
+    /** FTP 已經確定好了（不管是使用者輸入還是按了跳過）就收起提示 */
+    hideFtpSetupPrompt() {
+      ftpPrompt.classList.add('hidden');
     },
     /** 從外部（例如剛從 localStorage 復原的模式）設定目前啟用中的倒數提示模式按鈕 */
     setAlertMode(mode) {

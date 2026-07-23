@@ -487,6 +487,171 @@ body {
   cursor: pointer;
 }
 
+/* 「一鍵開團連結」偵測到 FTP 尚未設定時的提示：擋在 FTP 欄位上方，用
+   accent 底色跟其他區塊拉開視覺區別，提醒使用者這是需要處理的一步（不是
+   一般說明文字），但「先跳過」按鈕讓使用者不會真的被卡住。 */
+.upload-ftp-prompt {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  border-radius: 0.75rem;
+  background: var(--warning-bg);
+  border: 1px solid var(--warning-border);
+}
+
+.upload-ftp-prompt.hidden {
+  display: none;
+}
+
+.upload-ftp-prompt-text {
+  margin: 0;
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: var(--warning-text);
+}
+
+.upload-ftp-skip-btn {
+  padding: 0.4rem 0.85rem;
+  border: 1px solid var(--warning-text);
+  border-radius: 0.75rem;
+  background: transparent;
+  color: var(--warning-text);
+  font-size: 0.85rem;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+/* 「產生開團分享連結」小工具：跟「設定開始時間」同一組團體訓練功能，位置
+   緊接在它下方——兩者概念互補（一個是「幫這台裝置設定排程」，一個是「幫
+   別人產生一個能直接排程的連結」），放在一起比較容易理解成同一個功能區塊。 */
+.share-link-tool {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.85rem 1rem;
+  border-radius: 0.75rem;
+  border: 1px solid var(--card-border);
+  background: var(--card-bg);
+}
+
+.share-link-title {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.share-link-hint {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.8rem;
+}
+
+.share-link-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.share-link-url-input {
+  flex: 2 1 12rem;
+  min-width: 0;
+  padding: 0.6rem 0.85rem;
+  border-radius: 0.75rem;
+  border: 1px solid var(--input-border);
+  background: var(--input-bg);
+  color: var(--text-primary);
+  font-size: 0.9rem;
+}
+
+.share-link-time-input {
+  flex: 1 1 8rem;
+  min-width: 0;
+  padding: 0.6rem 0.85rem;
+  border-radius: 0.75rem;
+  border: 1px solid var(--input-border);
+  background: var(--input-bg-soft);
+  color: var(--text-primary);
+  font-size: 0.9rem;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.share-link-url-input:focus,
+.share-link-time-input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.share-link-generate {
+  padding: 0.6rem 1rem;
+  border: none;
+  border-radius: 0.75rem;
+  background: var(--accent-strong);
+  color: var(--on-zone-text);
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.share-link-error {
+  margin: 0;
+  color: var(--danger-text);
+  font-size: 0.85rem;
+}
+
+.share-link-error.hidden {
+  display: none;
+}
+
+.share-link-result {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.share-link-result.hidden {
+  display: none;
+}
+
+.share-link-result-input {
+  flex: 1;
+  min-width: 0;
+  padding: 0.6rem 0.85rem;
+  border-radius: 0.75rem;
+  border: 1px solid var(--input-border);
+  background: var(--input-bg-soft);
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+}
+
+.share-link-copy {
+  padding: 0.6rem 1rem;
+  border: 1px solid var(--accent);
+  border-radius: 0.75rem;
+  background: transparent;
+  color: var(--accent-soft-text);
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.share-link-copied {
+  color: var(--accent-soft-text);
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+
+.share-link-copied.hidden {
+  display: none;
+}
+
 .upload-url-form,
 .upload-intervals-form {
   width: 100%;
