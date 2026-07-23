@@ -5,7 +5,7 @@ import { parseWhatsOnZwiftText } from '../parser/whatsOnZwiftParser.js';
 import { parseZwoXml } from '../parser/zwoParser.js';
 import { createTimerWorkerClient } from '../worker/timerWorkerClient.js';
 import { createAppBanner } from './appBanner.js';
-import { handleTimerEvents, playCountdownBeep, speakCountdownWarning, unlockAudioAndSpeechForAutoplay } from './countdownAlerts.js';
+import { handleTimerEvents, speakCountdownWarning, unlockAudioAndSpeechForAutoplay } from './countdownAlerts.js';
 import { clearDraftInputs, loadDraftInputs, saveDraftInputs } from './draftInputStore.js';
 import { DEFAULT_FTP, loadFtp, saveFtp } from './ftpStore.js';
 import { createPlayerView } from './renderPlayer.js';
@@ -154,7 +154,6 @@ export function initPlayerApp(rootEl) {
       workout: currentWorkout,
       state,
       ftp: currentFtp,
-      playBeep: playCountdownBeep,
       speak: speakCountdownWarning,
       showNextIntervalBanner: playerView.showNextIntervalBanner,
     });

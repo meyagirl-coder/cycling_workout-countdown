@@ -1,15 +1,19 @@
 /**
- * 倒數提示（規格 §4.4）：組別時長 > 20 秒的正常規則——剩餘 10 秒時觸發一次
- * 提示音＋快速唸出下一組資訊（語速加快，盡量在 5 秒內講完）＋顯示 banner；
- * 接著最後 5 秒（5-4-3-2-1）逐秒語音報數，正常語速，唸完剛好接上下一組
- * 開始。組別時長 <= 20 秒的短間歇例外——不觸發「下一組」預告（不論語音或
- * banner，組別太短，插播一段介紹會佔掉這組大半時間），只有最後 5 秒一樣
- * 逐秒語音報數（見 timerEngine.js 的 COUNTDOWN_WARNING／COUNTDOWN_TICK）。
- * 切組瞬間顯示下一組資訊（intervalChanged，格式不變）。
+ * 倒數提示（規格 §4.4）：組別時長 > 20 秒的正常規則——剩餘 10 秒時快速唸出
+ * 下一組資訊（語速加快，盡量在 5 秒內講完）＋顯示 banner；接著最後 5 秒
+ * （5-4-3-2-1）逐秒語音報數，正常語速，唸完剛好接上下一組開始。組別時長
+ * <= 20 秒的短間歇例外——不觸發「下一組」預告（不論語音或 banner，組別太短，
+ * 插播一段介紹會佔掉這組大半時間），只有最後 5 秒一樣逐秒語音報數（見
+ * timerEngine.js 的 COUNTDOWN_WARNING／COUNTDOWN_TICK）。切組瞬間顯示下一組
+ * 資訊（intervalChanged，格式不變）。
  *
- * 這裡只負責「timer 事件 -> 該做什麼提示」的判斷邏輯，音效／語音的實際
- * 播放實作是可注入的依賴（playBeep/speak），方便在 jsdom 下用假函式測試
- * 觸發時機是否正確，不需要真的 AudioContext／SpeechSynthesis。
+ * 全程只有語音，沒有任何提示音（beep）——早期版本在 countdownWarning 當下
+ * 會先播一聲提示音再講語音，後來拿掉了，改成純語音；playCountdownBeep()／
+ * AudioContext 相關的程式碼因此也一併移除，不留不會再被呼叫到的函式。
+ *
+ * 這裡只負責「timer 事件 -> 該做什麼提示」的判斷邏輯，語音的實際播放實作
+ * 是可注入的依賴（speak），方便在 jsdom 下用假函式測試觸發時機是否正確，
+ * 不需要真的 SpeechSynthesis。
  *
  * 三種不同時間點、三種不同格式：
  *   - countdownWarning（正常規則專用）：「下一組」還沒真的開始，只是預告，
@@ -50,24 +54,17 @@ const FAST_PREVIEW_SPEECH_RATE = 1.35;
  * @param {object} ctx.workout
  * @param {object} ctx.state - engine 的最新 state（含 currentIntervalIndex/powerAdjustPct）
  * @param {number} ctx.ftp
- * @param {() => void} ctx.playBeep
  * @param {(text: string, rate?: number) => void} ctx.speak
  * @param {(text: string, durationMs?: number) => void} ctx.showNextIntervalBanner
  */
-export function handleTimerEvents(events, { workout, state, ftp, playBeep, speak, showNextIntervalBanner }) {
+export function handleTimerEvents(events, { workout, state, ftp, speak, showNextIntervalBanner }) {
   if (events.includes(TIMER_EVENTS.COUNTDOWN_WARNING)) {
-    // 提示音／預告內容計算／語音／banner 各自獨立包 try-catch：使用者回報過
-    // 「只聽到一聲提示音，之後語音跟後續提示音全部消失」的情況，最可能的
-    // 原因是其中一段丟出例外，把同一個 tick 裡排在後面的程式碼整個中斷掉
-    // （沒被 catch 住的例外會一路往外拋，中斷當下這次 handleTimerEvents()
-    // 呼叫）。這裡讓四段互不拖累：任一段失敗只在 console 留下錯誤方便除錯，
-    // 不會讓提示音這種最基本的功能也跟著遭殃。
-    try {
-      playBeep();
-    } catch (err) {
-      console.error('countdownAlerts: playBeep() failed', err);
-    }
-
+    // 預告內容計算／語音／banner 各自獨立包 try-catch：使用者回報過「語音
+    // 播放中途出錯，後續提示全部消失」的情況，最可能的原因是其中一段丟出
+    // 例外，把同一個 tick 裡排在後面的程式碼整個中斷掉（沒被 catch 住的
+    // 例外會一路往外拋，中斷當下這次 handleTimerEvents() 呼叫）。這裡讓
+    // 三段互不拖累：任一段失敗只在 console 留下錯誤方便除錯，不會讓其他段
+    // 也跟著遭殃。
     let preview = null;
     try {
       preview = computeUpcomingIntervalPreview(workout, state, ftp);
@@ -189,34 +186,6 @@ function formatNextIntervalText(workout, state, ftp) {
   return `下一組：${typeLabel} · ${durationLabel} · ${Math.round(target.pct)}% FTP · ${target.watts}W`;
 }
 
-let sharedAudioContext = null;
-
-/** 真正的提示音實作：Web Audio API，瀏覽器不支援就靜默跳過 */
-export function playCountdownBeep() {
-  const AudioContextCtor = typeof window !== 'undefined' && (window.AudioContext || window.webkitAudioContext);
-  if (!AudioContextCtor) return;
-
-  if (!sharedAudioContext) sharedAudioContext = new AudioContextCtor();
-  const ctx = sharedAudioContext;
-  // iOS Safari 已知行為：交替使用 SpeechSynthesis 之後，共用的 AudioContext
-  // 可能被瀏覽器悄悄中斷（suspended），之後即使程式碼正常執行、沒有拋出任何
-  // 例外，oscillator 也不會真的發出聲音——每次播放前都主動 resume 一次，跟
-  // unlockAudioAndSpeechForAutoplay() 的作法一致，不能只靠一開始 unlock 那一次。
-  if (typeof ctx.resume === 'function' && ctx.state === 'suspended') ctx.resume();
-
-  const oscillator = ctx.createOscillator();
-  const gain = ctx.createGain();
-  oscillator.connect(gain);
-  gain.connect(ctx.destination);
-
-  oscillator.frequency.value = 880;
-  gain.gain.setValueAtTime(0.2, ctx.currentTime);
-  gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.3);
-
-  oscillator.start();
-  oscillator.stop(ctx.currentTime + 0.3);
-}
-
 /**
  * 真正的語音實作：SpeechSynthesis API，瀏覽器不支援就靜默跳過。
  * @param {string} text
@@ -234,36 +203,19 @@ export function speakCountdownWarning(text, rate = 1) {
 
 /**
  * 團體訓練排程功能用：使用者「設定開始時間」這個動作本身觸發一次幾乎無聲的
- * 音效／語音播放，藉此解鎖瀏覽器的自動播放權限——瀏覽器（尤其 iOS Safari）
- * 通常只允許在真正的使用者互動（點擊／按鍵）當下、同步呼叫堆疊裡建立或
- * 播放音訊，之後排程時間到、由 setInterval／setTimeout 自動觸發播放時已經
- * 沒有使用者互動了，如果 AudioContext／SpeechSynthesis 是第一次使用，很
- * 容易被瀏覽器悄悄擋掉——必須在呼叫端的按鈕 click handler「當下」同步呼叫
- * 這個函式（不能包在 async 函式的 await 之後、或 setTimeout 裡，那樣就不算
- * 使用者互動的當下了），才能讓後續真正自動觸發的提示音／語音正常播放。
+ * 語音播放，藉此解鎖瀏覽器的自動播放權限——瀏覽器（尤其 iOS Safari）通常只
+ * 允許在真正的使用者互動（點擊／按鍵）當下、同步呼叫堆疊裡第一次呼叫
+ * SpeechSynthesis，之後排程時間到、由 setInterval／setTimeout 自動觸發播放
+ * 時已經沒有使用者互動了，如果是第一次使用，很容易被瀏覽器悄悄擋掉——必須
+ * 在呼叫端的按鈕 click handler「當下」同步呼叫這個函式（不能包在 async
+ * 函式的 await 之後、或 setTimeout 裡，那樣就不算使用者互動的當下了），
+ * 才能讓後續真正自動觸發的語音正常播放。
  *
- * playCountdownBeep() 共用同一個 sharedAudioContext，這裡建立／resume 它，
- * 並播放一段音量為 0 的極短音效——單純呼叫 new AudioContext() 在部分瀏覽器
- * 還不夠「解鎖」，需要真的播放一次（即使無聲）才算數。SpeechSynthesis 也
- * 一樣，唸一次音量 0 的極短內容來解鎖之後的語音播放（Safari／iOS 對第一次
- * 呼叫 speak() 比較嚴格，這是常見的繞過方式）。
+ * 唸一次音量 0 的極短內容來解鎖之後的語音播放（Safari／iOS 對第一次呼叫
+ * speak() 比較嚴格，這是常見的繞過方式）。全程只有語音、沒有提示音（beep），
+ * 所以這裡不再需要建立／解鎖 AudioContext。
  */
 export function unlockAudioAndSpeechForAutoplay() {
-  const AudioContextCtor = typeof window !== 'undefined' && (window.AudioContext || window.webkitAudioContext);
-  if (AudioContextCtor) {
-    if (!sharedAudioContext) sharedAudioContext = new AudioContextCtor();
-    const ctx = sharedAudioContext;
-    if (typeof ctx.resume === 'function' && ctx.state === 'suspended') ctx.resume();
-
-    const oscillator = ctx.createOscillator();
-    const gain = ctx.createGain();
-    oscillator.connect(gain);
-    gain.connect(ctx.destination);
-    gain.gain.setValueAtTime(0, ctx.currentTime); // 無聲
-    oscillator.start();
-    oscillator.stop(ctx.currentTime + 0.05);
-  }
-
   if (typeof window !== 'undefined' && window.speechSynthesis && typeof SpeechSynthesisUtterance !== 'undefined') {
     const utterance = new SpeechSynthesisUtterance(' ');
     utterance.volume = 0;
