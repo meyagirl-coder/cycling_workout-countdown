@@ -164,7 +164,7 @@ describe('initPlayerApp: 團體訓練排程 (group-ride scheduling)', () => {
     expect(root.querySelector('.waiting-mount').classList.contains('hidden')).toBe(false);
     expect(root.querySelector('.player-mount').classList.contains('hidden')).toBe(true);
     expect(root.querySelector('.upload-mount').classList.contains('hidden')).toBe(true);
-    expect(root.querySelector('.waiting-countdown').textContent).toBe('距離開始還有 5:00');
+    expect(root.querySelector('.waiting-countdown').textContent).toBe('距離開始還有 5分0秒');
   });
 
   it('live-updates the countdown every second as time passes while waiting (即時更新，精確到秒，不是只精確到分鐘)', () => {
@@ -173,16 +173,16 @@ describe('initPlayerApp: 團體訓練排程 (group-ride scheduling)', () => {
 
     setScheduleTime(root, '202607241005');
     submitPasteText(root, '5m 60%');
-    expect(root.querySelector('.waiting-countdown').textContent).toBe('距離開始還有 5:00');
+    expect(root.querySelector('.waiting-countdown').textContent).toBe('距離開始還有 5分0秒');
 
     vi.advanceTimersByTime(1000); // 1 second passes
-    expect(root.querySelector('.waiting-countdown').textContent).toBe('距離開始還有 4:59');
+    expect(root.querySelector('.waiting-countdown').textContent).toBe('距離開始還有 4分59秒');
 
     vi.advanceTimersByTime(2 * 60 * 1000); // 2 more minutes pass
-    expect(root.querySelector('.waiting-countdown').textContent).toBe('距離開始還有 2:59');
+    expect(root.querySelector('.waiting-countdown').textContent).toBe('距離開始還有 2分59秒');
 
     vi.advanceTimersByTime(2 * 60 * 1000); // another 2 minutes pass
-    expect(root.querySelector('.waiting-countdown').textContent).toBe('距離開始還有 0:59');
+    expect(root.querySelector('.waiting-countdown').textContent).toBe('距離開始還有 59秒');
   });
 
   it('auto-transitions to the player screen the instant the scheduled time is reached, with no user click (時間一到自動觸發開始)', () => {
@@ -294,7 +294,7 @@ describe('initPlayerApp: 團體訓練排程 (group-ride scheduling)', () => {
     expect(root.querySelector('.waiting-mount').classList.contains('hidden')).toBe(false);
     expect(root.querySelector('.upload-mount').classList.contains('hidden')).toBe(true);
     expect(root.querySelector('.waiting-workout-name').textContent).toBe('Restored Group Ride');
-    expect(root.querySelector('.waiting-countdown').textContent).toBe('距離開始還有 5:00');
+    expect(root.querySelector('.waiting-countdown').textContent).toBe('距離開始還有 5分0秒');
   });
 
   it('immediately starts playing on boot when the restored schedule\'s time has already passed', () => {

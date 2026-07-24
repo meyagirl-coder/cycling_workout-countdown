@@ -33,12 +33,12 @@ describe('createWaitingView', () => {
     expect(root.querySelector('.waiting-workout-meta').textContent).toContain('2 組');
   });
 
-  it('shows the "距離開始還有 mm:ss" countdown text, precise to the second', () => {
+  it('shows the "距離開始還有 X小時Y分Z秒" countdown text, precise to the second', () => {
     const { root, view } = setup();
     const remainingMs = (2 * 60 + 30) * 60 * 1000 + 15 * 1000;
     view.update(makeWorkout(), remainingMs);
 
-    expect(root.querySelector('.waiting-countdown').textContent).toBe('距離開始還有 2 小時 30:15');
+    expect(root.querySelector('.waiting-countdown').textContent).toBe('距離開始還有 2小時30分15秒');
   });
 
   it('updates the countdown text on every subsequent update() call, second by second (live updating, not just once a minute)', () => {
@@ -46,13 +46,13 @@ describe('createWaitingView', () => {
     const workout = makeWorkout();
 
     view.update(workout, 10 * 60 * 1000);
-    expect(root.querySelector('.waiting-countdown').textContent).toBe('距離開始還有 10:00');
+    expect(root.querySelector('.waiting-countdown').textContent).toBe('距離開始還有 10分0秒');
 
     view.update(workout, 9 * 60 * 1000 + 59 * 1000);
-    expect(root.querySelector('.waiting-countdown').textContent).toBe('距離開始還有 9:59');
+    expect(root.querySelector('.waiting-countdown').textContent).toBe('距離開始還有 9分59秒');
 
     view.update(workout, 9 * 60 * 1000 + 58 * 1000);
-    expect(root.querySelector('.waiting-countdown').textContent).toBe('距離開始還有 9:58');
+    expect(root.querySelector('.waiting-countdown').textContent).toBe('距離開始還有 9分58秒');
   });
 
   it('shows a warning telling the user not to fully close the tab', () => {

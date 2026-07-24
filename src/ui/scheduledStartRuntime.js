@@ -1,5 +1,3 @@
-import { formatMMSS } from './formatTime.js';
-
 /**
  * 排定開始時間的倒數邏輯：定期檢查「現在」跟排定時間的差距，還沒到就回報
  * 剩餘時間（給等待畫面即時更新用，每秒都要更新，見下方 formatRemainingLabel()
@@ -62,17 +60,14 @@ export function createScheduledStartRuntime({
 }
 
 /**
- * 「距離開始還有 mm:ss」的大字倒數標示，給等待畫面用——規格要求精確到
- * 分秒、每秒即時更新（不是只精確到分鐘），格式刻意重用 `formatMMSS()`
- * （執行頁本組倒數計時用的同一個函式），讓使用者在等待畫面跟執行頁看到的
- * 是同一種「mm:ss」視覺語言，不是兩套不一致的時間表示法。
- *
- * 剩餘時間超過 1 小時（甚至超過 1 天）時，mm:ss 只精確表示「這一小時內」
- * 還剩多少分秒（分鐘部分歸零重算，不會出現「125:32」這種超過 60 的分鐘
- * 數），前面另外加上小時／天數：
- *   - < 1 小時：`距離開始還有 05:32`
- *   - 1 小時–1 天：`距離開始還有 3 小時 05:32`
- *   - >= 1 天：`距離開始還有 2 天 3 小時 05:32`
+ * 「距離開始還有 X天Y小時Z分W秒」的大字倒數標示，給等待畫面用——規格要求
+ * 精確到秒、每秒即時更新（不是只精確到分鐘）。用中文單位（天／小時／分／
+ * 秒）逐級顯示，較大的單位出現時，後面所有較小的單位都要一併顯示（就算是
+ * 0），不會跳過中間單位：
+ *   - < 1 分鐘：`距離開始還有 45秒`
+ *   - < 1 小時：`距離開始還有 3分10秒`
+ *   - < 1 天：`距離開始還有 3小時2分10秒`
+ *   - >= 1 天：`距離開始還有 2天3小時2分10秒`
  *
  * @param {number} remainingMs
  */
@@ -80,9 +75,14 @@ export function formatRemainingLabel(remainingMs) {
   const totalSeconds = Math.max(0, Math.floor(remainingMs / 1000));
   const days = Math.floor(totalSeconds / 86400);
   const hours = Math.floor((totalSeconds % 86400) / 3600);
-  const mmss = formatMMSS(totalSeconds % 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
 
-  if (days > 0) return `距離開始還有 ${days} 天 ${hours} 小時 ${mmss}`;
-  if (hours > 0) return `距離開始還有 ${hours} 小時 ${mmss}`;
-  return `距離開始還有 ${mmss}`;
+  let label = '';
+  if (days > 0) label += `${days}天`;
+  if (days > 0 || hours > 0) label += `${hours}小時`;
+  if (days > 0 || hours > 0 || minutes > 0) label += `${minutes}分`;
+  label += `${seconds}秒`;
+
+  return `距離開始還有 ${label}`;
 }
