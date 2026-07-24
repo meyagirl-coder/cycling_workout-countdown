@@ -927,6 +927,46 @@ App 一打開，使用者第一眼看到的畫面：
     ／`.finished-banner.hidden` 一樣，加一個 `.upload-schedule-status.hidden`
     複合選擇器把特異度提高。
 
+### 5.5 螢幕保持喚醒（新增）
+
+手機瀏覽課表執行頁或等待排程倒數時，螢幕不該自動變暗／鎖定——用 Screen
+Wake Lock API（`navigator.wakeLock`），包成 `wakeLockManager.js`
+（`src/utils/wakeLockManager.js`，工廠函式 + 依賴注入 navigator／document，
+方便在 jsdom 下測試）：
+
+- **什麼時候保持常亮**：
+  - 執行頁「播放中」（`state.status === 'running'`）——`playerApp.js` 的
+    `client.onUpdate()` 每次收到新狀態都檢查一次，running 就 `enable()`，
+    其他狀態（`paused`／`idle`／`finished`）就 `disable()`。
+  - 等待排程開始的倒數畫面（`enterWaitingScreen()`）——進等待畫面當下就
+    `enable()`；時間到自動轉進執行頁開始播放時，上面的 `client.onUpdate()`
+    收到 running 狀態會接手繼續保持常亮，中間不會有螢幕被鎖定的空檔。
+- **什麼時候釋放**：暫停、提早結束、播放完成（都是 `client.onUpdate()`
+  收到非 running 狀態時自動處理）、取消排程（`handleCancelSchedule()`）、
+  回到主畫面（`returnToHome()`）。
+- **相容性與錯誤處理**：呼叫前先判斷 `'wakeLock' in navigator`，不支援的
+  瀏覽器（例如較舊的 Safari／Firefox）`enable()` 直接安靜地不做任何事；
+  `navigator.wakeLock.request('screen')` 本身也可能因為瀏覽器政策（例如
+  低電量模式）被拒絕，兩種情況都只在 console 留錯誤方便除錯，不拋出例外、
+  不跳提示訊息打擾使用者——這個功能是錦上添花，失敗了也不能影響課表本身
+  的播放／排程功能正常運作。
+- **分頁切到背景又切回來**：瀏覽器會在分頁進入背景時自動釋放已經拿到的
+  wake lock（規範行為）；`wakeLockManager.js` 監聽 `visibilitychange`，
+  切回前景（`document.visibilityState === 'visible'`）時，如果呼叫端還
+  處於「應該保持常亮」的狀態（`enable()` 之後還沒呼叫 `disable()`）、但
+  手上目前沒有有效的 lock，就自動重新申請一次，不需要呼叫端自己處理這個
+  情境。
+- **測試方式**：`wakeLockManager.test.js` 用假的
+  `navigator.wakeLock`／`document`（含觸發 `visibilitychange` 事件、模擬
+  系統主動釋放 lock）驗證 enable／disable／不支援時降級／背景切回前景
+  重新申請這幾種情境；`playerApp.test.js` 另外驗證實際的畫面切換時機
+  （播放／暫停／停止／等待畫面／取消排程／回到主畫面）有沒有在對的時候
+  呼叫。因為沒有真的手機裝置可以實測螢幕會不會變暗，額外用真的瀏覽器
+  （Playwright/Chromium，不是假的 API）跑過一次完整流程，確認
+  `navigator.wakeLock.request('screen')` 真的成功拿到 lock、
+  `release()` 真的在對的時機被呼叫——這是目前能做到的最接近真實情境的
+  驗證。
+
 ---
 
 ## 6. 資料儲存
