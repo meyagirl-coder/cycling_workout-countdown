@@ -3,6 +3,7 @@ import { parseAutoDetectedPasteText } from '../parser/pasteTextRouter.js';
 import { parseTrainerDayWorkoutStructureText } from '../parser/trainerDayWorkoutStructureParser.js';
 import { parseWhatsOnZwiftText } from '../parser/whatsOnZwiftParser.js';
 import { parseZwoXml } from '../parser/zwoParser.js';
+import { createWakeLockManager } from '../utils/wakeLockManager.js';
 import { createTimerWorkerClient } from '../worker/timerWorkerClient.js';
 import { loadAlertMode, saveAlertMode } from './alertModeStore.js';
 import { createAppBanner } from './appBanner.js';
@@ -43,6 +44,12 @@ const GROUP_JOIN_DEFAULT_FTP = 100;
  * 排程（課表＋開始時間）存進 localStorage（scheduleStore.js），App 開機時
  * 會檢查一次，撐過分頁切換／短暫關閉重開；但沒辦法撐過分頁完全關閉或裝置
  * 長時間背景休眠，這個限制會在等待畫面上明確告知使用者。
+ *
+ * 螢幕保持喚醒（wakeLockManager.js）：課表執行頁播放中、以及等待排程開始
+ * 的倒數畫面時都要保持螢幕常亮，避免手機自動變暗／鎖螢幕；暫停／提早結束／
+ * 播放完成／取消排程／回到主畫面時釋放。不支援 Wake Lock API 的瀏覽器、或
+ * 申請失敗，都安靜降級（不跳提示、不影響其他功能）；分頁切到背景會被系統
+ * 自動釋放，切回前景後 wakeLockManager 自己會重新申請，這裡不用處理。
  *
  * 頁面狀態保存（重新整理／切分頁再切回來不遺失資料）：
  *   - 上傳畫面的「貼課表網址」「貼上課表文字內容」草稿內容 debounce 後存進
@@ -85,6 +92,14 @@ export function initPlayerApp(rootEl) {
   const client = createTimerWorkerClient();
   let latestState = null;
   let currentWorkout = null;
+
+  // 螢幕保持喚醒（規格：課表執行頁播放中／等待排程倒數時，避免手機自動變暗
+  // 或鎖螢幕）：課表暫停／提早結束／播放完成後釋放，不強制一直常亮（見
+  // client.onUpdate() 裡的判斷邏輯，以及 enterWaitingScreen()／
+  // handleCancelSchedule()／returnToHome() 幾個進出等待畫面／執行頁的地方）。
+  // wakeLockManager 本身處理了瀏覽器不支援、申請失敗、分頁切到背景又切回來
+  // 需要重新申請這幾種情況，這裡只需要在對的時機呼叫 enable()／disable()。
+  const wakeLockManager = createWakeLockManager();
 
   // 規格 §6：App 啟動時讀 localStorage 的 user_ftp；沒設定過就先用預設值，
   // 畫面上（FTP 輸入欄位）會清楚顯示這個數字，使用者隨時可以改。
@@ -157,6 +172,17 @@ export function initPlayerApp(rootEl) {
       if (latestState && latestState.status === 'running') {
         client.pause();
       } else {
+        // 跟 handleScheduledStartTimeSet() 同樣的理由：iOS Safari／Chrome
+        // （WebKit）只有在真正的使用者互動當下、同步呼叫堆疊裡才會放行
+        // SpeechSynthesis／AudioContext 的第一次播放。一般直接播放（沒有經過
+        // 「設定開始時間」流程）之前完全沒有呼叫過這個解鎖——第一次真正觸發
+        // 語音／嗶聲已經是好幾秒後、由 Web Worker 的 tick 計時器非同步呼叫回
+        // 來，不算使用者互動當下，iOS 會靜靜擋掉、不出現任何錯誤，畫面上的
+        // 倒數數字／進度卻正常更新（regression：使用者回報「倒數提示全面
+        // 失效」，只在 iPhone Safari／Chrome 上出現，電腦瀏覽器正常，正是
+        // WebKit 特有的這個自動播放權限限制）。這裡補上呼叫，讓每一次按下
+        // 播放都順便解鎖，涵蓋原本沒有經過排程流程的一般播放／繼續播放。
+        unlockAudioAndSpeechForAutoplay();
         client.play();
       }
     },
@@ -177,6 +203,8 @@ export function initPlayerApp(rootEl) {
     // 使用者主動離開執行頁了，不再是「目前正在進行的課表」——清掉存檔，
     // 避免下次開機時把已經離開的課表又復原回來（見 workoutProgressStore.js）。
     clearWorkoutProgress();
+    // 離開執行頁了，不再需要保持螢幕常亮。
+    wakeLockManager.disable();
   }
 
   /**
@@ -231,6 +259,16 @@ export function initPlayerApp(rootEl) {
       playCountdownBeeps,
       showNextIntervalBanner: playerView.showNextIntervalBanner,
     });
+
+    // 只有真的在播放（running）才保持螢幕常亮；暫停／完成／idle 都釋放，
+    // 不強制一直常亮（規格 §「課表暫停、提早結束、或播放完成後，可以釋放
+    // wake lock」）。enable()／disable() 內部都有「已經是這個狀態就不重複
+    // 動作」的判斷，這裡不用自己額外記錄上一次的狀態來判斷要不要呼叫。
+    if (state.status === 'running') {
+      wakeLockManager.enable();
+    } else {
+      wakeLockManager.disable();
+    }
   });
 
   /**
@@ -343,6 +381,10 @@ export function initPlayerApp(rootEl) {
     playerMount.classList.add('hidden');
     waitingMount.classList.remove('hidden');
     waitingView.update(workout, startTimestamp - Date.now());
+    // 等待排程開始的倒數畫面也要保持螢幕常亮（規格），不是只有執行頁播放中
+    // 才需要——時間到轉進執行頁開始播放時，上面 client.onUpdate() 收到
+    // running 狀態會接手繼續保持常亮，中間不會有螢幕被鎖定的空檔。
+    wakeLockManager.enable();
 
     scheduleRuntime = createScheduledStartRuntime({
       startTimestamp,
@@ -450,6 +492,8 @@ export function initPlayerApp(rootEl) {
     uploadMount.classList.remove('hidden');
     appBanner.show();
     uploadView.clearError();
+    // 取消排程，回到上傳畫面，不需要再保持螢幕常亮。
+    wakeLockManager.disable();
   }
 
   // 檔案選擇輸入框故意不設 accept 屬性（見 uploadView.js 的說明），所以這裡

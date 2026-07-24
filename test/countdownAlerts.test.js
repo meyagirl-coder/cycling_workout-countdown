@@ -40,9 +40,9 @@ function makeDeps(alertMode = ALERT_MODE_VOICE) {
 // countdownWarning 觸發時，語音預告用加快的語速講精簡內容（見 countdownAlerts.js）
 const FAST_PREVIEW_SPEECH_RATE = 1.35;
 
-// countdownTick 逐秒報數用比預告更快的語速，確保單一個數字唸完的時間跟畫面
-// 倒數的 1 秒節奏對得上（見 countdownAlerts.js 的 DIGIT_SPEECH_RATE 說明）
-const DIGIT_SPEECH_RATE = 1.8;
+// countdownTick 逐秒報數用刻意放慢的語速，避免數字唸得太快太短暫（見
+// countdownAlerts.js 的 DIGIT_SPEECH_RATE 說明）
+const DIGIT_SPEECH_RATE = 0.9;
 
 describe('handleTimerEvents: countdownWarning (10 seconds before the CURRENT interval ends, only for segments >20s; voice only, no beep at this point)', () => {
   it('shows a banner + speaks a fast, terse preview of the upcoming steady interval (no beep)', () => {
@@ -183,7 +183,7 @@ describe('handleTimerEvents: countdownTick (最後 5 秒逐秒語音報數，兩
     expect(deps.showNextIntervalBanner).not.toHaveBeenCalled();
   });
 
-  it('speaks the digit at the faster DIGIT_SPEECH_RATE, not the default rate (regression: default rate=1 made a single digit take noticeably longer than the 1-second on-screen cadence, so the reported speech fell increasingly behind the visible countdown)', () => {
+  it('speaks the digit at the deliberately slowed DIGIT_SPEECH_RATE, not the default rate (regression: users reported the digits being spoken too fast, too clipped, with barely any gap between them)', () => {
     const deps = makeDeps();
     const state = makeState({ currentIntervalIndex: 1, elapsedInInterval: 16 }); // remaining=4
     handleTimerEvents([TIMER_EVENTS.COUNTDOWN_TICK], { workout: makeWorkout(), state, ftp: 200, ...deps });
@@ -541,7 +541,7 @@ describe('playCountdownBeeps (regression: Google Meet tab-audio sharing does not
     return { AudioContextCtor, ctx, oscillators, gains };
   }
 
-  it('schedules exactly 3 short tones at 1-second offsets from the current AudioContext time', async () => {
+  it('schedules exactly 3 tones at 1.1-second offsets from the current AudioContext time (slowed from the original 1-second spacing, but still bounded so all 3 finish within the fixed 3-second window before the interval switches - see BEEP_INTERVAL_SECONDS/BEEP_DURATION_SECONDS)', async () => {
     const { ctx, oscillators } = stubAudioContext('running');
     const { playCountdownBeeps } = await import('../src/ui/countdownAlerts.js');
 
@@ -549,10 +549,16 @@ describe('playCountdownBeeps (regression: Google Meet tab-audio sharing does not
 
     expect(oscillators).toHaveLength(3);
     expect(oscillators[0].start).toHaveBeenCalledWith(100);
-    expect(oscillators[1].start).toHaveBeenCalledWith(101);
-    expect(oscillators[2].start).toHaveBeenCalledWith(102);
-    // each tone stops shortly after it starts (short "beep", not a sustained tone)
-    expect(oscillators[0].stop).toHaveBeenCalledWith(100.25);
+    expect(oscillators[1].start.mock.calls[0][0]).toBeCloseTo(101.1);
+    expect(oscillators[2].start.mock.calls[0][0]).toBeCloseTo(102.2);
+    // each tone stops shortly after it starts
+    expect(oscillators[0].stop.mock.calls[0][0]).toBeCloseTo(100.4);
+    // the last tone must finish (100 + 2*interval + duration) before the 3-second
+    // budget runs out (regression: a literal "double everything" slowdown would
+    // have overrun into the next interval - see the constant definitions' comments)
+    const lastToneEnd = oscillators[2].stop.mock.calls[0][0];
+    expect(lastToneEnd).toBeCloseTo(102.6);
+    expect(lastToneEnd - 100).toBeLessThan(3);
   });
 
   it('uses a higher pitch than the old single tone (crisper "beep" rather than a duller "boop")', async () => {
@@ -582,10 +588,12 @@ describe('playCountdownBeeps (regression: Google Meet tab-audio sharing does not
     expect(attackPeakGain).toBeGreaterThan(0.2); // louder than the old 0.2 peak gain
 
     // holds flat at peak for a sustain window before releasing, not decaying continuously
-    expect(firstGain.gain.setValueAtTime).toHaveBeenCalledWith(attackPeakGain, 100.2); // 100 + (0.25 duration - 0.05 release)
+    const sustainCall = firstGain.gain.setValueAtTime.mock.calls.find((call) => call[0] === attackPeakGain);
+    expect(sustainCall[1]).toBeCloseTo(100.35); // 100 + (0.4 duration - 0.05 release)
 
     // releases down to near-zero only at the very end
-    expect(firstGain.gain.linearRampToValueAtTime).toHaveBeenCalledWith(0.0001, 100.25);
+    const releaseCall = firstGain.gain.linearRampToValueAtTime.mock.calls.find((call) => call[0] === 0.0001);
+    expect(releaseCall[1]).toBeCloseTo(100.4);
   });
 
   it('calls ctx.resume() before scheduling when the shared AudioContext is suspended (e.g. after SpeechSynthesis interrupted it)', async () => {
@@ -621,7 +629,8 @@ describe('speakCountdownWarning (regression: fast preview speech and digit count
 
   function stubSpeechSynthesis() {
     const speak = vi.fn();
-    vi.stubGlobal('speechSynthesis', { speak });
+    const cancel = vi.fn();
+    vi.stubGlobal('speechSynthesis', { speak, cancel });
     vi.stubGlobal(
       'SpeechSynthesisUtterance',
       class {
@@ -632,7 +641,7 @@ describe('speakCountdownWarning (regression: fast preview speech and digit count
         }
       }
     );
-    return { speak };
+    return { speak, cancel };
   }
 
   it('defaults to rate 1 (normal speed) when no rate argument is given', async () => {
@@ -657,5 +666,18 @@ describe('speakCountdownWarning (regression: fast preview speech and digit count
   it('does not throw when speechSynthesis is unavailable', async () => {
     const { speakCountdownWarning } = await import('../src/ui/countdownAlerts.js');
     expect(() => speakCountdownWarning('5')).not.toThrow();
+  });
+
+  it('cancels any in-progress utterance before speaking the new one (regression: after slowing DIGIT_SPEECH_RATE down, a single digit can take longer than the 1-second gap between digits - without cancel(), SpeechSynthesis queues rather than interrupts, so the reported speech falls further and further behind the real countdown)', async () => {
+    const { speak, cancel } = stubSpeechSynthesis();
+    const { speakCountdownWarning } = await import('../src/ui/countdownAlerts.js');
+
+    speakCountdownWarning('5');
+
+    expect(cancel).toHaveBeenCalledTimes(1);
+    // cancel() must happen before speak(), not after - confirmed by call order
+    const cancelOrder = cancel.mock.invocationCallOrder[0];
+    const speakOrder = speak.mock.invocationCallOrder[0];
+    expect(cancelOrder).toBeLessThan(speakOrder);
   });
 });

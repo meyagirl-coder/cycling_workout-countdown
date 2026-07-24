@@ -27,9 +27,9 @@
  *     調快（FAST_PREVIEW_SPEECH_RATE）；banner 視覺文字兩種模式都會顯示、
  *     不受語速時間限制，維持較完整的原有格式（formatCountdownBannerText()）。
  *   - countdownTick（兩條路徑都有）：最後 5 秒逐秒觸發——語音模式報數
- *     （"5"「4」...），語速調快（DIGIT_SPEECH_RATE，見該常數定義處的說明：
- *     單一個數字唸完實際花的時間如果跟畫面倒數的 1 秒對不上，聽起來會覺得
- *     報數「拖拍」），不額外顯示 banner；每次都用「目前實際剩餘秒數」現算
+ *     （"5"「4」...），語速刻意放慢（DIGIT_SPEECH_RATE，見該常數定義處的
+ *     說明：唸得太快太短暫，數字跟數字間隔感不夠明顯），不額外顯示 banner；
+ *     每次都用「目前實際剩餘秒數」現算
  *     現報（不是靠計數器猜第幾次），降頻分頁一次跳過好幾秒也不會報出過期
  *     的數字。嗶聲模式則是剩餘 3 秒那一次觸發 playCountdownBeeps()（見上）。
  *   - intervalChanged：已經切到新的一組，維持原本 mm:ss ＋ watts 的詳細
@@ -57,14 +57,22 @@ const COUNTDOWN_PREVIEW_BANNER_MS = 11000;
 // 永遠準確，頂多語音講比較久時會跟第一聲報數稍微疊到。
 const FAST_PREVIEW_SPEECH_RATE = 1.35;
 
-// 5-4-3-2-1 逐秒報數：使用者實測回報過預設語速（rate=1）唸完單一個數字實際
-// 花的時間比畫面上的 1 秒還久，5 個數字累計下來明顯超過 5 秒、跟畫面倒數的
-// 節奏對不上——念單一個數字這種極短句子，TTS 引擎本身的啟動/收尾開銷占比
-// 遠比長句子高，所以需要比 FAST_PREVIEW_SPEECH_RATE（唸一整句用的語速）更快
-// 才夠。跟上面同樣的限制：瀏覽器不保證實際唸完要多久，這個值是盡力而為的
-// 估計值，不是精確保證——如果實測後這台裝置還是覺得太趕或太慢，只要調整
-// 這個常數即可，報數本身的觸發時機不受影響（見上方對應的模組說明）。
-const DIGIT_SPEECH_RATE = 1.8;
+// 5-4-3-2-1 逐秒報數：先前把語速調快到 1.8（見下方沿革），使用者回報聽起來
+// 太快、太短促，數字跟數字之間幾乎沒有間隔——這裡調回原速的一半（0.9，比
+// 正常語速 1 還慢），讓單一個數字唸得更完整、間隔更明顯。跟上面同樣的限制：
+// 瀏覽器不保證實際唸完要多久，這個值是盡力而為的估計值，不是精確保證——
+// 如果實測後這台裝置還是覺得太趕或太慢，只要調整這個常數即可，報數本身的
+// 觸發時機不受影響（見上方對應的模組說明）。
+//
+// 沿革：一開始用預設語速（rate=1）唸完單一個數字實際花的時間比畫面上的 1
+// 秒還久（念單一個數字這種極短句子，TTS 引擎本身的啟動/收尾開銷占比遠比
+// 長句子高），所以調快到 1.8 讓它趕上畫面倒數的節奏；後來使用者又回報這個
+// 語速反而太快太短暫，才調回這裡的 0.9。放慢之後，單一個數字唸完實際花的
+// 時間有可能超過畫面上兩個數字之間的 1 秒間隔——speakCountdownWarning() 因此
+// 改成每次先呼叫 speechSynthesis.cancel() 再開始唸新的一句，確保報數永遠是
+// 「當下最新的那個數字」，不會因為前一個數字還沒講完而排隊累積、越講越慢、
+// 講到跟畫面對不上（見該函式的說明）。
+const DIGIT_SPEECH_RATE = 0.9;
 
 /**
  * @param {string[]} events - 這次 tick/action 回傳的事件（TIMER_EVENTS 的值）
@@ -236,8 +244,19 @@ function formatNextIntervalText(workout, state, ftp) {
 let sharedAudioContext = null;
 
 const BEEP_COUNT = 3;
-const BEEP_DURATION_SECONDS = 0.25; // 實測回報 0.15 秒聽感偏「噹」（敲擊聲）不是「嗶」，拉長到 0.25 秒
-const BEEP_INTERVAL_SECONDS = 1; // 每聲間隔 1 秒，落在剩餘 3／2／1 秒附近
+// 使用者回報跟語音報數一樣的問題——嗶聲太短促、間隔太緊——本來想直接放慢
+// 一倍（duration 0.25→0.5、interval 1→2），但這裡有個語音報數沒有的硬限制：
+// playCountdownBeeps() 是在剩餘 3 秒那一刻觸發一次（見下方函式說明），從觸發
+// 那一刻到這一組真正結束，只有固定的 3 秒可以用——3 聲全部排完＋最後一聲
+// 播完，一定要落在這 3 秒之內，不然會播到下一組已經開始了（跟這次修正
+// DIGIT_SPEECH_RATE 時特別提醒的「不要放慢到跟畫面對不上」是同一個顧慮）。
+// 算過：interval=1.1、duration=0.4 時，最後一聲從 t=2.2s 開始、t=2.6s
+// 結束，留了 0.4 秒緩衝，是在「明顯感覺變慢／變長」跟「保證 3 秒內播完」
+// 這兩個目標間能兼顧的數值——如果之後想要更接近語音報數那種放慢一倍的
+// 效果，需要連同「哪個時間點觸發」一起調整（例如提早到剩餘 4 秒觸發），
+// 不是單靠拉長這兩個常數就能無限放慢。
+const BEEP_DURATION_SECONDS = 0.4; // 原本 0.25 秒（更早之前的 0.15 秒聽感偏「噹」才拉長到 0.25），這次再拉長到 0.4 秒
+const BEEP_INTERVAL_SECONDS = 1.1; // 原本每聲間隔 1 秒，這次拉寬到 1.1 秒——受限於上面說明的 3 秒硬限制，沒辦法拉到 2 秒
 const BEEP_FREQUENCY_HZ = 1000; // 比舊版「嘟」的 880Hz 高，但比先前試過的 1568Hz 低沉——使用者實際聽過兩個版本後選的頻率
 const BEEP_PEAK_GAIN = 0.4; // 實測回報舊版（0.2）音量偏小，調大一倍
 const BEEP_ATTACK_SECONDS = 0.01; // 起音斜坡：避免瞬間跳到滿音量產生的「喀」聲/敲擊感
@@ -294,14 +313,23 @@ export function playCountdownBeeps() {
 
 /**
  * 真正的語音實作：SpeechSynthesis API，瀏覽器不支援就靜默跳過。
+ *
+ * 每次都先呼叫 speechSynthesis.cancel() 再開始唸新的一句：SpeechSynthesis
+ * 預設是「排隊」而不是「打斷」——如果上一句（例如放慢後的數字報數）還沒
+ * 唸完，下一句照樣會被排在後面等，實際播放時間會越疊越長，最後聽到的是
+ * 一串遲到的舊數字，跟畫面上真正的倒數對不上。cancel() 確保任何時刻聽到
+ * 的永遠是「當下最新的那一句」，代價是前一句可能被腰斬講到一半就停掉，
+ * 但這比累積一長串過期的報數更不容易誤導使用者。
+ *
  * @param {string} text
  * @param {number} [rate] - 語速倍率，預設 1（正常語速）；下一組快速預告會傳
- *   FAST_PREVIEW_SPEECH_RATE，5-4-3-2-1 逐秒報數會傳更快的 DIGIT_SPEECH_RATE
- *   （單一個數字的極短句子需要比整句預告更快，才能在 1 秒內講完，見上方
- *   常數定義處的說明）。
+ *   FAST_PREVIEW_SPEECH_RATE，5-4-3-2-1 逐秒報數會傳更慢的 DIGIT_SPEECH_RATE
+ *   （見上方常數定義處的說明）。
  */
 export function speakCountdownWarning(text, rate = 1) {
   if (typeof window === 'undefined' || !window.speechSynthesis || typeof SpeechSynthesisUtterance === 'undefined') return;
+
+  window.speechSynthesis.cancel();
 
   const utterance = new SpeechSynthesisUtterance(text);
   utterance.lang = 'zh-TW';

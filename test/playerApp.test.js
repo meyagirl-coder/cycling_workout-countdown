@@ -671,3 +671,234 @@ describe('initPlayerApp: 頁面狀態保存 (page state persistence across reloa
     expect(reloadedRoot.querySelector('.player-mount').classList.contains('hidden')).toBe(true);
   });
 });
+
+describe('initPlayerApp: 直接播放時解鎖自動播放權限 (regression: countdown alerts silently never fired on iPhone Safari/Chrome for a normal, non-scheduled play session)', () => {
+  // 使用者實測回報：iPhone Safari／Chrome（都是 WebKit）上，不管語音還是嗶聲
+  // 模式，倒數提示全面無聲無息地失效，電腦瀏覽器完全正常。追查發現：
+  // unlockAudioAndSpeechForAutoplay() 原本只掛在「設定開始時間」按鈕的 click
+  // handler 上（團體訓練排程流程），一般直接播放（沒用排程功能，貼上/上傳
+  // 課表後直接按播放）完全沒有呼叫過這個解鎖——第一次真正的 speak()／
+  // playCountdownBeeps() 呼叫，是好幾秒後由 Web Worker 的 tick 計時器非同步
+  // 觸發回來的，不算「使用者互動當下」，iOS WebKit 的自動播放權限限制會靜靜
+  // 擋掉、不拋出任何錯誤，跟使用者回報的症狀（無聲無息、主控台沒有錯誤訊息）
+  // 完全吻合。修正：按下播放（不管是第一次播放還是重新整理後繼續播放）都
+  // 一併呼叫 unlockAudioAndSpeechForAutoplay()。
+  beforeEach(() => {
+    vi.stubGlobal('Worker', MockWorker);
+    vi.stubGlobal('speechSynthesis', { speak: vi.fn() });
+    vi.stubGlobal(
+      'SpeechSynthesisUtterance',
+      class {
+        constructor(text) {
+          this.text = text;
+          this.volume = 1;
+        }
+      }
+    );
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  function submitPasteText(root, text) {
+    root.querySelector('.upload-paste-textarea').value = text;
+    root.querySelector('.upload-paste-form').dispatchEvent(new Event('submit', { cancelable: true }));
+  }
+
+  it('unlocks audio/speech playback permission the moment the play button starts a normal (non-scheduled) session, not just via the schedule-set flow', () => {
+    const { root } = setup();
+    submitPasteText(root, '5m 60%');
+
+    expect(window.speechSynthesis.speak).not.toHaveBeenCalled();
+
+    root.querySelector('.btn-play-pause').click();
+
+    expect(window.speechSynthesis.speak).toHaveBeenCalledTimes(1);
+  });
+
+  it('also unlocks on resuming a paused session (e.g. after a page-refresh restore), not just the very first play', () => {
+    const { root } = setup();
+    submitPasteText(root, '5m 60%');
+    root.querySelector('.btn-play-pause').click(); // play
+    root.querySelector('.btn-play-pause').click(); // pause
+    window.speechSynthesis.speak.mockClear();
+
+    root.querySelector('.btn-play-pause').click(); // resume
+
+    expect(window.speechSynthesis.speak).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('initPlayerApp: 螢幕保持喚醒 (Screen Wake Lock API - avoid the screen dimming/locking during playback or the waiting-screen countdown)', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(2026, 6, 24, 10, 0, 0));
+    window.localStorage.clear();
+    vi.stubGlobal('Worker', RealisticMockWorker);
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    window.localStorage.clear();
+    vi.unstubAllGlobals();
+    delete navigator.wakeLock;
+  });
+
+  function submitPasteText(root, text) {
+    root.querySelector('.upload-paste-textarea').value = text;
+    root.querySelector('.upload-paste-form').dispatchEvent(new Event('submit', { cancelable: true }));
+  }
+
+  function setScheduleTime(root, text) {
+    root.querySelector('.upload-schedule-input').value = text;
+    root.querySelector('.upload-schedule-submit').click();
+  }
+
+  /** Fake WakeLockSentinel + navigator.wakeLock, installed onto the real `navigator` object (configurable, cleaned up in afterEach). */
+  function stubWakeLock() {
+    const locks = [];
+    const request = vi.fn(async () => {
+      const listeners = {};
+      const lock = {
+        released: false,
+        release: vi.fn(async () => {
+          lock.released = true;
+          (listeners.release || []).forEach((cb) => cb());
+        }),
+        addEventListener: vi.fn((event, cb) => {
+          listeners[event] = listeners[event] || [];
+          listeners[event].push(cb);
+        }),
+      };
+      locks.push(lock);
+      return lock;
+    });
+    Object.defineProperty(navigator, 'wakeLock', { value: { request }, configurable: true });
+    return { request, locks };
+  }
+
+  it('acquires a wake lock once playback actually starts (running), not just when the player screen loads (idle/paused)', async () => {
+    const { request } = stubWakeLock();
+    const { root } = setup();
+    submitPasteText(root, '5m 60%');
+    await Promise.resolve();
+
+    expect(request).not.toHaveBeenCalled(); // freshly loaded, not playing yet (idle)
+
+    root.querySelector('.btn-play-pause').click();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(request).toHaveBeenCalledWith('screen');
+  });
+
+  it('releases the wake lock when playback is paused', async () => {
+    const { request, locks } = stubWakeLock();
+    const { root } = setup();
+    submitPasteText(root, '5m 60%');
+    root.querySelector('.btn-play-pause').click();
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(request).toHaveBeenCalledTimes(1);
+
+    root.querySelector('.btn-play-pause').click(); // pause
+    await Promise.resolve();
+
+    expect(locks[0].release).toHaveBeenCalledTimes(1);
+  });
+
+  it('releases the wake lock once the workout finishes ("提早結束")', async () => {
+    const { request, locks } = stubWakeLock();
+    const { root } = setup();
+    submitPasteText(root, '5m 60%');
+    root.querySelector('.btn-play-pause').click();
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(request).toHaveBeenCalledTimes(1);
+
+    root.querySelector('.btn-stop').click(); // 提早結束
+    await Promise.resolve();
+
+    expect(locks[0].release).toHaveBeenCalledTimes(1);
+  });
+
+  it('releases the wake lock when returning home after the player screen', async () => {
+    const { request, locks } = stubWakeLock();
+    const { root } = setup();
+    submitPasteText(root, '5m 60%');
+    root.querySelector('.btn-play-pause').click();
+    await Promise.resolve();
+    await Promise.resolve();
+    root.querySelector('.btn-stop').click();
+    await Promise.resolve();
+    request.mockClear();
+    locks.length = 0;
+
+    // finished screen's "回到主畫面" button
+    root.querySelector('.btn-return-home').click();
+
+    // already released on stop(); returning home must not leave it dangling or re-acquire it
+    expect(request).not.toHaveBeenCalled();
+  });
+
+  it('acquires a wake lock while on the waiting screen (schedule countdown), before playback has actually started', async () => {
+    const { request } = stubWakeLock();
+    const { root } = setup();
+
+    setScheduleTime(root, '202607241005'); // 5 minutes in the future
+    submitPasteText(root, '5m 60%');
+    await Promise.resolve();
+
+    expect(root.querySelector('.waiting-mount').classList.contains('hidden')).toBe(false);
+    expect(request).toHaveBeenCalledWith('screen');
+  });
+
+  it('releases the wake lock when the schedule is cancelled from the waiting screen', async () => {
+    const { request, locks } = stubWakeLock();
+    const { root } = setup();
+
+    setScheduleTime(root, '202607241005');
+    submitPasteText(root, '5m 60%');
+    await Promise.resolve();
+    expect(request).toHaveBeenCalledTimes(1);
+
+    root.querySelector('.btn-cancel-schedule').click();
+
+    expect(locks[0].release).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps the screen awake continuously through the waiting-screen -> playing transition (no dark window when the scheduled time arrives)', async () => {
+    const { request, locks } = stubWakeLock();
+    const { root } = setup();
+
+    setScheduleTime(root, '202607241005');
+    submitPasteText(root, '5m 60%');
+    await Promise.resolve();
+    expect(request).toHaveBeenCalledTimes(1);
+    expect(locks[0].released).toBe(false);
+
+    vi.advanceTimersByTime(5 * 60 * 1000); // scheduled time arrives, auto-starts playback
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(root.querySelector('.player-mount').classList.contains('hidden')).toBe(false);
+    // still holds a valid lock throughout (either the original one, or a fresh one if it briefly
+    // toggled during the restore->play transition) - the point is the screen was never left unlocked
+    expect(locks.some((lock) => !lock.released)).toBe(true);
+  });
+
+  it('does not throw and the rest of the app works normally when the browser does not support the Wake Lock API (no navigator.wakeLock)', async () => {
+    // deliberately NOT calling stubWakeLock() here - navigator.wakeLock is undefined,
+    // matching an unsupported browser
+    const { root } = setup();
+    expect(() => submitPasteText(root, '5m 60%')).not.toThrow();
+
+    root.querySelector('.btn-play-pause').click();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    // playback still works fine - the missing Wake Lock API did not break anything else
+    expect(root.querySelector('.interval-progress').textContent).toContain('進行中');
+  });
+});
