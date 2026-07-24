@@ -2,26 +2,39 @@ import { describe, expect, it, vi } from 'vitest';
 import { createScheduledStartRuntime, formatRemainingLabel } from '../src/ui/scheduledStartRuntime.js';
 
 describe('formatRemainingLabel', () => {
-  it('formats hours and minutes, matching the "距離開始還有 X 小時 Y 分" example', () => {
-    const twoHoursFiveMinutes = (2 * 60 + 5) * 60 * 1000;
-    expect(formatRemainingLabel(twoHoursFiveMinutes)).toBe('距離開始還有 2 小時 5 分');
+  it('formats under an hour as mm:ss, matching the execution page\'s countdown format (formatMMSS, unpadded minutes)', () => {
+    expect(formatRemainingLabel(5 * 60 * 1000 + 32 * 1000)).toBe('距離開始還有 5:32');
   });
 
-  it('omits "小時" when under an hour remains', () => {
-    expect(formatRemainingLabel(45 * 60 * 1000)).toBe('距離開始還有 45 分');
+  it('shows seconds-level precision (not rounded to the nearest minute)', () => {
+    expect(formatRemainingLabel(45 * 1000)).toBe('距離開始還有 0:45');
+    expect(formatRemainingLabel(90 * 1000)).toBe('距離開始還有 1:30');
   });
 
-  it('shows a friendlier message instead of "0 分" when under a minute remains', () => {
-    expect(formatRemainingLabel(30 * 1000)).toBe('距離開始還有不到 1 分鐘');
-    expect(formatRemainingLabel(0)).toBe('距離開始還有不到 1 分鐘');
+  it('shows "0:00" (not a vague "under a minute" message) when time is up or has passed', () => {
+    expect(formatRemainingLabel(0)).toBe('距離開始還有 0:00');
   });
 
-  it('clamps a negative remaining time to the same "under a minute" message rather than a negative label', () => {
-    expect(formatRemainingLabel(-5000)).toBe('距離開始還有不到 1 分鐘');
+  it('clamps a negative remaining time to 0:00 rather than a negative label', () => {
+    expect(formatRemainingLabel(-5000)).toBe('距離開始還有 0:00');
   });
 
-  it('formats exactly one hour with zero extra minutes', () => {
-    expect(formatRemainingLabel(60 * 60 * 1000)).toBe('距離開始還有 1 小時 0 分');
+  it('adds "X 小時" in front of mm:ss once an hour or more remains, with mm:ss reset to the remainder within that hour (not an unbounded minute count)', () => {
+    const twoHoursFiveMinutesThirty = ((2 * 60 + 5) * 60 + 30) * 1000;
+    expect(formatRemainingLabel(twoHoursFiveMinutesThirty)).toBe('距離開始還有 2 小時 5:30');
+  });
+
+  it('formats exactly one hour with zero extra minutes/seconds', () => {
+    expect(formatRemainingLabel(60 * 60 * 1000)).toBe('距離開始還有 1 小時 0:00');
+  });
+
+  it('adds "X 天 Y 小時" in front of mm:ss once a day or more remains', () => {
+    const twoDaysThreeHoursFiveMinutesThirty = ((2 * 24 + 3) * 60 * 60 + 5 * 60 + 30) * 1000;
+    expect(formatRemainingLabel(twoDaysThreeHoursFiveMinutesThirty)).toBe('距離開始還有 2 天 3 小時 5:30');
+  });
+
+  it('formats exactly one day with zero extra hours/minutes/seconds', () => {
+    expect(formatRemainingLabel(24 * 60 * 60 * 1000)).toBe('距離開始還有 1 天 0 小時 0:00');
   });
 });
 

@@ -4,8 +4,10 @@ import { formatRemainingLabel } from './scheduledStartRuntime.js';
 /**
  * 團體訓練排程的「等待畫面」：設定了開始時間、時間還沒到時顯示，取代平常
  * 「載入完課表就進執行頁」的流程。顯示課表基本資訊（名稱／總時長／組數）
- * 加上大字倒數「距離開始還有 X 小時 Y 分」，即時更新；並明確提示使用者
- * 分頁不能完全關閉，否則自動開始可能失效。純 DOM 渲染邏輯，不碰計時／
+ * 加上大字倒數「距離開始還有 mm:ss」（精確到分秒，每秒即時更新，格式跟
+ * 執行頁本組倒數計時一致，見 scheduledStartRuntime.js 的
+ * formatRemainingLabel()）；並明確提示使用者分頁不能完全關閉，否則自動
+ * 開始可能失效。純 DOM 渲染邏輯，不碰計時／
  * localStorage——呼叫端（playerApp.js）負責用 scheduledStartRuntime.js 算出
  * 剩餘時間，這裡只負責畫出來。
  *
