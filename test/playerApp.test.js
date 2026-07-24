@@ -672,6 +672,64 @@ describe('initPlayerApp: 頁面狀態保存 (page state persistence across reloa
   });
 });
 
+describe('initPlayerApp: 直接播放時解鎖自動播放權限 (regression: countdown alerts silently never fired on iPhone Safari/Chrome for a normal, non-scheduled play session)', () => {
+  // 使用者實測回報：iPhone Safari／Chrome（都是 WebKit）上，不管語音還是嗶聲
+  // 模式，倒數提示全面無聲無息地失效，電腦瀏覽器完全正常。追查發現：
+  // unlockAudioAndSpeechForAutoplay() 原本只掛在「設定開始時間」按鈕的 click
+  // handler 上（團體訓練排程流程），一般直接播放（沒用排程功能，貼上/上傳
+  // 課表後直接按播放）完全沒有呼叫過這個解鎖——第一次真正的 speak()／
+  // playCountdownBeeps() 呼叫，是好幾秒後由 Web Worker 的 tick 計時器非同步
+  // 觸發回來的，不算「使用者互動當下」，iOS WebKit 的自動播放權限限制會靜靜
+  // 擋掉、不拋出任何錯誤，跟使用者回報的症狀（無聲無息、主控台沒有錯誤訊息）
+  // 完全吻合。修正：按下播放（不管是第一次播放還是重新整理後繼續播放）都
+  // 一併呼叫 unlockAudioAndSpeechForAutoplay()。
+  beforeEach(() => {
+    vi.stubGlobal('Worker', MockWorker);
+    vi.stubGlobal('speechSynthesis', { speak: vi.fn() });
+    vi.stubGlobal(
+      'SpeechSynthesisUtterance',
+      class {
+        constructor(text) {
+          this.text = text;
+          this.volume = 1;
+        }
+      }
+    );
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  function submitPasteText(root, text) {
+    root.querySelector('.upload-paste-textarea').value = text;
+    root.querySelector('.upload-paste-form').dispatchEvent(new Event('submit', { cancelable: true }));
+  }
+
+  it('unlocks audio/speech playback permission the moment the play button starts a normal (non-scheduled) session, not just via the schedule-set flow', () => {
+    const { root } = setup();
+    submitPasteText(root, '5m 60%');
+
+    expect(window.speechSynthesis.speak).not.toHaveBeenCalled();
+
+    root.querySelector('.btn-play-pause').click();
+
+    expect(window.speechSynthesis.speak).toHaveBeenCalledTimes(1);
+  });
+
+  it('also unlocks on resuming a paused session (e.g. after a page-refresh restore), not just the very first play', () => {
+    const { root } = setup();
+    submitPasteText(root, '5m 60%');
+    root.querySelector('.btn-play-pause').click(); // play
+    root.querySelector('.btn-play-pause').click(); // pause
+    window.speechSynthesis.speak.mockClear();
+
+    root.querySelector('.btn-play-pause').click(); // resume
+
+    expect(window.speechSynthesis.speak).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe('initPlayerApp: 螢幕保持喚醒 (Screen Wake Lock API - avoid the screen dimming/locking during playback or the waiting-screen countdown)', () => {
   beforeEach(() => {
     vi.useFakeTimers();

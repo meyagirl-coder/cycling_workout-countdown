@@ -172,6 +172,17 @@ export function initPlayerApp(rootEl) {
       if (latestState && latestState.status === 'running') {
         client.pause();
       } else {
+        // 跟 handleScheduledStartTimeSet() 同樣的理由：iOS Safari／Chrome
+        // （WebKit）只有在真正的使用者互動當下、同步呼叫堆疊裡才會放行
+        // SpeechSynthesis／AudioContext 的第一次播放。一般直接播放（沒有經過
+        // 「設定開始時間」流程）之前完全沒有呼叫過這個解鎖——第一次真正觸發
+        // 語音／嗶聲已經是好幾秒後、由 Web Worker 的 tick 計時器非同步呼叫回
+        // 來，不算使用者互動當下，iOS 會靜靜擋掉、不出現任何錯誤，畫面上的
+        // 倒數數字／進度卻正常更新（regression：使用者回報「倒數提示全面
+        // 失效」，只在 iPhone Safari／Chrome 上出現，電腦瀏覽器正常，正是
+        // WebKit 特有的這個自動播放權限限制）。這裡補上呼叫，讓每一次按下
+        // 播放都順便解鎖，涵蓋原本沒有經過排程流程的一般播放／繼續播放。
+        unlockAudioAndSpeechForAutoplay();
         client.play();
       }
     },
