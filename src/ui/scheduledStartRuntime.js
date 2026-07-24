@@ -1,6 +1,7 @@
 /**
  * 排定開始時間的倒數邏輯：定期檢查「現在」跟排定時間的差距，還沒到就回報
- * 剩餘時間（給等待畫面即時更新用），時間到就觸發一次回呼並停止。
+ * 剩餘時間（給等待畫面即時更新用，每秒都要更新，見下方 formatRemainingLabel()
+ * 的說明），時間到就觸發一次回呼並停止。
  *
  * 跟 worker/workerRuntime.js 同樣的設計：把「跟 setInterval / Date.now 綁定」
  * 的部分抽成依賴注入（now / setIntervalFn / clearIntervalFn），這樣測試時
@@ -59,16 +60,29 @@ export function createScheduledStartRuntime({
 }
 
 /**
- * 「距離開始還有 X 小時 Y 分」的口語化標示，給等待畫面的大字倒數用。
+ * 「距離開始還有 X天Y小時Z分W秒」的大字倒數標示，給等待畫面用——規格要求
+ * 精確到秒、每秒即時更新（不是只精確到分鐘）。用中文單位（天／小時／分／
+ * 秒）逐級顯示，較大的單位出現時，後面所有較小的單位都要一併顯示（就算是
+ * 0），不會跳過中間單位：
+ *   - < 1 分鐘：`距離開始還有 45秒`
+ *   - < 1 小時：`距離開始還有 3分10秒`
+ *   - < 1 天：`距離開始還有 3小時2分10秒`
+ *   - >= 1 天：`距離開始還有 2天3小時2分10秒`
+ *
  * @param {number} remainingMs
  */
 export function formatRemainingLabel(remainingMs) {
   const totalSeconds = Math.max(0, Math.floor(remainingMs / 1000));
-  const totalMinutes = Math.floor(totalSeconds / 60);
-  const hours = Math.floor(totalMinutes / 60);
-  const minutes = totalMinutes % 60;
+  const days = Math.floor(totalSeconds / 86400);
+  const hours = Math.floor((totalSeconds % 86400) / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
 
-  if (totalMinutes === 0) return '距離開始還有不到 1 分鐘';
-  if (hours > 0) return `距離開始還有 ${hours} 小時 ${minutes} 分`;
-  return `距離開始還有 ${minutes} 分`;
+  let label = '';
+  if (days > 0) label += `${days}天`;
+  if (days > 0 || hours > 0) label += `${hours}小時`;
+  if (days > 0 || hours > 0 || minutes > 0) label += `${minutes}分`;
+  label += `${seconds}秒`;
+
+  return `距離開始還有 ${label}`;
 }

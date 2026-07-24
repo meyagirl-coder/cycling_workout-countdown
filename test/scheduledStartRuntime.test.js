@@ -2,26 +2,39 @@ import { describe, expect, it, vi } from 'vitest';
 import { createScheduledStartRuntime, formatRemainingLabel } from '../src/ui/scheduledStartRuntime.js';
 
 describe('formatRemainingLabel', () => {
-  it('formats hours and minutes, matching the "距離開始還有 X 小時 Y 分" example', () => {
-    const twoHoursFiveMinutes = (2 * 60 + 5) * 60 * 1000;
-    expect(formatRemainingLabel(twoHoursFiveMinutes)).toBe('距離開始還有 2 小時 5 分');
+  it('formats under a minute as just seconds', () => {
+    expect(formatRemainingLabel(45 * 1000)).toBe('距離開始還有 45秒');
   });
 
-  it('omits "小時" when under an hour remains', () => {
-    expect(formatRemainingLabel(45 * 60 * 1000)).toBe('距離開始還有 45 分');
+  it('formats under an hour as X分Y秒', () => {
+    expect(formatRemainingLabel(3 * 60 * 1000 + 10 * 1000)).toBe('距離開始還有 3分10秒');
   });
 
-  it('shows a friendlier message instead of "0 分" when under a minute remains', () => {
-    expect(formatRemainingLabel(30 * 1000)).toBe('距離開始還有不到 1 分鐘');
-    expect(formatRemainingLabel(0)).toBe('距離開始還有不到 1 分鐘');
+  it('formats under a day as X小時Y分Z秒, matching the example format exactly', () => {
+    const threeHoursTwoMinutesTenSeconds = (3 * 3600 + 2 * 60 + 10) * 1000;
+    expect(formatRemainingLabel(threeHoursTwoMinutesTenSeconds)).toBe('距離開始還有 3小時2分10秒');
   });
 
-  it('clamps a negative remaining time to the same "under a minute" message rather than a negative label', () => {
-    expect(formatRemainingLabel(-5000)).toBe('距離開始還有不到 1 分鐘');
+  it('formats a day or more as X天Y小時Z分W秒', () => {
+    const twoDaysThreeHoursTwoMinutesTenSeconds = (2 * 86400 + 3 * 3600 + 2 * 60 + 10) * 1000;
+    expect(formatRemainingLabel(twoDaysThreeHoursTwoMinutesTenSeconds)).toBe('距離開始還有 2天3小時2分10秒');
   });
 
-  it('formats exactly one hour with zero extra minutes', () => {
-    expect(formatRemainingLabel(60 * 60 * 1000)).toBe('距離開始還有 1 小時 0 分');
+  it('shows seconds-level precision (not rounded to the nearest minute)', () => {
+    expect(formatRemainingLabel(90 * 1000)).toBe('距離開始還有 1分30秒');
+  });
+
+  it('shows "0秒" (not a vague "under a minute" message) when time is up or has passed', () => {
+    expect(formatRemainingLabel(0)).toBe('距離開始還有 0秒');
+  });
+
+  it('clamps a negative remaining time to 0秒 rather than a negative label', () => {
+    expect(formatRemainingLabel(-5000)).toBe('距離開始還有 0秒');
+  });
+
+  it('does not skip intermediate units once a larger unit is present, even if they are zero', () => {
+    expect(formatRemainingLabel(60 * 60 * 1000)).toBe('距離開始還有 1小時0分0秒');
+    expect(formatRemainingLabel(24 * 60 * 60 * 1000)).toBe('距離開始還有 1天0小時0分0秒');
   });
 });
 
