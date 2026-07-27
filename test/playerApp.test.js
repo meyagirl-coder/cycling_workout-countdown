@@ -424,6 +424,31 @@ describe('initPlayerApp: 一鍵開團連結 (group-join link via URL params: sou
     expect(fetchMock.mock.calls[0][0]).toContain(encodeURIComponent(TRAINERDAY_URL));
   });
 
+  it('attempts to unlock audio/speech playback permission even though there is no user click on this auto-load path (regression: users reported a group-join link being completely silent - no voice, no beep, at all - since unlockAudioAndSpeechForAutoplay() was never called here; calling it here is best-effort given the browser autoplay policy still requires a real user gesture to guarantee it works, but the user explicitly asked for this attempt rather than adding an extra confirmation tap)', async () => {
+    window.localStorage.setItem('user_ftp', '250');
+    vi.setSystemTime(new Date(2026, 6, 24, 19, 0, 0));
+    setUrlSearch('source=TD&source_url=' + encodeURIComponent(TRAINERDAY_URL) + '&startTime=202607242000');
+    stubTrainerDayFetch();
+    const speak = vi.fn();
+    vi.stubGlobal('speechSynthesis', { speak, cancel: vi.fn() });
+    vi.stubGlobal(
+      'SpeechSynthesisUtterance',
+      class {
+        constructor(text) {
+          this.text = text;
+          this.volume = 1;
+        }
+      }
+    );
+
+    const { root } = setup();
+    await vi.waitFor(() => {
+      expect(root.querySelector('.waiting-mount').classList.contains('hidden')).toBe(false);
+    });
+
+    expect(speak).toHaveBeenCalledTimes(1);
+  });
+
   it('auto-loads the workout and starts playing immediately when FTP is already set and startTime is already in the past', async () => {
     window.localStorage.setItem('user_ftp', '250');
     vi.setSystemTime(new Date(2026, 6, 24, 20, 2, 0));

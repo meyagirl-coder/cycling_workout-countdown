@@ -42,7 +42,7 @@ const FAST_PREVIEW_SPEECH_RATE = 1.35;
 
 // countdownTick 逐秒報數用刻意放慢的語速，避免數字唸得太快太短暫（見
 // countdownAlerts.js 的 DIGIT_SPEECH_RATE 說明）
-const DIGIT_SPEECH_RATE = 0.9;
+const DIGIT_SPEECH_RATE = 1.3;
 
 describe('handleTimerEvents: countdownWarning (10 seconds before the CURRENT interval ends, only for segments >20s; voice only, no beep at this point)', () => {
   it('shows a banner + speaks a fast, terse preview of the upcoming steady interval (no beep)', () => {

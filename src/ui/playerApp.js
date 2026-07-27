@@ -427,11 +427,15 @@ export function initPlayerApp(rootEl) {
     pendingScheduledStartTimestamp = startTime.getTime();
 
     // 跟 handleScheduledStartTimeSet() 不同：這裡是頁面載入當下自動觸發，不是
-    // 使用者按鈕點擊的當下，瀏覽器的自動播放權限解鎖
-    // （unlockAudioAndSpeechForAutoplay()）需要「使用者互動當下」的呼叫堆疊
-    // 才有效，這裡沒有那個時機，所以不呼叫——語音／嗶聲提示可能要等使用者在
-    // 頁面上做過一次真正的互動（例如點擊任何按鈕）之後才會正常播放，這是
-    // 瀏覽器自動播放政策的既有限制，不是這裡漏寫。
+    // 使用者按鈕點擊的當下——嚴格來說瀏覽器的自動播放權限解鎖需要「使用者
+    // 互動當下」的呼叫堆疊才保證有效，這裡沒有那個時機。但使用者不想要另外
+    // 插一個「點擊以加入」的確認畫面，所以還是呼叫這裡，賭一把：部分瀏覽器
+    // 對「這個網域使用者之前互動過（Media Engagement Index 之類的機制）」
+    // 有更寬鬆的自動播放判斷，呼叫了至少有機會解鎖成功；呼叫不到位、被瀏覽器
+    // 擋掉時，unlockAudioAndSpeechForAutoplay() 本身遇到例外也不會拋出來（見
+    // 該函式），不影響下面課表下載/解析流程正常繼續——這是目前技術限制下能
+    // 做的最大努力，不能保證每個瀏覽器都吃這一套。
+    unlockAudioAndSpeechForAutoplay();
 
     // source 目前只支援 'TD'（parseGroupJoinParams() 已經驗證過，這裡不會是
     // 其他值），未來擴充 TP／intervals.icu 時在這裡加對應的呼叫就好。
