@@ -424,6 +424,59 @@ describe('initPlayerApp: 一鍵開團連結 (group-join link via URL params: sou
     expect(fetchMock.mock.calls[0][0]).toContain(encodeURIComponent(TRAINERDAY_URL));
   });
 
+  it('fires the same countdown alerts (voice) through the waiting-screen -> auto-play transition as any other input method (regression check: a real-device report claimed the group-join link is uniquely unreliable for countdown alerts, specifically the waiting-screen -> scheduled auto-play transition; this drives the real engine with fake timers - so it verifies actual event/state wiring, not just that a function was called - without any real wall-clock delay)', async () => {
+    vi.stubGlobal('Worker', RealisticMockWorker);
+    const speak = vi.fn();
+    vi.stubGlobal('speechSynthesis', { speak, cancel: vi.fn() });
+    vi.stubGlobal(
+      'SpeechSynthesisUtterance',
+      class {
+        constructor(text) {
+          this.text = text;
+          this.volume = 1;
+          this.rate = 1;
+        }
+      }
+    );
+    window.localStorage.setItem('user_ftp', '250');
+    vi.setSystemTime(new Date(2026, 6, 24, 19, 0, 0));
+    // startTime is 1 minute in the future -> must go through the waiting
+    // screen and the scheduleRuntime "onReached" callback, not the
+    // immediate-catch-up-play path (which is already covered elsewhere).
+    setUrlSearch('source=TD&source_url=' + encodeURIComponent(TRAINERDAY_URL) + '&startTime=202607241901');
+    const fetchMock = stubTrainerDayFetch();
+
+    const { root } = setup();
+    await vi.waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+    await vi.waitFor(() => {
+      expect(root.querySelector('.waiting-mount').classList.contains('hidden')).toBe(false);
+    });
+
+    // startGroupJoinFlow() fires a one-time silent unlock blip (see
+    // unlockAudioAndSpeechForAutoplay()) - clear it so the assertions below
+    // only look at real countdown-alert speak() calls.
+    speak.mockClear();
+
+    // jump the fake clock past startTime - scheduleRuntime's setInterval
+    // fires synchronously under fake timers, no real wall-clock wait.
+    vi.advanceTimersByTime(61000);
+    expect(root.querySelector('.player-mount').classList.contains('hidden')).toBe(false);
+    expect(root.querySelector('.interval-progress').textContent).toContain('進行中');
+
+    // VALID_WORKOUT_STRUCTURE_TEXT is "5 min @ 50% (50w)" - a single 300s
+    // interval. Advance to just before the last 10 seconds, then cross it.
+    vi.advanceTimersByTime(288000); // now ~1s before the countdownWarning threshold
+    expect(speak).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(12000); // crosses remaining=10 (preview) and remaining=5..1 (digits)
+
+    expect(speak).toHaveBeenCalled();
+    const spokenTexts = speak.mock.calls.map(([utterance]) => utterance.text);
+    expect(spokenTexts).toContain('5');
+    expect(spokenTexts).toContain('1');
+  });
+
   it('attempts to unlock audio/speech playback permission even though there is no user click on this auto-load path (regression: users reported a group-join link being completely silent - no voice, no beep, at all - since unlockAudioAndSpeechForAutoplay() was never called here; calling it here is best-effort given the browser autoplay policy still requires a real user gesture to guarantee it works, but the user explicitly asked for this attempt rather than adding an extra confirmation tap)', async () => {
     window.localStorage.setItem('user_ftp', '250');
     vi.setSystemTime(new Date(2026, 6, 24, 19, 0, 0));
