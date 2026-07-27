@@ -759,69 +759,14 @@ body {
   font-size: 0.9rem;
 }
 
-/* 團體訓練排程的等待畫面：設定了開始時間、時間還沒到時顯示，取代平常的執行頁 */
-.waiting-screen {
-  max-width: 480px;
-  margin: 0 auto;
-  padding: 3rem 1.25rem;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 1rem;
-  text-align: center;
-}
-
-.waiting-label {
-  margin: 0;
-  color: var(--accent);
-  font-weight: 700;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
-  font-size: 0.85rem;
-}
-
-.waiting-workout-name {
-  margin: 0;
-  font-size: 1.5rem;
-  font-weight: 800;
-}
-
-.waiting-workout-meta {
-  margin: 0;
-  color: var(--text-secondary);
-  font-size: 0.95rem;
-}
-
-.waiting-countdown {
-  width: 100%;
-  padding: 1.5rem;
-  border-radius: 1.25rem;
-  border: 1px solid var(--card-border);
-  background: var(--card-bg);
-  font-size: 1.75rem;
-  font-weight: 800;
-  font-variant-numeric: tabular-nums;
-}
-
-.waiting-warning {
-  margin: 0;
-  padding: 0.85rem 1rem;
-  border-radius: 0.75rem;
-  border: 1px solid var(--warning-border);
-  background: var(--warning-bg);
-  color: var(--warning-text);
-  font-size: 0.85rem;
-  text-align: left;
-}
-
-/* 「一鍵開團連結」的加入確認橫幅：一頁式呈現（規格：減少確認畫面跟課表
-   執行畫面切換時的跳動感），疊在執行頁（.player，見 renderPlayer.js）
+/* 團體訓練排程的「確認/等待」橫幅：一頁式呈現（規格：減少「確認/等待」跟
+   課表執行畫面切換時的跳動感），疊在執行頁（.player，見 renderPlayer.js）
    上方一起顯示，不是獨立的一個全螢幕畫面——寬度跟 .player 對齊、卡片式
-   邊框跟執行頁本身的卡片區塊（例如 .waiting-countdown）視覺語言一致，
-   讓兩者感覺是同一頁的上下兩段，不是兩個分開的畫面。課表名稱／總時長／
-   組數已經由下面的執行頁顯示，這裡不重複，只放橫幅特有的內容：邀請
-   標籤、排定開始時間、已經過去多久、確認按鈕（見 groupJoinConfirmView.js
-   的說明）。 */
+   邊框跟執行頁本身的卡片區塊視覺語言一致，讓兩者感覺是同一頁的上下兩段，
+   不是兩個分開的畫面。課表名稱／總時長／組數已經由下面的執行頁顯示，這裡
+   不重複，只放橫幅特有的內容：邀請標籤、排定開始時間、已經過去多久、確認
+   按鈕（開團連結專屬的確認階段），或即時倒數／取消排程（等待階段，三條
+   排程路徑共用，見 groupJoinConfirmView.js 的說明）。 */
 .group-join-confirm-banner {
   max-width: 720px;
   margin: 1.25rem auto 0;
@@ -876,8 +821,8 @@ body {
   width: 100%;
 }
 
-/* 等待階段的即時倒數：跟 .waiting-countdown 同一套視覺語言（卡片式數字），
-   但這裡疊在確認橫幅裡，尺寸縮小一點，避免橫幅比底下的執行頁預覽還顯眼。 */
+/* 等待階段的即時倒數：卡片式數字，疊在確認橫幅裡，尺寸縮小一點，避免橫幅
+   比底下的執行頁預覽還顯眼。 */
 .group-join-waiting-countdown {
   width: 100%;
   padding: 0.75rem;
@@ -887,6 +832,17 @@ body {
   font-size: 1.25rem;
   font-weight: 800;
   font-variant-numeric: tabular-nums;
+}
+
+.group-join-waiting-warning {
+  margin: 0;
+  padding: 0.65rem 0.85rem;
+  border-radius: 0.65rem;
+  border: 1px solid var(--warning-border);
+  background: var(--warning-bg);
+  color: var(--warning-text);
+  font-size: 0.8rem;
+  text-align: left;
 }
 
 /* 三層文字大小比例（瓦數／FTP%／開始按鈕＝第 1 級，經過時間＝第 2 級，

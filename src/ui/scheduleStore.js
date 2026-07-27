@@ -7,7 +7,7 @@
  * 注意：這只是「儘量撐過短暫關閉」的機制，不是可靠的背景排程——分頁被完全
  * 關閉、或裝置長時間背景導致系統回收資源，都會讓「時間到自動開始」失效
  * （JavaScript 計時器沒有機會執行）。這個限制要在等待畫面上明確告知使用者
- * （見 waitingView.js），不能只藏在程式碼註解裡。
+ * （見 groupJoinConfirmView.js 的等待階段提醒文字），不能只藏在程式碼註解裡。
  */
 const SCHEDULE_STORAGE_KEY = 'scheduled_workout';
 

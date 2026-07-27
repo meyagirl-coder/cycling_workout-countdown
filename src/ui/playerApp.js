@@ -18,7 +18,6 @@ import { createScheduledStartRuntime } from './scheduledStartRuntime.js';
 import { clearSchedule, loadSchedule, saveSchedule } from './scheduleStore.js';
 import { createThemeToggle } from './themeToggle.js';
 import { createUploadView } from './uploadView.js';
-import { createWaitingView } from './waitingView.js';
 import { clearWorkoutProgress, loadWorkoutProgress, saveWorkoutProgress } from './workoutProgressStore.js';
 
 const INTERVALS_ICU_PROXY_URL = '/api/intervals-zwo';
@@ -39,12 +38,19 @@ const GROUP_JOIN_DEFAULT_FTP = 100;
  * Workout JSON，成功才切到執行頁並接上 Web Worker 計時引擎；解析或下載失敗則
  * 在上傳畫面顯示錯誤訊息，讓使用者重試。
  *
- * 團體訓練排程（選填）：使用者在上傳畫面設定了開始時間後，課表載入成功時
- * 不會直接進執行頁，而是交給 armSchedule() 判斷——時間已經過去就直接開始
- * 播放，還沒到就切到等待畫面（waitingView.js）倒數，時間到才自動觸發開始。
- * 排程（課表＋開始時間）存進 localStorage（scheduleStore.js），App 開機時
- * 會檢查一次，撐過分頁切換／短暫關閉重開；但沒辦法撐過分頁完全關閉或裝置
- * 長時間背景休眠，這個限制會在等待畫面上明確告知使用者。
+ * 團體訓練排程（選填，不管是手動「設定開始時間」還是「一鍵開團連結」都
+ * 走同一套邏輯）：課表載入成功時不會直接進執行頁，而是交給 armSchedule()
+ * 判斷——時間已經過去就直接開始播放，還沒到就呼叫
+ * enterOnePageWaitingPhase()：一頁式呈現（規格：避免「確認/等待」跟「課表
+ * 執行」感覺是切換兩個獨立畫面），執行頁本身先渲染成「尚未開始」的預覽
+ * 狀態（時間軸／課表名稱／總時長／組數），確認橫幅（groupJoinConfirmView.js
+ * ——雖然檔名還留著「開團連結」這個歷史名稱，但排程等待階段
+ * showWaitingPhase()／updateWaitingCountdown() 這兩個方法現在是手動排程／
+ * 開團連結／開機復原共用）疊在上方顯示即時倒數，時間到（onReached）只需要
+ * 把這個橫幅收起來，底下已經渲染好的執行頁直接接手動起來，不需要整頁重新
+ * 渲染或切換。排程（課表＋開始時間）存進 localStorage（scheduleStore.js），
+ * App 開機時會檢查一次，撐過分頁切換／短暫關閉重開；但沒辦法撐過分頁完全
+ * 關閉或裝置長時間背景休眠，這個限制會在等待階段的文字裡明確告知使用者。
  *
  * 螢幕保持喚醒（wakeLockManager.js）：課表執行頁播放中、以及等待排程開始
  * 的倒數畫面時都要保持螢幕常亮，避免手機自動變暗／鎖螢幕；暫停／提早結束／
@@ -76,12 +82,11 @@ const GROUP_JOIN_DEFAULT_FTP = 100;
  */
 export function initPlayerApp(rootEl) {
   rootEl.innerHTML =
-    '<div class="theme-toggle-mount"></div><div class="app-banner-mount"></div><div class="upload-mount"></div><div class="group-join-confirm-mount hidden"></div><div class="waiting-mount hidden"></div><div class="player-mount hidden"></div>';
+    '<div class="theme-toggle-mount"></div><div class="app-banner-mount"></div><div class="upload-mount"></div><div class="group-join-confirm-mount hidden"></div><div class="player-mount hidden"></div>';
   const themeToggleMount = rootEl.querySelector('.theme-toggle-mount');
   const bannerMount = rootEl.querySelector('.app-banner-mount');
   const uploadMount = rootEl.querySelector('.upload-mount');
   const groupJoinConfirmMount = rootEl.querySelector('.group-join-confirm-mount');
-  const waitingMount = rootEl.querySelector('.waiting-mount');
   const playerMount = rootEl.querySelector('.player-mount');
 
   // 主題切換不屬於任何單一畫面（跟 app-banner 只在首頁顯示不同），上傳畫面／
@@ -97,8 +102,8 @@ export function initPlayerApp(rootEl) {
 
   // 螢幕保持喚醒（規格：課表執行頁播放中／等待排程倒數時，避免手機自動變暗
   // 或鎖螢幕）：課表暫停／提早結束／播放完成後釋放，不強制一直常亮（見
-  // client.onUpdate() 裡的判斷邏輯，以及 enterWaitingScreen()／
-  // handleCancelSchedule()／returnToHome() 幾個進出等待畫面／執行頁的地方）。
+  // client.onUpdate() 裡的判斷邏輯，以及 enterOnePageWaitingPhase()／
+  // handleCancelSchedule()／returnToHome() 幾個進出等待階段／執行頁的地方）。
   // wakeLockManager 本身處理了瀏覽器不支援、申請失敗、分頁切到背景又切回來
   // 需要重新申請這幾種情況，這裡只需要在對的時機呼叫 enable()／disable()。
   const wakeLockManager = createWakeLockManager();
@@ -179,10 +184,6 @@ export function initPlayerApp(rootEl) {
     uploadView.setDraftInputs(restoredDraft);
   }
 
-  const waitingView = createWaitingView(waitingMount, {
-    onCancelSchedule: () => handleCancelSchedule(),
-  });
-
   const groupJoinConfirmView = createGroupJoinConfirmView(groupJoinConfirmMount, {
     onConfirmJoin: () => handleGroupJoinConfirm(),
     onCancelSchedule: () => handleCancelSchedule(),
@@ -216,7 +217,6 @@ export function initPlayerApp(rootEl) {
   /** 執行頁完成橫幅的「回到主畫面」按鈕（規格 §4.5）：純畫面切換，不用重置引擎 */
   function returnToHome() {
     playerMount.classList.add('hidden');
-    waitingMount.classList.add('hidden');
     groupJoinConfirmMount.classList.add('hidden');
     uploadMount.classList.remove('hidden');
     appBanner.show();
@@ -271,12 +271,17 @@ export function initPlayerApp(rootEl) {
     // 播放中途出錯，後續提示全部消失」的說明），這裡的存檔呼叫也要有一樣
     // 的隔離：任何一步的失敗都不該拖累其他步驟。
     playerView.update(currentWorkout, state, currentFtp);
-    // 開團連結還在等使用者按「加入團練」確認的預覽階段（見
-    // showGroupJoinConfirmation()）不存進度：這時候只是先把執行頁畫面渲染
-    // 出來給使用者看，使用者還沒有真的確認加入，不該留下一筆「進行中課表」
-    // 的存檔——不然使用者這時候直接關掉分頁，下次開機會誤把這份還沒確認過
-    // 的課表當成正在進行中的課表復原回來。
-    if (!groupJoinAwaitingConfirmation) {
+    // 兩種「還沒真的開始」的預覽/等待狀態都不該存進度：
+    //   - groupJoinAwaitingConfirmation：開團連結還在等使用者按「加入團練」
+    //     確認（見 showGroupJoinConfirmation()）。
+    //   - scheduleRuntime：已經排定好開始時間（不管是手動設定、開團連結
+    //     確認過、還是開機復原），但排定時間還沒到，正在等待階段（見
+    //     enterOnePageWaitingPhase()）。
+    // 這兩種狀態下 client.init(workout) 都已經呼叫、currentWorkout 也已經
+    // 設定，只是為了讓執行頁能先渲染預覽／倒數疊加畫面，不是「真的在進行中
+    // 的課表」，不該被誤判成可以復原的進度——不然使用者這時候直接關掉分頁，
+    // 下次開機會誤把這份還沒真的開始的課表當成進行中的課表復原回來。
+    if (!groupJoinAwaitingConfirmation && !scheduleRuntime) {
       saveWorkoutProgressThrottled(currentWorkout, state);
     }
     handleTimerEvents(events, {
@@ -305,13 +310,31 @@ export function initPlayerApp(rootEl) {
    *
    * 如果使用者先按過「設定開始時間」的「設定」，pendingScheduledStartTimestamp
    * 會有值——這時候不直接進執行頁，改成交給團體訓練排程流程判斷（規格：
-   * 已經過去就立刻開始播放、還沒到就進等待畫面），不管這份課表是透過哪種
-   * 輸入方式載入的都一樣（貼文字／貼網址／上傳 .zwo／intervals.icu）。
+   * 已經過去就立刻開始播放、還沒到就呼叫 armSchedule() → 一頁式的
+   * enterOnePageWaitingPhase()），不管這份課表是透過哪種輸入方式載入的都
+   * 一樣（貼文字／貼網址／上傳 .zwo／intervals.icu）。
    *
    * 如果是開團連結載入的（pendingGroupJoinStartTimestamp 由
    * startGroupJoinFlow() 設定），先切到「加入確認」畫面，不直接套用排程——見
    * showGroupJoinConfirmation() 的說明。
    */
+  /**
+   * 上傳畫面（尤其是「貼上課表文字內容」欄位）在小螢幕上位置偏下，使用者
+   * 提交當下捲動位置停在那裡——切到執行頁／確認橫幅時如果不把捲動位置
+   * 重設回頂部，畫面會維持在原來的捲動高度，但新畫面內容通常比上傳畫面
+   * 短，導致使用者看到的其實是新畫面「中間偏下」的部分（例如一頁式等待
+   * 橫幅最上面的邀請標籤／即時倒數被捲出畫面外，只看到底部的「取消排程」
+   * 按鈕，就像沒有倒數一樣）。所有從上傳畫面切到執行頁／確認橫幅（或反向
+   * 切回上傳畫面）的地方都要呼叫這裡。
+   */
+  function scrollToTop() {
+    // 用 (x, y) 兩個參數的呼叫形式，不要用 { top: 0 } 這種 options 物件形式
+    // ——jsdom（單元測試環境）只實作前者，後者會在測試時噴一堆
+    // "Not implemented: window.scrollTo" 的噪音錯誤（不影響測試結果，但
+    // 幹擾除錯輸出）。
+    window.scrollTo(0, 0);
+  }
+
   function loadWorkout(parseFn, errorPrefix) {
     let workout;
     try {
@@ -342,11 +365,6 @@ export function initPlayerApp(rootEl) {
   }
 
   /**
-   * 開團連結的課表下載/解析成功：先切到「加入確認」畫面（課表名稱／總時長／
-   * 組數／排定開始時間 ＋「加入團練」按鈕），不直接套用排程——見
-   * handleGroupJoinConfirm()、groupJoinConfirmView.js 的說明。
-   */
-  /**
    * 一頁式呈現（規格：減少確認畫面跟課表執行畫面切換時的跳動感）：確認
    * 橫幅（groupJoinConfirmMount）疊在執行頁（playerMount）上方一起顯示，
    * 不是切到另一個獨立畫面——這裡先呼叫 client.init(workout) 讓執行頁把
@@ -365,10 +383,10 @@ export function initPlayerApp(rootEl) {
     client.init(workout);
     appBanner.hide();
     uploadMount.classList.add('hidden');
-    waitingMount.classList.add('hidden');
     playerMount.classList.remove('hidden');
     groupJoinConfirmMount.classList.remove('hidden');
     groupJoinConfirmView.update(startTimestamp);
+    scrollToTop();
   }
 
   /**
@@ -378,13 +396,9 @@ export function initPlayerApp(rootEl) {
    * 用的是同一套機制——確保後續自動觸發（排程時間到、或立刻追上進度播放）
    * 的語音／嗶聲能正常播放，不會被瀏覽器擋掉。
    *
-   * 這裡不呼叫共用的 armSchedule()（那個函式時間還沒到時會呼叫
-   * enterWaitingScreen()，切到完全獨立的等待畫面，跟這裡的一頁式預覽是
-   * 兩個不同版面，會有跳動感）——改成自己判斷：已經過去就直接把確認橫幅
-   * 收起來、讓底下已經渲染好的執行頁動起來（startScheduledWorkoutNow()）；
-   * 還沒到就呼叫 enterGroupJoinWaitingPhase()，讓同一個橫幅容器切換成
-   * 「等待階段」內容（即時倒數＋取消排程），執行頁預覽維持不變，兩個階段
-   * 之間也是無縫的（規格：讓「還沒開始」的情境也完全無縫）。
+   * 解鎖、存排程之後直接交給共用的 armSchedule() 判斷（跟手動「設定開始
+   * 時間」流程一樣）：已經過去就直接播放、還沒到就進一頁式的等待階段——
+   * 兩條路徑用同一套判斷／同一套一頁式呈現，不需要各自維護一份。
    */
   function handleGroupJoinConfirm() {
     if (!groupJoinAwaitingConfirmation) return;
@@ -393,37 +407,7 @@ export function initPlayerApp(rootEl) {
 
     unlockAudioAndSpeechForAutoplay();
     saveSchedule(workout, startTimestamp);
-
-    if (startTimestamp <= Date.now()) {
-      groupJoinConfirmMount.classList.add('hidden');
-      startScheduledWorkoutNow(workout, startTimestamp);
-    } else {
-      enterGroupJoinWaitingPhase(workout, startTimestamp);
-    }
-  }
-
-  /**
-   * 排定時間還沒到：把「加入確認」橫幅切成「等待階段」內容（同一個橫幅
-   * 容器，不是切到 waitingMount 那個獨立畫面），執行頁預覽維持顯示不變。
-   * 時間到（onReached）呼叫 startScheduledWorkoutNow()——那裡面的
-   * switchToPlayerScreen() 會把 groupJoinConfirmMount 整段收起來，這個等待
-   * 階段的倒數／取消排程按鈕不會殘留。
-   */
-  function enterGroupJoinWaitingPhase(workout, startTimestamp) {
-    stopScheduleRuntimeIfRunning();
-    groupJoinConfirmView.showWaitingPhase();
-    groupJoinConfirmView.updateWaitingCountdown(startTimestamp - Date.now());
-    // 等待排程開始的倒數也要保持螢幕常亮，跟 enterWaitingScreen() 的理由
-    // 一樣——時間到轉進去執行頁開始播放時，client.onUpdate() 收到 running
-    // 狀態會接手繼續保持常亮，中間不會有螢幕被鎖定的空檔。
-    wakeLockManager.enable();
-
-    scheduleRuntime = createScheduledStartRuntime({
-      startTimestamp,
-      onTick: (remainingMs) => groupJoinConfirmView.updateWaitingCountdown(remainingMs),
-      onReached: () => startScheduledWorkoutNow(workout, startTimestamp),
-    });
-    scheduleRuntime.start();
+    armSchedule(workout, startTimestamp);
   }
 
   /**
@@ -445,20 +429,22 @@ export function initPlayerApp(rootEl) {
     appBanner.hide();
     uploadMount.classList.add('hidden');
     groupJoinConfirmMount.classList.add('hidden');
-    waitingMount.classList.add('hidden');
     playerMount.classList.remove('hidden');
+    scrollToTop();
   }
 
   /**
-   * 已經有一份課表跟排定開始時間，決定「立刻開始」還是「進等待畫面」——
-   * 開機時從 localStorage 復原排程、或剛設定完排程且課表也載入成功時，都會
-   * 呼叫這裡（規格：時間已經過去就直接立刻開始播放，不用等畫面）。
+   * 已經有一份課表跟排定開始時間，決定「立刻開始」還是「進一頁式等待階段」
+   * ——開機時從 localStorage 復原排程、手動「設定開始時間」流程課表載入
+   * 成功時、或開團連結確認加入時，都會呼叫這裡（規格：時間已經過去就直接
+   * 立刻開始播放，不用等待；還沒到的話三條路徑都用同一套一頁式等待呈現，
+   * 不是各自維護一份獨立畫面）。
    */
   function armSchedule(workout, startTimestamp) {
     if (startTimestamp <= Date.now()) {
       startScheduledWorkoutNow(workout, startTimestamp);
     } else {
-      enterWaitingScreen(workout, startTimestamp);
+      enterOnePageWaitingPhase(workout, startTimestamp);
     }
   }
 
@@ -489,15 +475,16 @@ export function initPlayerApp(rootEl) {
 
     const elapsedSeconds = Math.max(0, (Date.now() - startTimestamp) / 1000);
     if (elapsedSeconds >= workout.totalDuration) {
-      // 呼叫端可能是從執行頁的開團確認橫幅（playerMount 這時已經顯示著預覽）
-      // 過來的，不是原本手動排程流程假設的「還停在上傳畫面」——這裡自己切回
-      // 上傳畫面顯示錯誤訊息，不依賴呼叫端事先切好畫面。
+      // 呼叫端可能是從執行頁的一頁式等待階段（playerMount 這時已經顯示著
+      // 預覽／等待倒數）過來的，不是原本手動排程流程假設的「還停在上傳
+      // 畫面」——這裡自己切回上傳畫面顯示錯誤訊息，不依賴呼叫端事先切好
+      // 畫面。
       playerMount.classList.add('hidden');
-      waitingMount.classList.add('hidden');
       groupJoinConfirmMount.classList.add('hidden');
       uploadMount.classList.remove('hidden');
       appBanner.show();
       currentWorkout = null;
+      scrollToTop();
       uploadView.showError(
         `課表已結束：設定的開始時間已經過去 ${formatMinuteSecondLabel(elapsedSeconds)}，超過這份課表 ${formatMinuteSecondLabel(workout.totalDuration)} 的總時長，請重新設定開始時間，或直接手動開始播放。`
       );
@@ -508,23 +495,40 @@ export function initPlayerApp(rootEl) {
     client.play();
   }
 
-  /** 排定時間還沒到：切到等待畫面，顯示課表基本資訊＋即時倒數，時間到自動觸發開始 */
-  function enterWaitingScreen(workout, startTimestamp) {
+  /**
+   * 排定時間還沒到：一頁式呈現（規格：手動「設定開始時間」／開團連結確認／
+   * 開機復原排程，三條路徑共用同一套呈現，不要有畫面切換的感覺）——先
+   * client.init(workout) 讓執行頁渲染成「尚未開始」的預覽狀態（時間軸／
+   * 課表名稱／總時長／組數），確認橫幅（groupJoinConfirmMount）疊在上方
+   * 顯示即時倒數，不會蓋住下面的課表預覽。時間到（onReached）呼叫
+   * startScheduledWorkoutNow()——裡面的 switchToPlayerScreen() 會把確認
+   * 橫幅整段收起來、執行頁從「尚未開始」變成「進行中」，不需要整頁重新
+   * 渲染或跳轉。
+   *
+   * 開團連結確認加入時（handleGroupJoinConfirm() → armSchedule()）
+   * client.init(workout) 可能已經被 showGroupJoinConfirmation() 呼叫過一次
+   * ——再呼叫一次只是重新建立一個一樣是 idle／elapsedTotal=0 的引擎，沒有
+   * 副作用，這裡不需要額外判斷「是不是已經初始化過」。
+   */
+  function enterOnePageWaitingPhase(workout, startTimestamp) {
     stopScheduleRuntimeIfRunning();
+    currentWorkout = workout;
+    client.init(workout);
     appBanner.hide();
     uploadMount.classList.add('hidden');
-    groupJoinConfirmMount.classList.add('hidden');
-    playerMount.classList.add('hidden');
-    waitingMount.classList.remove('hidden');
-    waitingView.update(workout, startTimestamp - Date.now());
-    // 等待排程開始的倒數畫面也要保持螢幕常亮（規格），不是只有執行頁播放中
+    playerMount.classList.remove('hidden');
+    groupJoinConfirmMount.classList.remove('hidden');
+    groupJoinConfirmView.showWaitingPhase();
+    groupJoinConfirmView.updateWaitingCountdown(startTimestamp - Date.now());
+    scrollToTop();
+    // 等待排程開始的倒數也要保持螢幕常亮（規格），不是只有執行頁播放中
     // 才需要——時間到轉進執行頁開始播放時，上面 client.onUpdate() 收到
     // running 狀態會接手繼續保持常亮，中間不會有螢幕被鎖定的空檔。
     wakeLockManager.enable();
 
     scheduleRuntime = createScheduledStartRuntime({
       startTimestamp,
-      onTick: (remainingMs) => waitingView.update(workout, remainingMs),
+      onTick: (remainingMs) => groupJoinConfirmView.updateWaitingCountdown(remainingMs),
       onReached: () => startScheduledWorkoutNow(workout, startTimestamp),
     });
     scheduleRuntime.start();
@@ -620,21 +624,20 @@ export function initPlayerApp(rootEl) {
     startGroupJoinFlow(groupJoin);
   }
 
-  /** 等待畫面「取消排程」：清掉排程紀錄，回到上傳畫面 */
+  /** 等待階段「取消排程」：清掉排程紀錄，回到上傳畫面 */
   function handleCancelSchedule() {
     stopScheduleRuntimeIfRunning();
     clearSchedule();
-    waitingMount.classList.add('hidden');
     groupJoinConfirmMount.classList.add('hidden');
-    // 開團連結的一頁式流程裡，等待階段時 playerMount 是預覽用一直顯示著的
-    // （見 enterGroupJoinWaitingPhase()）——取消排程要連同這個預覽一起收掉，
-    // 不然會殘留在畫面上。手動「設定開始時間」流程走到這裡時 playerMount
-    // 本來就是隱藏的，這裡多加一行不影響那條路徑。
+    // 一頁式的等待階段裡，playerMount 是預覽用一直顯示著的（見
+    // enterOnePageWaitingPhase()）——取消排程要連同這個預覽一起收掉，不然
+    // 會殘留在畫面上。
     playerMount.classList.add('hidden');
     uploadMount.classList.remove('hidden');
     appBanner.show();
     uploadView.clearError();
     currentWorkout = null;
+    scrollToTop();
     // 取消排程，回到上傳畫面，不需要再保持螢幕常亮。
     wakeLockManager.disable();
   }
@@ -757,9 +760,9 @@ export function initPlayerApp(rootEl) {
 
   // App 開機時檢查 localStorage 有沒有還沒完成的排程（規格：切換分頁／背景／
   // 短暫關閉瀏覽器再打開，排程要還在）——放在所有畫面／handler 都設好之後
-  // 才呼叫，armSchedule() 裡用到的 uploadView／waitingView／playerView 這時
-  // 才確定都已經存在。找不到、或存的資料壞掉（loadSchedule() 已經處理過
-  // 壞資料回傳 null 的情況）就照原本一樣顯示上傳畫面。
+  // 才呼叫，armSchedule() 裡用到的 uploadView／groupJoinConfirmView／
+  // playerView 這時才確定都已經存在。找不到、或存的資料壞掉（loadSchedule()
+  // 已經處理過壞資料回傳 null 的情況）就照原本一樣顯示上傳畫面。
   //
   // 排程優先於「執行中課表進度」復原：兩者理論上不會同時有意義的資料（一個
   // 代表「還沒開始、等排定時間」，一個代表「已經在執行頁上」），但如果真的
