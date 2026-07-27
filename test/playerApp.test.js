@@ -154,52 +154,59 @@ describe('initPlayerApp: 團體訓練排程 (group-ride scheduling)', () => {
     root.querySelector('.upload-paste-form').dispatchEvent(new Event('submit', { cancelable: true }));
   }
 
-  it('shows the waiting screen (not the player) when the scheduled time is in the future, with correct workout info and live countdown', () => {
+  it('shows a one-page layout (not a separate waiting screen) when the scheduled time is in the future: the player preview ("尚未開始") is visible underneath, with the confirmation banner\'s waiting phase (live countdown) stacked above it', () => {
+    vi.stubGlobal('Worker', RealisticMockWorker);
     vi.setSystemTime(new Date(2026, 6, 24, 10, 0, 0));
     const { root } = setup();
 
     setScheduleTime(root, '202607241005');
     submitPasteText(root, '5m 60%');
 
-    expect(root.querySelector('.waiting-mount').classList.contains('hidden')).toBe(false);
-    expect(root.querySelector('.player-mount').classList.contains('hidden')).toBe(true);
+    expect(root.querySelector('.group-join-confirm-mount').classList.contains('hidden')).toBe(false);
+    expect(root.querySelector('.group-join-waiting-phase').classList.contains('hidden')).toBe(false);
+    expect(root.querySelector('.player-mount').classList.contains('hidden')).toBe(false);
     expect(root.querySelector('.upload-mount').classList.contains('hidden')).toBe(true);
-    expect(root.querySelector('.waiting-countdown').textContent).toBe('距離開始還有 5分0秒');
+    expect(root.querySelector('.interval-progress').textContent).toContain('尚未開始');
+    expect(root.querySelector('.group-join-waiting-countdown').textContent).toBe('距離開始還有 5分0秒');
   });
 
   it('live-updates the countdown every second as time passes while waiting (即時更新，精確到秒，不是只精確到分鐘)', () => {
+    vi.stubGlobal('Worker', RealisticMockWorker);
     vi.setSystemTime(new Date(2026, 6, 24, 10, 0, 0));
     const { root } = setup();
 
     setScheduleTime(root, '202607241005');
     submitPasteText(root, '5m 60%');
-    expect(root.querySelector('.waiting-countdown').textContent).toBe('距離開始還有 5分0秒');
+    expect(root.querySelector('.group-join-waiting-countdown').textContent).toBe('距離開始還有 5分0秒');
 
     vi.advanceTimersByTime(1000); // 1 second passes
-    expect(root.querySelector('.waiting-countdown').textContent).toBe('距離開始還有 4分59秒');
+    expect(root.querySelector('.group-join-waiting-countdown').textContent).toBe('距離開始還有 4分59秒');
 
     vi.advanceTimersByTime(2 * 60 * 1000); // 2 more minutes pass
-    expect(root.querySelector('.waiting-countdown').textContent).toBe('距離開始還有 2分59秒');
+    expect(root.querySelector('.group-join-waiting-countdown').textContent).toBe('距離開始還有 2分59秒');
 
     vi.advanceTimersByTime(2 * 60 * 1000); // another 2 minutes pass
-    expect(root.querySelector('.waiting-countdown').textContent).toBe('距離開始還有 59秒');
+    expect(root.querySelector('.group-join-waiting-countdown').textContent).toBe('距離開始還有 59秒');
   });
 
-  it('auto-transitions to the player screen the instant the scheduled time is reached, with no user click (時間一到自動觸發開始)', () => {
+  it('auto-transitions from "尚未開始" to "進行中" the instant the scheduled time is reached, with no user click and no re-render/jump - the confirmation banner just disappears (時間一到自動觸發開始)', () => {
+    vi.stubGlobal('Worker', RealisticMockWorker);
     vi.setSystemTime(new Date(2026, 6, 24, 10, 0, 0));
     const { root } = setup();
 
     setScheduleTime(root, '202607241005');
     submitPasteText(root, '5m 60%');
-    expect(root.querySelector('.player-mount').classList.contains('hidden')).toBe(true);
+    expect(root.querySelector('.player-mount').classList.contains('hidden')).toBe(false);
+    expect(root.querySelector('.interval-progress').textContent).toContain('尚未開始');
 
     vi.advanceTimersByTime(5 * 60 * 1000); // exactly reach the scheduled time
 
     expect(root.querySelector('.player-mount').classList.contains('hidden')).toBe(false);
-    expect(root.querySelector('.waiting-mount').classList.contains('hidden')).toBe(true);
+    expect(root.querySelector('.interval-progress').textContent).toContain('進行中');
+    expect(root.querySelector('.group-join-confirm-mount').classList.contains('hidden')).toBe(true);
   });
 
-  it('starts playing immediately (skips the waiting screen) when the scheduled time is already in the past', () => {
+  it('starts playing immediately (skips the waiting phase) when the scheduled time is already in the past', () => {
     vi.setSystemTime(new Date(2026, 6, 24, 10, 2, 0));
     const { root } = setup();
 
@@ -207,7 +214,7 @@ describe('initPlayerApp: 團體訓練排程 (group-ride scheduling)', () => {
     submitPasteText(root, '5m 60%');
 
     expect(root.querySelector('.player-mount').classList.contains('hidden')).toBe(false);
-    expect(root.querySelector('.waiting-mount').classList.contains('hidden')).toBe(true);
+    expect(root.querySelector('.group-join-confirm-mount').classList.contains('hidden')).toBe(true);
     expect(root.querySelector('.upload-mount').classList.contains('hidden')).toBe(true);
   });
 
@@ -235,18 +242,18 @@ describe('initPlayerApp: 團體訓練排程 (group-ride scheduling)', () => {
     submitPasteText(root, '5m 60%');
 
     expect(root.querySelector('.player-mount').classList.contains('hidden')).toBe(true);
-    expect(root.querySelector('.waiting-mount').classList.contains('hidden')).toBe(true);
+    expect(root.querySelector('.group-join-confirm-mount').classList.contains('hidden')).toBe(true);
     const errorEl = root.querySelector('.upload-error');
     expect(errorEl.classList.contains('hidden')).toBe(false);
     expect(errorEl.textContent).toMatch(/課表已結束/);
   });
 
-  it('does not show the waiting screen when no start time was set (existing manual-start behavior is unchanged)', () => {
+  it('does not show the waiting phase when no start time was set (existing manual-start behavior is unchanged)', () => {
     const { root } = setup();
     submitPasteText(root, '5m 60%');
 
     expect(root.querySelector('.player-mount').classList.contains('hidden')).toBe(false);
-    expect(root.querySelector('.waiting-mount').classList.contains('hidden')).toBe(true);
+    expect(root.querySelector('.group-join-confirm-mount').classList.contains('hidden')).toBe(true);
   });
 
   it('saves the schedule (workout + startTimestamp) to localStorage once a workout loads with a pending start time', () => {
@@ -275,7 +282,8 @@ describe('initPlayerApp: 團體訓練排程 (group-ride scheduling)', () => {
     expect(window.localStorage.getItem('scheduled_workout')).toBeNull();
   });
 
-  it('restores a future-scheduled waiting screen from localStorage on boot, with no user action required (localStorage 讀取排程正確)', () => {
+  it('restores a future-scheduled one-page waiting phase from localStorage on boot, with no user action required (localStorage 讀取排程正確): the player preview renders underneath, with the waiting countdown banner stacked above it', () => {
+    vi.stubGlobal('Worker', RealisticMockWorker);
     vi.setSystemTime(new Date(2026, 6, 24, 10, 0, 0));
     const workout = {
       id: 'restored-workout',
@@ -291,10 +299,13 @@ describe('initPlayerApp: 團體訓練排程 (group-ride scheduling)', () => {
 
     const { root } = setup();
 
-    expect(root.querySelector('.waiting-mount').classList.contains('hidden')).toBe(false);
+    expect(root.querySelector('.group-join-confirm-mount').classList.contains('hidden')).toBe(false);
+    expect(root.querySelector('.group-join-waiting-phase').classList.contains('hidden')).toBe(false);
+    expect(root.querySelector('.player-mount').classList.contains('hidden')).toBe(false);
     expect(root.querySelector('.upload-mount').classList.contains('hidden')).toBe(true);
-    expect(root.querySelector('.waiting-workout-name').textContent).toBe('Restored Group Ride');
-    expect(root.querySelector('.waiting-countdown').textContent).toBe('距離開始還有 5分0秒');
+    expect(root.querySelector('.workout-name').textContent).toBe('Restored Group Ride');
+    expect(root.querySelector('.interval-progress').textContent).toContain('尚未開始');
+    expect(root.querySelector('.group-join-waiting-countdown').textContent).toBe('距離開始還有 5分0秒');
   });
 
   it('immediately starts playing on boot when the restored schedule\'s time has already passed', () => {
@@ -314,27 +325,27 @@ describe('initPlayerApp: 團體訓練排程 (group-ride scheduling)', () => {
     const { root } = setup();
 
     expect(root.querySelector('.player-mount').classList.contains('hidden')).toBe(false);
-    expect(root.querySelector('.waiting-mount').classList.contains('hidden')).toBe(true);
+    expect(root.querySelector('.group-join-confirm-mount').classList.contains('hidden')).toBe(true);
     expect(window.localStorage.getItem('scheduled_workout')).toBeNull();
   });
 
   it('does not restore anything on boot when no schedule was ever saved (shows the normal upload screen)', () => {
     const { root } = setup();
     expect(root.querySelector('.upload-mount').classList.contains('hidden')).toBe(false);
-    expect(root.querySelector('.waiting-mount').classList.contains('hidden')).toBe(true);
+    expect(root.querySelector('.group-join-confirm-mount').classList.contains('hidden')).toBe(true);
   });
 
-  it('cancelling from the waiting screen returns to the upload screen and clears the saved schedule', () => {
+  it('cancelling from the waiting phase returns to the upload screen and clears the saved schedule', () => {
     vi.setSystemTime(new Date(2026, 6, 24, 10, 0, 0));
     const { root } = setup();
 
     setScheduleTime(root, '202607241005');
     submitPasteText(root, '5m 60%');
-    expect(root.querySelector('.waiting-mount').classList.contains('hidden')).toBe(false);
+    expect(root.querySelector('.group-join-confirm-mount').classList.contains('hidden')).toBe(false);
 
-    root.querySelector('.btn-cancel-schedule').click();
+    root.querySelector('.btn-group-join-cancel').click();
 
-    expect(root.querySelector('.waiting-mount').classList.contains('hidden')).toBe(true);
+    expect(root.querySelector('.group-join-confirm-mount').classList.contains('hidden')).toBe(true);
     expect(root.querySelector('.upload-mount').classList.contains('hidden')).toBe(false);
     expect(window.localStorage.getItem('scheduled_workout')).toBeNull();
   });
@@ -345,7 +356,7 @@ describe('initPlayerApp: 團體訓練排程 (group-ride scheduling)', () => {
 
     setScheduleTime(root, '202607241005');
     submitPasteText(root, '5m 60%');
-    root.querySelector('.btn-cancel-schedule').click();
+    root.querySelector('.btn-group-join-cancel').click();
 
     vi.advanceTimersByTime(10 * 60 * 1000); // well past the (cancelled) scheduled time
 
@@ -380,6 +391,11 @@ describe('initPlayerApp: 一鍵開團連結 (group-join link via URL params: sou
     return fetchMock;
   }
 
+  /** 「加入確認」畫面按下「加入團練」按鈕 */
+  function confirmGroupJoin(root) {
+    root.querySelector('.btn-group-join-confirm').click();
+  }
+
   it('does nothing special (normal upload screen) when the URL has no group-join params at all', () => {
     const { root } = setup();
     expect(root.querySelector('.upload-mount').classList.contains('hidden')).toBe(false);
@@ -406,7 +422,7 @@ describe('initPlayerApp: 一鍵開團連結 (group-join link via URL params: sou
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it('auto-loads the workout and enters the waiting screen when FTP is already set and startTime is in the future', async () => {
+  it('auto-loads the workout, shows the join-confirmation screen (not the classic waiting screen), and only switches the same banner to its "等待階段" (still one page, no separate mount switch) after "加入團練" is clicked', async () => {
     window.localStorage.setItem('user_ftp', '250');
     vi.setSystemTime(new Date(2026, 6, 24, 19, 0, 0));
     setUrlSearch('source=TD&source_url=' + encodeURIComponent(TRAINERDAY_URL) + '&startTime=202607242000');
@@ -417,14 +433,86 @@ describe('initPlayerApp: 一鍵開團連結 (group-join link via URL params: sou
       expect(fetchMock).toHaveBeenCalledTimes(1);
     });
     await vi.waitFor(() => {
-      expect(root.querySelector('.waiting-mount').classList.contains('hidden')).toBe(false);
+      expect(root.querySelector('.group-join-confirm-mount').classList.contains('hidden')).toBe(false);
     });
 
+    // still in the confirm phase - awaiting the user's explicit confirmation
+    expect(root.querySelector('.group-join-confirm-phase').classList.contains('hidden')).toBe(false);
     expect(root.querySelector('.upload-ftp-prompt').classList.contains('hidden')).toBe(true);
     expect(fetchMock.mock.calls[0][0]).toContain(encodeURIComponent(TRAINERDAY_URL));
+
+    confirmGroupJoin(root);
+
+    // there is no separate waiting mount for this path - the SAME banner
+    // (still visible, still stacked above the player preview) just switches
+    // to its waiting phase
+    expect(root.querySelector('.group-join-confirm-mount').classList.contains('hidden')).toBe(false);
+    expect(root.querySelector('.group-join-confirm-phase').classList.contains('hidden')).toBe(true);
+    expect(root.querySelector('.group-join-waiting-phase').classList.contains('hidden')).toBe(false);
+    expect(root.querySelector('.group-join-waiting-countdown').textContent).toContain('距離開始還有');
+    expect(root.querySelector('.player-mount').classList.contains('hidden')).toBe(false);
   });
 
-  it('attempts to unlock audio/speech playback permission even though there is no user click on this auto-load path (regression: users reported a group-join link being completely silent - no voice, no beep, at all - since unlockAudioAndSpeechForAutoplay() was never called here; calling it here is best-effort given the browser autoplay policy still requires a real user gesture to guarantee it works, but the user explicitly asked for this attempt rather than adding an extra confirmation tap)', async () => {
+  it('fires the same countdown alerts (voice) through the waiting-screen -> auto-play transition as any other input method (regression check: a real-device report claimed the group-join link is uniquely unreliable for countdown alerts, specifically the waiting-screen -> scheduled auto-play transition; this drives the real engine with fake timers - so it verifies actual event/state wiring, not just that a function was called - without any real wall-clock delay)', async () => {
+    vi.stubGlobal('Worker', RealisticMockWorker);
+    const speak = vi.fn();
+    vi.stubGlobal('speechSynthesis', { speak, cancel: vi.fn() });
+    vi.stubGlobal(
+      'SpeechSynthesisUtterance',
+      class {
+        constructor(text) {
+          this.text = text;
+          this.volume = 1;
+          this.rate = 1;
+        }
+      }
+    );
+    window.localStorage.setItem('user_ftp', '250');
+    vi.setSystemTime(new Date(2026, 6, 24, 19, 0, 0));
+    // startTime is 1 minute in the future -> must go through the waiting
+    // screen and the scheduleRuntime "onReached" callback, not the
+    // immediate-catch-up-play path (which is already covered elsewhere).
+    setUrlSearch('source=TD&source_url=' + encodeURIComponent(TRAINERDAY_URL) + '&startTime=202607241901');
+    const fetchMock = stubTrainerDayFetch();
+
+    const { root } = setup();
+    await vi.waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+    await vi.waitFor(() => {
+      expect(root.querySelector('.group-join-confirm-mount').classList.contains('hidden')).toBe(false);
+    });
+
+    // "加入團練" fires a one-time silent unlock blip (see
+    // unlockAudioAndSpeechForAutoplay()) - clear it after clicking, so the
+    // assertions below only look at real countdown-alert speak() calls.
+    confirmGroupJoin(root);
+    expect(root.querySelector('.group-join-waiting-phase').classList.contains('hidden')).toBe(false);
+    speak.mockClear();
+
+    // jump the fake clock past startTime - scheduleRuntime's setInterval
+    // fires synchronously under fake timers, no real wall-clock wait.
+    vi.advanceTimersByTime(61000);
+    expect(root.querySelector('.player-mount').classList.contains('hidden')).toBe(false);
+    expect(root.querySelector('.interval-progress').textContent).toContain('進行中');
+    // schedule fired - the confirmation banner (waiting phase included) is
+    // fully gone now, no leftover elements
+    expect(root.querySelector('.group-join-confirm-mount').classList.contains('hidden')).toBe(true);
+
+    // VALID_WORKOUT_STRUCTURE_TEXT is "5 min @ 50% (50w)" - a single 300s
+    // interval. Advance to just before the last 10 seconds, then cross it.
+    vi.advanceTimersByTime(288000); // now ~1s before the countdownWarning threshold
+    expect(speak).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(12000); // crosses remaining=10 (preview) and remaining=5..1 (digits)
+
+    expect(speak).toHaveBeenCalled();
+    const spokenTexts = speak.mock.calls.map(([utterance]) => utterance.text);
+    expect(spokenTexts).toContain('5');
+    expect(spokenTexts).toContain('1');
+  });
+
+  it('shows a one-page layout - the confirmation banner stacked above an already-rendered preview of the execution screen (workout name/duration/interval count via the real player view) - and the scheduled start time, without unlocking audio yet (regression: the original "just try to unlock automatically on page load, no confirmation tap" approach was real-device-tested and confirmed unreliable - iOS Safari/Chrome stayed completely silent since there is no user gesture on this auto-load path)', async () => {
+    vi.stubGlobal('Worker', RealisticMockWorker);
     window.localStorage.setItem('user_ftp', '250');
     vi.setSystemTime(new Date(2026, 6, 24, 19, 0, 0));
     setUrlSearch('source=TD&source_url=' + encodeURIComponent(TRAINERDAY_URL) + '&startTime=202607242000');
@@ -443,13 +531,34 @@ describe('initPlayerApp: 一鍵開團連結 (group-join link via URL params: sou
 
     const { root } = setup();
     await vi.waitFor(() => {
-      expect(root.querySelector('.waiting-mount').classList.contains('hidden')).toBe(false);
+      expect(root.querySelector('.group-join-confirm-mount').classList.contains('hidden')).toBe(false);
     });
 
+    // the confirmation banner is stacked above an already-visible player-screen
+    // preview, not a separate full-screen view - both are visible at once
+    expect(root.querySelector('.player-mount').classList.contains('hidden')).toBe(false);
+
+    // VALID_WORKOUT_STRUCTURE_TEXT is "5 min @ 50% (50w)" -> a single 300s interval,
+    // shown by the underlying player preview itself (idle/"尚未開始", not the banner)
+    expect(root.querySelector('.total-duration').textContent).toContain('5:00');
+    expect(root.querySelector('.interval-progress').textContent).toContain('尚未開始');
+    expect(root.querySelector('.group-join-confirm-start-time').textContent).toContain('2026/07/24 20:00');
+    expect(root.querySelector('.group-join-confirm-elapsed').textContent).toBe('尚未開始');
+
+    // previewing (not yet confirmed) must not persist a stray "in-progress" workout
+    expect(window.localStorage.getItem('workout_progress')).toBeNull();
+
+    // no auto-load-time unlock attempt anymore - nothing has spoken yet
+    expect(speak).not.toHaveBeenCalled();
+
+    confirmGroupJoin(root);
+
+    // clicking "加入團練" is the real user gesture that unlocks playback
     expect(speak).toHaveBeenCalledTimes(1);
   });
 
-  it('auto-loads the workout and starts playing immediately when FTP is already set and startTime is already in the past', async () => {
+  it('shows the confirmation banner over the same preview even when startTime is already in the past (with "已進行 X分Y秒" instead of "尚未開始"), and cleanly removes the banner - leaving only the normal execution screen, no leftover confirmation elements - once "加入團練" starts the catch-up playback', async () => {
+    vi.stubGlobal('Worker', RealisticMockWorker);
     window.localStorage.setItem('user_ftp', '250');
     vi.setSystemTime(new Date(2026, 6, 24, 20, 2, 0));
     setUrlSearch('source=TD&source_url=' + encodeURIComponent(TRAINERDAY_URL) + '&startTime=202607242000');
@@ -457,9 +566,16 @@ describe('initPlayerApp: 一鍵開團連結 (group-join link via URL params: sou
 
     const { root } = setup();
     await vi.waitFor(() => {
-      expect(root.querySelector('.player-mount').classList.contains('hidden')).toBe(false);
+      expect(root.querySelector('.group-join-confirm-mount').classList.contains('hidden')).toBe(false);
     });
-    expect(root.querySelector('.waiting-mount').classList.contains('hidden')).toBe(true);
+    expect(root.querySelector('.player-mount').classList.contains('hidden')).toBe(false);
+    expect(root.querySelector('.group-join-confirm-elapsed').textContent).toBe('已進行 2 分鐘');
+
+    confirmGroupJoin(root);
+
+    expect(root.querySelector('.player-mount').classList.contains('hidden')).toBe(false);
+    expect(root.querySelector('.group-join-confirm-mount').classList.contains('hidden')).toBe(true);
+    expect(root.querySelector('.interval-progress').textContent).toContain('進行中');
   });
 
   it('shows the FTP setup prompt (not an immediate fetch) when FTP has never been set on this device', () => {
@@ -506,8 +622,11 @@ describe('initPlayerApp: 一鍵開團連結 (group-join link via URL params: sou
       expect(fetchMock).toHaveBeenCalledTimes(1);
     });
     await vi.waitFor(() => {
-      expect(root.querySelector('.waiting-mount').classList.contains('hidden')).toBe(false);
+      expect(root.querySelector('.group-join-confirm-mount').classList.contains('hidden')).toBe(false);
     });
+
+    confirmGroupJoin(root);
+    expect(root.querySelector('.group-join-waiting-phase').classList.contains('hidden')).toBe(false);
   });
 
   it('does not process the URL params at all when a schedule or in-progress workout is already saved (avoids clobbering existing state)', () => {
@@ -867,7 +986,7 @@ describe('initPlayerApp: 螢幕保持喚醒 (Screen Wake Lock API - avoid the sc
     expect(request).not.toHaveBeenCalled();
   });
 
-  it('acquires a wake lock while on the waiting screen (schedule countdown), before playback has actually started', async () => {
+  it('acquires a wake lock while on the waiting phase (schedule countdown), before playback has actually started', async () => {
     const { request } = stubWakeLock();
     const { root } = setup();
 
@@ -875,11 +994,11 @@ describe('initPlayerApp: 螢幕保持喚醒 (Screen Wake Lock API - avoid the sc
     submitPasteText(root, '5m 60%');
     await Promise.resolve();
 
-    expect(root.querySelector('.waiting-mount').classList.contains('hidden')).toBe(false);
+    expect(root.querySelector('.group-join-confirm-mount').classList.contains('hidden')).toBe(false);
     expect(request).toHaveBeenCalledWith('screen');
   });
 
-  it('releases the wake lock when the schedule is cancelled from the waiting screen', async () => {
+  it('releases the wake lock when the schedule is cancelled from the waiting phase', async () => {
     const { request, locks } = stubWakeLock();
     const { root } = setup();
 
@@ -888,7 +1007,7 @@ describe('initPlayerApp: 螢幕保持喚醒 (Screen Wake Lock API - avoid the sc
     await Promise.resolve();
     expect(request).toHaveBeenCalledTimes(1);
 
-    root.querySelector('.btn-cancel-schedule').click();
+    root.querySelector('.btn-group-join-cancel').click();
 
     expect(locks[0].release).toHaveBeenCalledTimes(1);
   });

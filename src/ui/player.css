@@ -759,19 +759,29 @@ body {
   font-size: 0.9rem;
 }
 
-/* 團體訓練排程的等待畫面：設定了開始時間、時間還沒到時顯示，取代平常的執行頁 */
-.waiting-screen {
-  max-width: 480px;
-  margin: 0 auto;
-  padding: 3rem 1.25rem;
+/* 團體訓練排程的「確認/等待」橫幅：一頁式呈現（規格：減少「確認/等待」跟
+   課表執行畫面切換時的跳動感），疊在執行頁（.player，見 renderPlayer.js）
+   上方一起顯示，不是獨立的一個全螢幕畫面——寬度跟 .player 對齊、卡片式
+   邊框跟執行頁本身的卡片區塊視覺語言一致，讓兩者感覺是同一頁的上下兩段，
+   不是兩個分開的畫面。課表名稱／總時長／組數已經由下面的執行頁顯示，這裡
+   不重複，只放橫幅特有的內容：邀請標籤、排定開始時間、已經過去多久、確認
+   按鈕（開團連結專屬的確認階段），或即時倒數／取消排程（等待階段，三條
+   排程路徑共用，見 groupJoinConfirmView.js 的說明）。 */
+.group-join-confirm-banner {
+  max-width: 720px;
+  margin: 1.25rem auto 0;
+  padding: 1.25rem 1.5rem;
+  border-radius: 1.25rem;
+  border: 1px solid var(--accent);
+  background: var(--card-bg);
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 1rem;
+  gap: 0.5rem;
   text-align: center;
 }
 
-.waiting-label {
+.group-join-confirm-label {
   margin: 0;
   color: var(--accent);
   font-weight: 700;
@@ -780,37 +790,58 @@ body {
   font-size: 0.85rem;
 }
 
-.waiting-workout-name {
-  margin: 0;
-  font-size: 1.5rem;
-  font-weight: 800;
+.group-join-confirm-phase,
+.group-join-waiting-phase {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
 }
 
-.waiting-workout-meta {
+/* .hidden 跟上面這條規則specificity 相同（都是單一 class selector），純靠
+   後面覆蓋前面——這裡明確補上「兩個 class 同時存在時一定要收起來」的規則，
+   不依賴規則在檔案裡的先後順序（規則順序調換很容易不小心讓 .hidden 失效，
+   之前就因為這樣讓確認階段跟等待階段的內容同時顯示過）。 */
+.group-join-confirm-phase.hidden,
+.group-join-waiting-phase.hidden {
+  display: none;
+}
+
+.group-join-confirm-start-time,
+.group-join-confirm-elapsed {
   margin: 0;
   color: var(--text-secondary);
   font-size: 0.95rem;
 }
 
-.waiting-countdown {
+.btn-group-join-confirm,
+.btn-group-join-cancel {
+  margin-top: 0.5rem;
   width: 100%;
-  padding: 1.5rem;
-  border-radius: 1.25rem;
+}
+
+/* 等待階段的即時倒數：卡片式數字，疊在確認橫幅裡，尺寸縮小一點，避免橫幅
+   比底下的執行頁預覽還顯眼。 */
+.group-join-waiting-countdown {
+  width: 100%;
+  padding: 0.75rem;
+  border-radius: 1rem;
   border: 1px solid var(--card-border);
-  background: var(--card-bg);
-  font-size: 1.75rem;
+  background: var(--input-bg-soft);
+  font-size: 1.25rem;
   font-weight: 800;
   font-variant-numeric: tabular-nums;
 }
 
-.waiting-warning {
+.group-join-waiting-warning {
   margin: 0;
-  padding: 0.85rem 1rem;
-  border-radius: 0.75rem;
+  padding: 0.65rem 0.85rem;
+  border-radius: 0.65rem;
   border: 1px solid var(--warning-border);
   background: var(--warning-bg);
   color: var(--warning-text);
-  font-size: 0.85rem;
+  font-size: 0.8rem;
   text-align: left;
 }
 

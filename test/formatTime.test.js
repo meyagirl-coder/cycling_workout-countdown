@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { formatMinuteSecondLabel } from '../src/ui/formatTime.js';
+import { formatDateTimeLabel, formatMinuteSecondLabel } from '../src/ui/formatTime.js';
 
 describe('formatMinuteSecondLabel', () => {
   it('formats a whole number of minutes as "X 分鐘", matching the "下一組：5 分鐘 · 75% FTP" example', () => {
@@ -24,5 +24,15 @@ describe('formatMinuteSecondLabel', () => {
 
   it('clamps a negative value to 0 seconds', () => {
     expect(formatMinuteSecondLabel(-5)).toBe('0 秒');
+  });
+});
+
+describe('formatDateTimeLabel', () => {
+  it('formats a Date as "yyyy/MM/dd HH:mm", used by both the schedule-status display and the group-join confirmation screen', () => {
+    expect(formatDateTimeLabel(new Date(2026, 6, 24, 20, 0))).toBe('2026/07/24 20:00');
+  });
+
+  it('zero-pads single-digit month/day/hour/minute', () => {
+    expect(formatDateTimeLabel(new Date(2026, 0, 5, 9, 3))).toBe('2026/01/05 09:03');
   });
 });

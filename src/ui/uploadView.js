@@ -1,4 +1,5 @@
 import { VALID_ALERT_MODES } from './alertModeStore.js';
+import { formatDateTimeLabel } from './formatTime.js';
 import { buildGroupJoinLink } from './groupJoinLinkParser.js';
 import { getLocalDateString } from '../utils/localDate.js';
 import { parseScheduledStartTimeInput } from './scheduledStartTimeParser.js';
@@ -378,7 +379,7 @@ export function createUploadView(rootEl, handlers) {
   });
 
   function showScheduleStatus(date) {
-    scheduleStatusText.textContent = formatScheduleStatusText(date);
+    scheduleStatusText.textContent = formatDateTimeLabel(date);
     scheduleStatus.classList.remove('hidden');
     scheduleInput.disabled = true;
     scheduleSubmitBtn.disabled = true;
@@ -482,14 +483,4 @@ export function createUploadView(rootEl, handlers) {
       hideScheduleStatus();
     },
   };
-}
-
-/** 「已設定開始時間」狀態顯示用的人類可讀格式，例如 "2026/07/24 20:00" */
-function formatScheduleStatusText(date) {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  const hours = String(date.getHours()).padStart(2, '0');
-  const minutes = String(date.getMinutes()).padStart(2, '0');
-  return `${year}/${month}/${day} ${hours}:${minutes}`;
 }
