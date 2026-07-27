@@ -411,7 +411,7 @@ describe('initPlayerApp: 一鍵開團連結 (group-join link via URL params: sou
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it('auto-loads the workout, shows the join-confirmation screen (not the waiting screen directly), and only enters the waiting screen after "加入團練" is clicked', async () => {
+  it('auto-loads the workout, shows the join-confirmation screen (not the classic waiting screen), and only switches the same banner to its "等待階段" (still one page, no waiting-mount switch) after "加入團練" is clicked', async () => {
     window.localStorage.setItem('user_ftp', '250');
     vi.setSystemTime(new Date(2026, 6, 24, 19, 0, 0));
     setUrlSearch('source=TD&source_url=' + encodeURIComponent(TRAINERDAY_URL) + '&startTime=202607242000');
@@ -425,14 +425,23 @@ describe('initPlayerApp: 一鍵開團連結 (group-join link via URL params: sou
       expect(root.querySelector('.group-join-confirm-mount').classList.contains('hidden')).toBe(false);
     });
 
-    // still not in the waiting screen - awaiting the user's explicit confirmation
+    // still in the confirm phase - awaiting the user's explicit confirmation
     expect(root.querySelector('.waiting-mount').classList.contains('hidden')).toBe(true);
+    expect(root.querySelector('.group-join-confirm-phase').classList.contains('hidden')).toBe(false);
     expect(root.querySelector('.upload-ftp-prompt').classList.contains('hidden')).toBe(true);
     expect(fetchMock.mock.calls[0][0]).toContain(encodeURIComponent(TRAINERDAY_URL));
 
     confirmGroupJoin(root);
-    expect(root.querySelector('.waiting-mount').classList.contains('hidden')).toBe(false);
-    expect(root.querySelector('.group-join-confirm-mount').classList.contains('hidden')).toBe(true);
+
+    // the classic waiting-mount is never used for this path - the SAME banner
+    // (still visible, still stacked above the player preview) just switches
+    // to its waiting phase
+    expect(root.querySelector('.waiting-mount').classList.contains('hidden')).toBe(true);
+    expect(root.querySelector('.group-join-confirm-mount').classList.contains('hidden')).toBe(false);
+    expect(root.querySelector('.group-join-confirm-phase').classList.contains('hidden')).toBe(true);
+    expect(root.querySelector('.group-join-waiting-phase').classList.contains('hidden')).toBe(false);
+    expect(root.querySelector('.group-join-waiting-countdown').textContent).toContain('距離開始還有');
+    expect(root.querySelector('.player-mount').classList.contains('hidden')).toBe(false);
   });
 
   it('fires the same countdown alerts (voice) through the waiting-screen -> auto-play transition as any other input method (regression check: a real-device report claimed the group-join link is uniquely unreliable for countdown alerts, specifically the waiting-screen -> scheduled auto-play transition; this drives the real engine with fake timers - so it verifies actual event/state wiring, not just that a function was called - without any real wall-clock delay)', async () => {
@@ -469,7 +478,7 @@ describe('initPlayerApp: 一鍵開團連結 (group-join link via URL params: sou
     // unlockAudioAndSpeechForAutoplay()) - clear it after clicking, so the
     // assertions below only look at real countdown-alert speak() calls.
     confirmGroupJoin(root);
-    expect(root.querySelector('.waiting-mount').classList.contains('hidden')).toBe(false);
+    expect(root.querySelector('.group-join-waiting-phase').classList.contains('hidden')).toBe(false);
     speak.mockClear();
 
     // jump the fake clock past startTime - scheduleRuntime's setInterval
@@ -477,6 +486,9 @@ describe('initPlayerApp: 一鍵開團連結 (group-join link via URL params: sou
     vi.advanceTimersByTime(61000);
     expect(root.querySelector('.player-mount').classList.contains('hidden')).toBe(false);
     expect(root.querySelector('.interval-progress').textContent).toContain('進行中');
+    // schedule fired - the confirmation banner (waiting phase included) is
+    // fully gone now, no leftover elements
+    expect(root.querySelector('.group-join-confirm-mount').classList.contains('hidden')).toBe(true);
 
     // VALID_WORKOUT_STRUCTURE_TEXT is "5 min @ 50% (50w)" - a single 300s
     // interval. Advance to just before the last 10 seconds, then cross it.
@@ -607,7 +619,8 @@ describe('initPlayerApp: 一鍵開團連結 (group-join link via URL params: sou
     });
 
     confirmGroupJoin(root);
-    expect(root.querySelector('.waiting-mount').classList.contains('hidden')).toBe(false);
+    expect(root.querySelector('.waiting-mount').classList.contains('hidden')).toBe(true);
+    expect(root.querySelector('.group-join-waiting-phase').classList.contains('hidden')).toBe(false);
   });
 
   it('does not process the URL params at all when a schedule or in-progress workout is already saved (avoids clobbering existing state)', () => {

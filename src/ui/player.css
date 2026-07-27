@@ -845,6 +845,24 @@ body {
   font-size: 0.85rem;
 }
 
+.group-join-confirm-phase,
+.group-join-waiting-phase {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+/* .hidden 跟上面這條規則specificity 相同（都是單一 class selector），純靠
+   後面覆蓋前面——這裡明確補上「兩個 class 同時存在時一定要收起來」的規則，
+   不依賴規則在檔案裡的先後順序（規則順序調換很容易不小心讓 .hidden 失效，
+   之前就因為這樣讓確認階段跟等待階段的內容同時顯示過）。 */
+.group-join-confirm-phase.hidden,
+.group-join-waiting-phase.hidden {
+  display: none;
+}
+
 .group-join-confirm-start-time,
 .group-join-confirm-elapsed {
   margin: 0;
@@ -852,9 +870,23 @@ body {
   font-size: 0.95rem;
 }
 
-.btn-group-join-confirm {
+.btn-group-join-confirm,
+.btn-group-join-cancel {
   margin-top: 0.5rem;
   width: 100%;
+}
+
+/* 等待階段的即時倒數：跟 .waiting-countdown 同一套視覺語言（卡片式數字），
+   但這裡疊在確認橫幅裡，尺寸縮小一點，避免橫幅比底下的執行頁預覽還顯眼。 */
+.group-join-waiting-countdown {
+  width: 100%;
+  padding: 0.75rem;
+  border-radius: 1rem;
+  border: 1px solid var(--card-border);
+  background: var(--input-bg-soft);
+  font-size: 1.25rem;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
 }
 
 /* 三層文字大小比例（瓦數／FTP%／開始按鈕＝第 1 級，經過時間＝第 2 級，

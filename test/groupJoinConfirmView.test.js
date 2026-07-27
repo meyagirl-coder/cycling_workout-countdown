@@ -4,7 +4,7 @@ import { createGroupJoinConfirmView } from '../src/ui/groupJoinConfirmView.js';
 function setup(handlerOverrides = {}) {
   document.body.innerHTML = '<div id="root"></div>';
   const root = document.getElementById('root');
-  const handlers = { onConfirmJoin: vi.fn(), ...handlerOverrides };
+  const handlers = { onConfirmJoin: vi.fn(), onCancelSchedule: vi.fn(), ...handlerOverrides };
   const view = createGroupJoinConfirmView(root, handlers);
   return { root, handlers, view };
 }
@@ -45,5 +45,33 @@ describe('createGroupJoinConfirmView', () => {
     const { root, handlers } = setup();
     root.querySelector('.btn-group-join-confirm').click();
     expect(handlers.onConfirmJoin).toHaveBeenCalledTimes(1);
+  });
+
+  it('showWaitingPhase() switches the same banner (not a separate element) from the confirm phase to the waiting phase, changing the label and swapping which sub-section is visible (one-page, no jump - see playerApp.js regression notes)', () => {
+    const { root, view } = setup();
+    view.update(new Date(2026, 6, 24, 20, 0).getTime());
+    expect(root.querySelector('.group-join-confirm-label').textContent).toBe('團體訓練邀請');
+    expect(root.querySelector('.group-join-confirm-phase').classList.contains('hidden')).toBe(false);
+    expect(root.querySelector('.group-join-waiting-phase').classList.contains('hidden')).toBe(true);
+
+    view.showWaitingPhase();
+
+    expect(root.querySelector('.group-join-confirm-label').textContent).toBe('團體訓練排程中');
+    expect(root.querySelector('.group-join-confirm-phase').classList.contains('hidden')).toBe(true);
+    expect(root.querySelector('.group-join-waiting-phase').classList.contains('hidden')).toBe(false);
+  });
+
+  it('updateWaitingCountdown() shows "距離開始還有..." using the same format as the classic waiting screen', () => {
+    const { root, view } = setup();
+    view.showWaitingPhase();
+    view.updateWaitingCountdown(90 * 1000);
+
+    expect(root.querySelector('.group-join-waiting-countdown').textContent).toBe('距離開始還有 1分30秒');
+  });
+
+  it('calls onCancelSchedule when the "取消排程" button (waiting phase) is clicked', () => {
+    const { root, handlers } = setup();
+    root.querySelector('.btn-group-join-cancel').click();
+    expect(handlers.onCancelSchedule).toHaveBeenCalledTimes(1);
   });
 });

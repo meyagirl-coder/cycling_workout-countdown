@@ -185,6 +185,7 @@ export function initPlayerApp(rootEl) {
 
   const groupJoinConfirmView = createGroupJoinConfirmView(groupJoinConfirmMount, {
     onConfirmJoin: () => handleGroupJoinConfirm(),
+    onCancelSchedule: () => handleCancelSchedule(),
   });
 
   const playerView = createPlayerView(playerMount, {
@@ -377,11 +378,13 @@ export function initPlayerApp(rootEl) {
    * 用的是同一套機制——確保後續自動觸發（排程時間到、或立刻追上進度播放）
    * 的語音／嗶聲能正常播放，不會被瀏覽器擋掉。
    *
-   * 只需要把確認橫幅收起來：下面的執行頁預覽（showGroupJoinConfirmation()
-   * 已經渲染好）本來就一直顯示著，armSchedule() 接下來不管是切到等待畫面
-   * 還是讓執行頁動起來（restore＋play 追上進度），都不會留下任何確認橫幅
-   * 的殘留元素——「課表已結束」這種例外情況由 startScheduledWorkoutNow()
-   * 自己負責切回上傳畫面顯示錯誤訊息，這裡不用特別處理。
+   * 這裡不呼叫共用的 armSchedule()（那個函式時間還沒到時會呼叫
+   * enterWaitingScreen()，切到完全獨立的等待畫面，跟這裡的一頁式預覽是
+   * 兩個不同版面，會有跳動感）——改成自己判斷：已經過去就直接把確認橫幅
+   * 收起來、讓底下已經渲染好的執行頁動起來（startScheduledWorkoutNow()）；
+   * 還沒到就呼叫 enterGroupJoinWaitingPhase()，讓同一個橫幅容器切換成
+   * 「等待階段」內容（即時倒數＋取消排程），執行頁預覽維持不變，兩個階段
+   * 之間也是無縫的（規格：讓「還沒開始」的情境也完全無縫）。
    */
   function handleGroupJoinConfirm() {
     if (!groupJoinAwaitingConfirmation) return;
@@ -389,10 +392,38 @@ export function initPlayerApp(rootEl) {
     groupJoinAwaitingConfirmation = null;
 
     unlockAudioAndSpeechForAutoplay();
-    groupJoinConfirmMount.classList.add('hidden');
-
     saveSchedule(workout, startTimestamp);
-    armSchedule(workout, startTimestamp);
+
+    if (startTimestamp <= Date.now()) {
+      groupJoinConfirmMount.classList.add('hidden');
+      startScheduledWorkoutNow(workout, startTimestamp);
+    } else {
+      enterGroupJoinWaitingPhase(workout, startTimestamp);
+    }
+  }
+
+  /**
+   * 排定時間還沒到：把「加入確認」橫幅切成「等待階段」內容（同一個橫幅
+   * 容器，不是切到 waitingMount 那個獨立畫面），執行頁預覽維持顯示不變。
+   * 時間到（onReached）呼叫 startScheduledWorkoutNow()——那裡面的
+   * switchToPlayerScreen() 會把 groupJoinConfirmMount 整段收起來，這個等待
+   * 階段的倒數／取消排程按鈕不會殘留。
+   */
+  function enterGroupJoinWaitingPhase(workout, startTimestamp) {
+    stopScheduleRuntimeIfRunning();
+    groupJoinConfirmView.showWaitingPhase();
+    groupJoinConfirmView.updateWaitingCountdown(startTimestamp - Date.now());
+    // 等待排程開始的倒數也要保持螢幕常亮，跟 enterWaitingScreen() 的理由
+    // 一樣——時間到轉進去執行頁開始播放時，client.onUpdate() 收到 running
+    // 狀態會接手繼續保持常亮，中間不會有螢幕被鎖定的空檔。
+    wakeLockManager.enable();
+
+    scheduleRuntime = createScheduledStartRuntime({
+      startTimestamp,
+      onTick: (remainingMs) => groupJoinConfirmView.updateWaitingCountdown(remainingMs),
+      onReached: () => startScheduledWorkoutNow(workout, startTimestamp),
+    });
+    scheduleRuntime.start();
   }
 
   /**
@@ -595,9 +626,15 @@ export function initPlayerApp(rootEl) {
     clearSchedule();
     waitingMount.classList.add('hidden');
     groupJoinConfirmMount.classList.add('hidden');
+    // 開團連結的一頁式流程裡，等待階段時 playerMount 是預覽用一直顯示著的
+    // （見 enterGroupJoinWaitingPhase()）——取消排程要連同這個預覽一起收掉，
+    // 不然會殘留在畫面上。手動「設定開始時間」流程走到這裡時 playerMount
+    // 本來就是隱藏的，這裡多加一行不影響那條路徑。
+    playerMount.classList.add('hidden');
     uploadMount.classList.remove('hidden');
     appBanner.show();
     uploadView.clearError();
+    currentWorkout = null;
     // 取消排程，回到上傳畫面，不需要再保持螢幕常亮。
     wakeLockManager.disable();
   }
