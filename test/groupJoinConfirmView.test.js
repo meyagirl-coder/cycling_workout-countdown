@@ -1,19 +1,5 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createGroupJoinConfirmView } from '../src/ui/groupJoinConfirmView.js';
-
-function makeWorkout(overrides = {}) {
-  return {
-    id: 'group-join-confirm-view-test-workout',
-    name: 'Group Ride',
-    source: 'paste-trainerday-structure',
-    totalDuration: 1800,
-    intervals: [
-      { type: 'steady', duration: 900, powerStart: 60, powerEnd: 60, cadence: null },
-      { type: 'steady', duration: 900, powerStart: 80, powerEnd: 80, cadence: null },
-    ],
-    ...overrides,
-  };
-}
 
 function setup(handlerOverrides = {}) {
   document.body.innerHTML = '<div id="root"></div>';
@@ -24,20 +10,35 @@ function setup(handlerOverrides = {}) {
 }
 
 describe('createGroupJoinConfirmView', () => {
-  it('shows the workout name, total duration, and interval count', () => {
-    const { root, view } = setup();
-    view.update(makeWorkout(), Date.now() + 60000);
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(2026, 6, 24, 19, 50, 0));
+  });
 
-    expect(root.querySelector('.group-join-confirm-workout-name').textContent).toBe('Group Ride');
-    expect(root.querySelector('.group-join-confirm-workout-meta').textContent).toContain('30:00');
-    expect(root.querySelector('.group-join-confirm-workout-meta').textContent).toContain('2 組');
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it('shows the scheduled start time in a human-readable "yyyy/MM/dd HH:mm" format', () => {
     const { root, view } = setup();
-    view.update(makeWorkout(), new Date(2026, 6, 24, 20, 0).getTime());
+    view.update(new Date(2026, 6, 24, 20, 0).getTime());
 
     expect(root.querySelector('.group-join-confirm-start-time').textContent).toContain('2026/07/24 20:00');
+  });
+
+  it('shows "尚未開始" when the scheduled start time is still in the future', () => {
+    const { root, view } = setup();
+    view.update(new Date(2026, 6, 24, 20, 0).getTime()); // 10 minutes from "now"
+
+    expect(root.querySelector('.group-join-confirm-elapsed').textContent).toBe('尚未開始');
+  });
+
+  it('shows "已進行 X分Y秒" when the scheduled start time has already passed, so the user knows joining will catch up to the live position rather than starting from 0 (regression check for the confirm-then-catch-up flow)', () => {
+    const { root, view } = setup();
+    const startTimestamp = new Date(2026, 6, 24, 19, 50, 0).getTime() - (2 * 60 + 10) * 1000; // 2m10s ago
+    view.update(startTimestamp);
+
+    expect(root.querySelector('.group-join-confirm-elapsed').textContent).toBe('已進行 2 分 10 秒');
   });
 
   it('calls onConfirmJoin when the "加入團練" button is clicked', () => {

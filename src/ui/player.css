@@ -814,17 +814,25 @@ body {
   text-align: left;
 }
 
-/* 「一鍵開團連結」的加入確認畫面：跟 .waiting-screen 共用同一套視覺語言
-   （置中、卡片式資訊），差別是這裡多一顆「加入團練」按鈕——按下當下才是
-   真正的使用者互動，用來解鎖自動播放權限（見 groupJoinConfirmView.js）。 */
-.group-join-confirm-screen {
-  max-width: 480px;
-  margin: 0 auto;
-  padding: 3rem 1.25rem;
+/* 「一鍵開團連結」的加入確認橫幅：一頁式呈現（規格：減少確認畫面跟課表
+   執行畫面切換時的跳動感），疊在執行頁（.player，見 renderPlayer.js）
+   上方一起顯示，不是獨立的一個全螢幕畫面——寬度跟 .player 對齊、卡片式
+   邊框跟執行頁本身的卡片區塊（例如 .waiting-countdown）視覺語言一致，
+   讓兩者感覺是同一頁的上下兩段，不是兩個分開的畫面。課表名稱／總時長／
+   組數已經由下面的執行頁顯示，這裡不重複，只放橫幅特有的內容：邀請
+   標籤、排定開始時間、已經過去多久、確認按鈕（見 groupJoinConfirmView.js
+   的說明）。 */
+.group-join-confirm-banner {
+  max-width: 720px;
+  margin: 1.25rem auto 0;
+  padding: 1.25rem 1.5rem;
+  border-radius: 1.25rem;
+  border: 1px solid var(--accent);
+  background: var(--card-bg);
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 1rem;
+  gap: 0.5rem;
   text-align: center;
 }
 
@@ -837,14 +845,8 @@ body {
   font-size: 0.85rem;
 }
 
-.group-join-confirm-workout-name {
-  margin: 0;
-  font-size: 1.5rem;
-  font-weight: 800;
-}
-
-.group-join-confirm-workout-meta,
-.group-join-confirm-start-time {
+.group-join-confirm-start-time,
+.group-join-confirm-elapsed {
   margin: 0;
   color: var(--text-secondary);
   font-size: 0.95rem;

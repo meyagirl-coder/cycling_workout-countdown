@@ -270,7 +270,14 @@ export function initPlayerApp(rootEl) {
     // 播放中途出錯，後續提示全部消失」的說明），這裡的存檔呼叫也要有一樣
     // 的隔離：任何一步的失敗都不該拖累其他步驟。
     playerView.update(currentWorkout, state, currentFtp);
-    saveWorkoutProgressThrottled(currentWorkout, state);
+    // 開團連結還在等使用者按「加入團練」確認的預覽階段（見
+    // showGroupJoinConfirmation()）不存進度：這時候只是先把執行頁畫面渲染
+    // 出來給使用者看，使用者還沒有真的確認加入，不該留下一筆「進行中課表」
+    // 的存檔——不然使用者這時候直接關掉分頁，下次開機會誤把這份還沒確認過
+    // 的課表當成正在進行中的課表復原回來。
+    if (!groupJoinAwaitingConfirmation) {
+      saveWorkoutProgressThrottled(currentWorkout, state);
+    }
     handleTimerEvents(events, {
       workout: currentWorkout,
       state,
@@ -338,27 +345,43 @@ export function initPlayerApp(rootEl) {
    * 組數／排定開始時間 ＋「加入團練」按鈕），不直接套用排程——見
    * handleGroupJoinConfirm()、groupJoinConfirmView.js 的說明。
    */
+  /**
+   * 一頁式呈現（規格：減少確認畫面跟課表執行畫面切換時的跳動感）：確認
+   * 橫幅（groupJoinConfirmMount）疊在執行頁（playerMount）上方一起顯示，
+   * 不是切到另一個獨立畫面——這裡先呼叫 client.init(workout) 讓執行頁把
+   * 時間軸／下一組資訊等先渲染成「尚未開始」的預覽狀態，使用者按下「加入
+   * 團練」前就能先看到完整課表樣貌。按下確認後（handleGroupJoinConfirm()）
+   * 只需要把這個橫幅收起來，執行頁本身完全不用重新渲染或切換，沒有殘留
+   * 也沒有跳動感。
+   *
+   * 這個預覽階段還沒有真的「確認加入」，client.onUpdate() 裡刻意不會把這個
+   * idle 狀態存進 workoutProgressStore.js（見該處判斷），避免使用者還沒
+   * 按確認就關閉分頁，下次開機被誤復原成「進行中」的課表。
+   */
   function showGroupJoinConfirmation(workout, startTimestamp) {
     groupJoinAwaitingConfirmation = { workout, startTimestamp };
+    currentWorkout = workout;
+    client.init(workout);
     appBanner.hide();
     uploadMount.classList.add('hidden');
     waitingMount.classList.add('hidden');
-    playerMount.classList.add('hidden');
+    playerMount.classList.remove('hidden');
     groupJoinConfirmMount.classList.remove('hidden');
-    groupJoinConfirmView.update(workout, startTimestamp);
+    groupJoinConfirmView.update(startTimestamp);
   }
 
   /**
-   * 「加入確認」畫面按下「加入團練」：這個 click handler 全程同步呼叫到這裡，
+   * 「加入確認」橫幅按下「加入團練」：這個 click handler 全程同步呼叫到這裡，
    * 藉此在使用者互動當下解鎖瀏覽器的自動播放權限
    * （unlockAudioAndSpeechForAutoplay()），跟 handleScheduledStartTimeSet()
    * 用的是同一套機制——確保後續自動觸發（排程時間到、或立刻追上進度播放）
    * 的語音／嗶聲能正常播放，不會被瀏覽器擋掉。
    *
-   * 解鎖之後先切回上傳畫面（預設狀態）：armSchedule() 多數情況會馬上再切到
-   * 等待畫面或執行頁（兩者都會自己把 uploadMount 蓋掉），只有「課表已結束」
-   * 這種例外情況會停留在上傳畫面顯示錯誤訊息，跟手動「設定開始時間」流程的
-   * 錯誤處理方式一致（見 startScheduledWorkoutNow()）。
+   * 只需要把確認橫幅收起來：下面的執行頁預覽（showGroupJoinConfirmation()
+   * 已經渲染好）本來就一直顯示著，armSchedule() 接下來不管是切到等待畫面
+   * 還是讓執行頁動起來（restore＋play 追上進度），都不會留下任何確認橫幅
+   * 的殘留元素——「課表已結束」這種例外情況由 startScheduledWorkoutNow()
+   * 自己負責切回上傳畫面顯示錯誤訊息，這裡不用特別處理。
    */
   function handleGroupJoinConfirm() {
     if (!groupJoinAwaitingConfirmation) return;
@@ -366,10 +389,7 @@ export function initPlayerApp(rootEl) {
     groupJoinAwaitingConfirmation = null;
 
     unlockAudioAndSpeechForAutoplay();
-
     groupJoinConfirmMount.classList.add('hidden');
-    uploadMount.classList.remove('hidden');
-    appBanner.show();
 
     saveSchedule(workout, startTimestamp);
     armSchedule(workout, startTimestamp);
@@ -438,6 +458,15 @@ export function initPlayerApp(rootEl) {
 
     const elapsedSeconds = Math.max(0, (Date.now() - startTimestamp) / 1000);
     if (elapsedSeconds >= workout.totalDuration) {
+      // 呼叫端可能是從執行頁的開團確認橫幅（playerMount 這時已經顯示著預覽）
+      // 過來的，不是原本手動排程流程假設的「還停在上傳畫面」——這裡自己切回
+      // 上傳畫面顯示錯誤訊息，不依賴呼叫端事先切好畫面。
+      playerMount.classList.add('hidden');
+      waitingMount.classList.add('hidden');
+      groupJoinConfirmMount.classList.add('hidden');
+      uploadMount.classList.remove('hidden');
+      appBanner.show();
+      currentWorkout = null;
       uploadView.showError(
         `課表已結束：設定的開始時間已經過去 ${formatMinuteSecondLabel(elapsedSeconds)}，超過這份課表 ${formatMinuteSecondLabel(workout.totalDuration)} 的總時長，請重新設定開始時間，或直接手動開始播放。`
       );

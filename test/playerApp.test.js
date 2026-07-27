@@ -490,7 +490,8 @@ describe('initPlayerApp: 一鍵開團連結 (group-join link via URL params: sou
     expect(spokenTexts).toContain('1');
   });
 
-  it('shows a join-confirmation screen with the workout name/duration/interval count and the scheduled start time, without unlocking audio yet (regression: the original "just try to unlock automatically on page load, no confirmation tap" approach was real-device-tested and confirmed unreliable - iOS Safari/Chrome stayed completely silent since there is no user gesture on this auto-load path)', async () => {
+  it('shows a one-page layout - the confirmation banner stacked above an already-rendered preview of the execution screen (workout name/duration/interval count via the real player view) - and the scheduled start time, without unlocking audio yet (regression: the original "just try to unlock automatically on page load, no confirmation tap" approach was real-device-tested and confirmed unreliable - iOS Safari/Chrome stayed completely silent since there is no user gesture on this auto-load path)', async () => {
+    vi.stubGlobal('Worker', RealisticMockWorker);
     window.localStorage.setItem('user_ftp', '250');
     vi.setSystemTime(new Date(2026, 6, 24, 19, 0, 0));
     setUrlSearch('source=TD&source_url=' + encodeURIComponent(TRAINERDAY_URL) + '&startTime=202607242000');
@@ -512,10 +513,20 @@ describe('initPlayerApp: 一鍵開團連結 (group-join link via URL params: sou
       expect(root.querySelector('.group-join-confirm-mount').classList.contains('hidden')).toBe(false);
     });
 
-    // VALID_WORKOUT_STRUCTURE_TEXT is "5 min @ 50% (50w)" -> a single 300s interval
-    expect(root.querySelector('.group-join-confirm-workout-meta').textContent).toContain('5:00');
-    expect(root.querySelector('.group-join-confirm-workout-meta').textContent).toContain('1 組');
+    // the confirmation banner is stacked above an already-visible player-screen
+    // preview, not a separate full-screen view - both are visible at once
+    expect(root.querySelector('.player-mount').classList.contains('hidden')).toBe(false);
+    expect(root.querySelector('.waiting-mount').classList.contains('hidden')).toBe(true);
+
+    // VALID_WORKOUT_STRUCTURE_TEXT is "5 min @ 50% (50w)" -> a single 300s interval,
+    // shown by the underlying player preview itself (idle/"尚未開始", not the banner)
+    expect(root.querySelector('.total-duration').textContent).toContain('5:00');
+    expect(root.querySelector('.interval-progress').textContent).toContain('尚未開始');
     expect(root.querySelector('.group-join-confirm-start-time').textContent).toContain('2026/07/24 20:00');
+    expect(root.querySelector('.group-join-confirm-elapsed').textContent).toBe('尚未開始');
+
+    // previewing (not yet confirmed) must not persist a stray "in-progress" workout
+    expect(window.localStorage.getItem('workout_progress')).toBeNull();
 
     // no auto-load-time unlock attempt anymore - nothing has spoken yet
     expect(speak).not.toHaveBeenCalled();
@@ -526,7 +537,8 @@ describe('initPlayerApp: 一鍵開團連結 (group-join link via URL params: sou
     expect(speak).toHaveBeenCalledTimes(1);
   });
 
-  it('shows the join-confirmation screen even when startTime is already in the past, and only starts playing immediately (catch-up) after "加入團練" is clicked', async () => {
+  it('shows the confirmation banner over the same preview even when startTime is already in the past (with "已進行 X分Y秒" instead of "尚未開始"), and cleanly removes the banner - leaving only the normal execution screen, no leftover confirmation elements - once "加入團練" starts the catch-up playback', async () => {
+    vi.stubGlobal('Worker', RealisticMockWorker);
     window.localStorage.setItem('user_ftp', '250');
     vi.setSystemTime(new Date(2026, 6, 24, 20, 2, 0));
     setUrlSearch('source=TD&source_url=' + encodeURIComponent(TRAINERDAY_URL) + '&startTime=202607242000');
@@ -536,13 +548,15 @@ describe('initPlayerApp: 一鍵開團連結 (group-join link via URL params: sou
     await vi.waitFor(() => {
       expect(root.querySelector('.group-join-confirm-mount').classList.contains('hidden')).toBe(false);
     });
-    expect(root.querySelector('.player-mount').classList.contains('hidden')).toBe(true);
+    expect(root.querySelector('.player-mount').classList.contains('hidden')).toBe(false);
+    expect(root.querySelector('.group-join-confirm-elapsed').textContent).toBe('已進行 2 分鐘');
 
     confirmGroupJoin(root);
 
     expect(root.querySelector('.player-mount').classList.contains('hidden')).toBe(false);
     expect(root.querySelector('.waiting-mount').classList.contains('hidden')).toBe(true);
     expect(root.querySelector('.group-join-confirm-mount').classList.contains('hidden')).toBe(true);
+    expect(root.querySelector('.interval-progress').textContent).toContain('進行中');
   });
 
   it('shows the FTP setup prompt (not an immediate fetch) when FTP has never been set on this device', () => {
