@@ -814,6 +814,47 @@ body {
   text-align: left;
 }
 
+/* 「一鍵開團連結」的加入確認畫面：跟 .waiting-screen 共用同一套視覺語言
+   （置中、卡片式資訊），差別是這裡多一顆「加入團練」按鈕——按下當下才是
+   真正的使用者互動，用來解鎖自動播放權限（見 groupJoinConfirmView.js）。 */
+.group-join-confirm-screen {
+  max-width: 480px;
+  margin: 0 auto;
+  padding: 3rem 1.25rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+  text-align: center;
+}
+
+.group-join-confirm-label {
+  margin: 0;
+  color: var(--accent);
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  font-size: 0.85rem;
+}
+
+.group-join-confirm-workout-name {
+  margin: 0;
+  font-size: 1.5rem;
+  font-weight: 800;
+}
+
+.group-join-confirm-workout-meta,
+.group-join-confirm-start-time {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 0.95rem;
+}
+
+.btn-group-join-confirm {
+  margin-top: 0.5rem;
+  width: 100%;
+}
+
 /* 三層文字大小比例（瓦數／FTP%／開始按鈕＝第 1 級，經過時間＝第 2 級，
    rpm＝第 3 級），統一定義成 CSS 變數放在 .player 這個共同祖先上——
    .status-panel（瓦數／FTP%／經過時間／rpm）跟 .controls（開始按鈕）都是

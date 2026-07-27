@@ -11,6 +11,7 @@ import { handleTimerEvents, playCountdownBeeps, speakCountdownWarning, unlockAud
 import { clearDraftInputs, loadDraftInputs, saveDraftInputs } from './draftInputStore.js';
 import { formatMinuteSecondLabel } from './formatTime.js';
 import { DEFAULT_FTP, loadFtp, saveFtp } from './ftpStore.js';
+import { createGroupJoinConfirmView } from './groupJoinConfirmView.js';
 import { parseGroupJoinParams } from './groupJoinLinkParser.js';
 import { createPlayerView } from './renderPlayer.js';
 import { createScheduledStartRuntime } from './scheduledStartRuntime.js';
@@ -75,10 +76,11 @@ const GROUP_JOIN_DEFAULT_FTP = 100;
  */
 export function initPlayerApp(rootEl) {
   rootEl.innerHTML =
-    '<div class="theme-toggle-mount"></div><div class="app-banner-mount"></div><div class="upload-mount"></div><div class="waiting-mount hidden"></div><div class="player-mount hidden"></div>';
+    '<div class="theme-toggle-mount"></div><div class="app-banner-mount"></div><div class="upload-mount"></div><div class="group-join-confirm-mount hidden"></div><div class="waiting-mount hidden"></div><div class="player-mount hidden"></div>';
   const themeToggleMount = rootEl.querySelector('.theme-toggle-mount');
   const bannerMount = rootEl.querySelector('.app-banner-mount');
   const uploadMount = rootEl.querySelector('.upload-mount');
+  const groupJoinConfirmMount = rootEl.querySelector('.group-join-confirm-mount');
   const waitingMount = rootEl.querySelector('.waiting-mount');
   const playerMount = rootEl.querySelector('.player-mount');
 
@@ -120,6 +122,20 @@ export function initPlayerApp(rootEl) {
   // 資訊記在這裡，等使用者透過 FTP 欄位輸入或按下「先跳過」解決 FTP 之後
   // 才真正繼續（見 resumePendingGroupJoinIfAny()）。
   let pendingGroupJoin = null;
+
+  // 開團連結解析成功、FTP 也確定好了之後，startGroupJoinFlow() 把排定開始
+  // 時間先記在這裡（還沒有課表可以配對）——跟 pendingScheduledStartTimestamp
+  // 分開判斷，是因為開團連結這條路徑不直接套用排程，而是先切到「加入確認」
+  // 畫面（見 loadWorkout() 裡的判斷、showGroupJoinConfirmation()）。
+  let pendingGroupJoinStartTimestamp = null;
+
+  // 課表下載/解析成功、已經切到「加入確認」畫面時，先把 {workout,
+  // startTimestamp} 記在這裡，等使用者真的按下「加入團練」按鈕
+  // （handleGroupJoinConfirm()）才真正呼叫 armSchedule()——按鈕點擊的當下
+  // 才是真正的使用者互動，藉此解鎖瀏覽器的自動播放權限（規格：解決開團連結
+  // 在 iOS Safari/Chrome 上完全無聲的問題，見 groupJoinConfirmView.js 的
+  // 說明）。
+  let groupJoinAwaitingConfirmation = null;
 
   // saveWorkoutProgressThrottled() 用來判斷「這一整秒存過了沒」，見下方定義。
   let lastSavedProgressElapsedSecond = null;
@@ -167,6 +183,10 @@ export function initPlayerApp(rootEl) {
     onCancelSchedule: () => handleCancelSchedule(),
   });
 
+  const groupJoinConfirmView = createGroupJoinConfirmView(groupJoinConfirmMount, {
+    onConfirmJoin: () => handleGroupJoinConfirm(),
+  });
+
   const playerView = createPlayerView(playerMount, {
     onPlayPause: () => {
       if (latestState && latestState.status === 'running') {
@@ -196,6 +216,7 @@ export function initPlayerApp(rootEl) {
   function returnToHome() {
     playerMount.classList.add('hidden');
     waitingMount.classList.add('hidden');
+    groupJoinConfirmMount.classList.add('hidden');
     uploadMount.classList.remove('hidden');
     appBanner.show();
     uploadView.clearError();
@@ -278,6 +299,10 @@ export function initPlayerApp(rootEl) {
    * 會有值——這時候不直接進執行頁，改成交給團體訓練排程流程判斷（規格：
    * 已經過去就立刻開始播放、還沒到就進等待畫面），不管這份課表是透過哪種
    * 輸入方式載入的都一樣（貼文字／貼網址／上傳 .zwo／intervals.icu）。
+   *
+   * 如果是開團連結載入的（pendingGroupJoinStartTimestamp 由
+   * startGroupJoinFlow() 設定），先切到「加入確認」畫面，不直接套用排程——見
+   * showGroupJoinConfirmation() 的說明。
    */
   function loadWorkout(parseFn, errorPrefix) {
     let workout;
@@ -286,6 +311,13 @@ export function initPlayerApp(rootEl) {
     } catch (err) {
       uploadView.showError(`${errorPrefix}${err.message}`);
       return false;
+    }
+
+    if (pendingGroupJoinStartTimestamp !== null) {
+      const startTimestamp = pendingGroupJoinStartTimestamp;
+      pendingGroupJoinStartTimestamp = null;
+      showGroupJoinConfirmation(workout, startTimestamp);
+      return true;
     }
 
     if (pendingScheduledStartTimestamp !== null) {
@@ -299,6 +331,48 @@ export function initPlayerApp(rootEl) {
 
     switchToPlayerScreen(workout);
     return true;
+  }
+
+  /**
+   * 開團連結的課表下載/解析成功：先切到「加入確認」畫面（課表名稱／總時長／
+   * 組數／排定開始時間 ＋「加入團練」按鈕），不直接套用排程——見
+   * handleGroupJoinConfirm()、groupJoinConfirmView.js 的說明。
+   */
+  function showGroupJoinConfirmation(workout, startTimestamp) {
+    groupJoinAwaitingConfirmation = { workout, startTimestamp };
+    appBanner.hide();
+    uploadMount.classList.add('hidden');
+    waitingMount.classList.add('hidden');
+    playerMount.classList.add('hidden');
+    groupJoinConfirmMount.classList.remove('hidden');
+    groupJoinConfirmView.update(workout, startTimestamp);
+  }
+
+  /**
+   * 「加入確認」畫面按下「加入團練」：這個 click handler 全程同步呼叫到這裡，
+   * 藉此在使用者互動當下解鎖瀏覽器的自動播放權限
+   * （unlockAudioAndSpeechForAutoplay()），跟 handleScheduledStartTimeSet()
+   * 用的是同一套機制——確保後續自動觸發（排程時間到、或立刻追上進度播放）
+   * 的語音／嗶聲能正常播放，不會被瀏覽器擋掉。
+   *
+   * 解鎖之後先切回上傳畫面（預設狀態）：armSchedule() 多數情況會馬上再切到
+   * 等待畫面或執行頁（兩者都會自己把 uploadMount 蓋掉），只有「課表已結束」
+   * 這種例外情況會停留在上傳畫面顯示錯誤訊息，跟手動「設定開始時間」流程的
+   * 錯誤處理方式一致（見 startScheduledWorkoutNow()）。
+   */
+  function handleGroupJoinConfirm() {
+    if (!groupJoinAwaitingConfirmation) return;
+    const { workout, startTimestamp } = groupJoinAwaitingConfirmation;
+    groupJoinAwaitingConfirmation = null;
+
+    unlockAudioAndSpeechForAutoplay();
+
+    groupJoinConfirmMount.classList.add('hidden');
+    uploadMount.classList.remove('hidden');
+    appBanner.show();
+
+    saveSchedule(workout, startTimestamp);
+    armSchedule(workout, startTimestamp);
   }
 
   /**
@@ -319,6 +393,7 @@ export function initPlayerApp(rootEl) {
     }
     appBanner.hide();
     uploadMount.classList.add('hidden');
+    groupJoinConfirmMount.classList.add('hidden');
     waitingMount.classList.add('hidden');
     playerMount.classList.remove('hidden');
   }
@@ -378,6 +453,7 @@ export function initPlayerApp(rootEl) {
     stopScheduleRuntimeIfRunning();
     appBanner.hide();
     uploadMount.classList.add('hidden');
+    groupJoinConfirmMount.classList.add('hidden');
     playerMount.classList.add('hidden');
     waitingMount.classList.remove('hidden');
     waitingView.update(workout, startTimestamp - Date.now());
@@ -424,18 +500,14 @@ export function initPlayerApp(rootEl) {
    * 就會自動走 armSchedule()），不用另外重新實作一次排程判斷。
    */
   function startGroupJoinFlow({ source, sourceUrl, startTime }) {
-    pendingScheduledStartTimestamp = startTime.getTime();
+    pendingGroupJoinStartTimestamp = startTime.getTime();
 
-    // 跟 handleScheduledStartTimeSet() 不同：這裡是頁面載入當下自動觸發，不是
-    // 使用者按鈕點擊的當下——嚴格來說瀏覽器的自動播放權限解鎖需要「使用者
-    // 互動當下」的呼叫堆疊才保證有效，這裡沒有那個時機。但使用者不想要另外
-    // 插一個「點擊以加入」的確認畫面，所以還是呼叫這裡，賭一把：部分瀏覽器
-    // 對「這個網域使用者之前互動過（Media Engagement Index 之類的機制）」
-    // 有更寬鬆的自動播放判斷，呼叫了至少有機會解鎖成功；呼叫不到位、被瀏覽器
-    // 擋掉時，unlockAudioAndSpeechForAutoplay() 本身遇到例外也不會拋出來（見
-    // 該函式），不影響下面課表下載/解析流程正常繼續——這是目前技術限制下能
-    // 做的最大努力，不能保證每個瀏覽器都吃這一套。
-    unlockAudioAndSpeechForAutoplay();
+    // 這裡不再嘗試呼叫 unlockAudioAndSpeechForAutoplay()：頁面載入當下自動
+    // 觸發，沒有使用者互動的呼叫堆疊，真機實測（iOS Safari／Chrome）確認
+    // 這種「賭一把」呼叫不可靠、仍然完全無聲。改成先切到「加入確認」畫面
+    // （見 loadWorkout() 裡的判斷、showGroupJoinConfirmation()），等使用者
+    // 真的按下「加入團練」按鈕，那個點擊當下才呼叫解鎖
+    // （handleGroupJoinConfirm()）。
 
     // source 目前只支援 'TD'（parseGroupJoinParams() 已經驗證過，這裡不會是
     // 其他值），未來擴充 TP／intervals.icu 時在這裡加對應的呼叫就好。
@@ -493,6 +565,7 @@ export function initPlayerApp(rootEl) {
     stopScheduleRuntimeIfRunning();
     clearSchedule();
     waitingMount.classList.add('hidden');
+    groupJoinConfirmMount.classList.add('hidden');
     uploadMount.classList.remove('hidden');
     appBanner.show();
     uploadView.clearError();

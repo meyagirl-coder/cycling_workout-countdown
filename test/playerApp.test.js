@@ -380,6 +380,11 @@ describe('initPlayerApp: 一鍵開團連結 (group-join link via URL params: sou
     return fetchMock;
   }
 
+  /** 「加入確認」畫面按下「加入團練」按鈕 */
+  function confirmGroupJoin(root) {
+    root.querySelector('.btn-group-join-confirm').click();
+  }
+
   it('does nothing special (normal upload screen) when the URL has no group-join params at all', () => {
     const { root } = setup();
     expect(root.querySelector('.upload-mount').classList.contains('hidden')).toBe(false);
@@ -406,7 +411,7 @@ describe('initPlayerApp: 一鍵開團連結 (group-join link via URL params: sou
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it('auto-loads the workout and enters the waiting screen when FTP is already set and startTime is in the future', async () => {
+  it('auto-loads the workout, shows the join-confirmation screen (not the waiting screen directly), and only enters the waiting screen after "加入團練" is clicked', async () => {
     window.localStorage.setItem('user_ftp', '250');
     vi.setSystemTime(new Date(2026, 6, 24, 19, 0, 0));
     setUrlSearch('source=TD&source_url=' + encodeURIComponent(TRAINERDAY_URL) + '&startTime=202607242000');
@@ -417,11 +422,17 @@ describe('initPlayerApp: 一鍵開團連結 (group-join link via URL params: sou
       expect(fetchMock).toHaveBeenCalledTimes(1);
     });
     await vi.waitFor(() => {
-      expect(root.querySelector('.waiting-mount').classList.contains('hidden')).toBe(false);
+      expect(root.querySelector('.group-join-confirm-mount').classList.contains('hidden')).toBe(false);
     });
 
+    // still not in the waiting screen - awaiting the user's explicit confirmation
+    expect(root.querySelector('.waiting-mount').classList.contains('hidden')).toBe(true);
     expect(root.querySelector('.upload-ftp-prompt').classList.contains('hidden')).toBe(true);
     expect(fetchMock.mock.calls[0][0]).toContain(encodeURIComponent(TRAINERDAY_URL));
+
+    confirmGroupJoin(root);
+    expect(root.querySelector('.waiting-mount').classList.contains('hidden')).toBe(false);
+    expect(root.querySelector('.group-join-confirm-mount').classList.contains('hidden')).toBe(true);
   });
 
   it('fires the same countdown alerts (voice) through the waiting-screen -> auto-play transition as any other input method (regression check: a real-device report claimed the group-join link is uniquely unreliable for countdown alerts, specifically the waiting-screen -> scheduled auto-play transition; this drives the real engine with fake timers - so it verifies actual event/state wiring, not just that a function was called - without any real wall-clock delay)', async () => {
@@ -451,12 +462,14 @@ describe('initPlayerApp: 一鍵開團連結 (group-join link via URL params: sou
       expect(fetchMock).toHaveBeenCalledTimes(1);
     });
     await vi.waitFor(() => {
-      expect(root.querySelector('.waiting-mount').classList.contains('hidden')).toBe(false);
+      expect(root.querySelector('.group-join-confirm-mount').classList.contains('hidden')).toBe(false);
     });
 
-    // startGroupJoinFlow() fires a one-time silent unlock blip (see
-    // unlockAudioAndSpeechForAutoplay()) - clear it so the assertions below
-    // only look at real countdown-alert speak() calls.
+    // "加入團練" fires a one-time silent unlock blip (see
+    // unlockAudioAndSpeechForAutoplay()) - clear it after clicking, so the
+    // assertions below only look at real countdown-alert speak() calls.
+    confirmGroupJoin(root);
+    expect(root.querySelector('.waiting-mount').classList.contains('hidden')).toBe(false);
     speak.mockClear();
 
     // jump the fake clock past startTime - scheduleRuntime's setInterval
@@ -477,7 +490,7 @@ describe('initPlayerApp: 一鍵開團連結 (group-join link via URL params: sou
     expect(spokenTexts).toContain('1');
   });
 
-  it('attempts to unlock audio/speech playback permission even though there is no user click on this auto-load path (regression: users reported a group-join link being completely silent - no voice, no beep, at all - since unlockAudioAndSpeechForAutoplay() was never called here; calling it here is best-effort given the browser autoplay policy still requires a real user gesture to guarantee it works, but the user explicitly asked for this attempt rather than adding an extra confirmation tap)', async () => {
+  it('shows a join-confirmation screen with the workout name/duration/interval count and the scheduled start time, without unlocking audio yet (regression: the original "just try to unlock automatically on page load, no confirmation tap" approach was real-device-tested and confirmed unreliable - iOS Safari/Chrome stayed completely silent since there is no user gesture on this auto-load path)', async () => {
     window.localStorage.setItem('user_ftp', '250');
     vi.setSystemTime(new Date(2026, 6, 24, 19, 0, 0));
     setUrlSearch('source=TD&source_url=' + encodeURIComponent(TRAINERDAY_URL) + '&startTime=202607242000');
@@ -496,13 +509,24 @@ describe('initPlayerApp: 一鍵開團連結 (group-join link via URL params: sou
 
     const { root } = setup();
     await vi.waitFor(() => {
-      expect(root.querySelector('.waiting-mount').classList.contains('hidden')).toBe(false);
+      expect(root.querySelector('.group-join-confirm-mount').classList.contains('hidden')).toBe(false);
     });
 
+    // VALID_WORKOUT_STRUCTURE_TEXT is "5 min @ 50% (50w)" -> a single 300s interval
+    expect(root.querySelector('.group-join-confirm-workout-meta').textContent).toContain('5:00');
+    expect(root.querySelector('.group-join-confirm-workout-meta').textContent).toContain('1 組');
+    expect(root.querySelector('.group-join-confirm-start-time').textContent).toContain('2026/07/24 20:00');
+
+    // no auto-load-time unlock attempt anymore - nothing has spoken yet
+    expect(speak).not.toHaveBeenCalled();
+
+    confirmGroupJoin(root);
+
+    // clicking "加入團練" is the real user gesture that unlocks playback
     expect(speak).toHaveBeenCalledTimes(1);
   });
 
-  it('auto-loads the workout and starts playing immediately when FTP is already set and startTime is already in the past', async () => {
+  it('shows the join-confirmation screen even when startTime is already in the past, and only starts playing immediately (catch-up) after "加入團練" is clicked', async () => {
     window.localStorage.setItem('user_ftp', '250');
     vi.setSystemTime(new Date(2026, 6, 24, 20, 2, 0));
     setUrlSearch('source=TD&source_url=' + encodeURIComponent(TRAINERDAY_URL) + '&startTime=202607242000');
@@ -510,9 +534,15 @@ describe('initPlayerApp: 一鍵開團連結 (group-join link via URL params: sou
 
     const { root } = setup();
     await vi.waitFor(() => {
-      expect(root.querySelector('.player-mount').classList.contains('hidden')).toBe(false);
+      expect(root.querySelector('.group-join-confirm-mount').classList.contains('hidden')).toBe(false);
     });
+    expect(root.querySelector('.player-mount').classList.contains('hidden')).toBe(true);
+
+    confirmGroupJoin(root);
+
+    expect(root.querySelector('.player-mount').classList.contains('hidden')).toBe(false);
     expect(root.querySelector('.waiting-mount').classList.contains('hidden')).toBe(true);
+    expect(root.querySelector('.group-join-confirm-mount').classList.contains('hidden')).toBe(true);
   });
 
   it('shows the FTP setup prompt (not an immediate fetch) when FTP has never been set on this device', () => {
@@ -559,8 +589,11 @@ describe('initPlayerApp: 一鍵開團連結 (group-join link via URL params: sou
       expect(fetchMock).toHaveBeenCalledTimes(1);
     });
     await vi.waitFor(() => {
-      expect(root.querySelector('.waiting-mount').classList.contains('hidden')).toBe(false);
+      expect(root.querySelector('.group-join-confirm-mount').classList.contains('hidden')).toBe(false);
     });
+
+    confirmGroupJoin(root);
+    expect(root.querySelector('.waiting-mount').classList.contains('hidden')).toBe(false);
   });
 
   it('does not process the URL params at all when a schedule or in-progress workout is already saved (avoids clobbering existing state)', () => {
