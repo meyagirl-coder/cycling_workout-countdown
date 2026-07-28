@@ -6,8 +6,14 @@ import { parseScheduledStartTimeInput } from './scheduledStartTimeParser.js';
 
 /**
  * 上傳畫面：四個平行的課表載入方式——貼課表網址／貼上課表文字內容／上傳
- * .zwo 檔案／intervals.icu 行事曆課表，畫面上用同樣的卡片樣式並排，讓使用者
- * 一眼就能看出這是四個平行選項，不是主功能＋附加說明的層級關係。FTP 設定
+ * .zwo 檔案／intervals.icu 行事曆課表，都用同樣的卡片樣式（`.upload-source-
+ * card`），讓使用者一眼就能看出這是平行選項，不是主功能＋附加說明的層級
+ * 關係——但畫面上不是四張卡片緊鄰排在一起：「貼課表網址」這張卡片刻意搬到
+ * 「設定開始時間」跟「產生開團分享連結」這兩個排程相關區塊中間（規格：
+ * 排程相關的三個區塊——設定開始時間／貼課表網址／開團分享連結——照這個順序
+ * 排列，因為多數團體訓練的操作路徑就是先設定時間、貼課表網址、再產生分享
+ * 連結，一次到位不用視線跳來跳去），其餘三張卡片（貼文字／上傳 .zwo／
+ * intervals.icu，見下方 `.upload-source-list`）維持原本相鄰並排。FTP 設定
  * 列下方是選填的「設定開始時間」（團體訓練排程功能）：設定後，之後用任何
  * 方式載入的課表都會依這個時間啟動排程（時間已過就立刻開始、還沒到就進
  * 等待畫面），不設定就維持原本「載入後手動點開始」的行為。純 DOM 渲染
@@ -107,6 +113,23 @@ export function createUploadView(rootEl, handlers) {
         <button type="button" class="upload-schedule-cancel">取消</button>
       </p>
 
+      <div class="upload-source-card">
+        <h2 class="upload-source-title">貼課表網址</h2>
+        <form class="upload-url-form">
+          <div class="upload-url-row">
+            <input
+              type="text"
+              id="upload-url-input"
+              class="upload-url-input"
+              placeholder="貼上課表網址"
+              autocomplete="off"
+            />
+            <button type="submit" class="upload-url-submit">載入</button>
+          </div>
+        </form>
+        <p class="upload-source-hint">目前支援 TrainerDay</p>
+      </div>
+
       <div class="share-link-tool">
         <h2 class="share-link-title">產生開團分享連結</h2>
         <p class="share-link-hint">
@@ -138,23 +161,6 @@ export function createUploadView(rootEl, handlers) {
       </div>
 
       <div class="upload-source-list">
-        <div class="upload-source-card">
-          <h2 class="upload-source-title">貼課表網址</h2>
-          <form class="upload-url-form">
-            <div class="upload-url-row">
-              <input
-                type="text"
-                id="upload-url-input"
-                class="upload-url-input"
-                placeholder="貼上課表網址"
-                autocomplete="off"
-              />
-              <button type="submit" class="upload-url-submit">載入</button>
-            </div>
-          </form>
-          <p class="upload-source-hint">目前支援 TrainerDay</p>
-        </div>
-
         <div class="upload-source-card">
           <h2 class="upload-source-title">貼上課表文字內容</h2>
           <p class="upload-source-hint">
