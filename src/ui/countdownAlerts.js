@@ -291,28 +291,45 @@ export function playCountdownBeeps() {
 
   if (!sharedAudioContext) sharedAudioContext = new AudioContextCtor();
   const ctx = sharedAudioContext;
-  // iOS Safari 已知行為：交替使用 SpeechSynthesis 之後，共用的 AudioContext
-  // 可能被瀏覽器悄悄中斷（suspended），之後即使程式碼正常執行、沒有拋出任何
-  // 例外，oscillator 也不會真的發出聲音——每次播放前都主動 resume 一次，跟
-  // unlockAudioAndSpeechForAutoplay() 的作法一致，不能只靠一開始 unlock 那一次。
-  if (typeof ctx.resume === 'function' && ctx.state === 'suspended') ctx.resume();
 
-  for (let i = 0; i < BEEP_COUNT; i++) {
-    const startTime = ctx.currentTime + i * BEEP_INTERVAL_SECONDS;
-    const oscillator = ctx.createOscillator();
-    const gain = ctx.createGain();
-    oscillator.connect(gain);
-    gain.connect(ctx.destination);
+  const scheduleTones = () => {
+    for (let i = 0; i < BEEP_COUNT; i++) {
+      const startTime = ctx.currentTime + i * BEEP_INTERVAL_SECONDS;
+      const oscillator = ctx.createOscillator();
+      const gain = ctx.createGain();
+      oscillator.connect(gain);
+      gain.connect(ctx.destination);
 
-    oscillator.frequency.value = BEEP_FREQUENCY_HZ;
-    gain.gain.setValueAtTime(0, startTime);
-    gain.gain.linearRampToValueAtTime(BEEP_PEAK_GAIN, startTime + BEEP_ATTACK_SECONDS);
-    gain.gain.setValueAtTime(BEEP_PEAK_GAIN, startTime + BEEP_DURATION_SECONDS - BEEP_RELEASE_SECONDS);
-    gain.gain.linearRampToValueAtTime(0.0001, startTime + BEEP_DURATION_SECONDS);
+      oscillator.frequency.value = BEEP_FREQUENCY_HZ;
+      gain.gain.setValueAtTime(0, startTime);
+      gain.gain.linearRampToValueAtTime(BEEP_PEAK_GAIN, startTime + BEEP_ATTACK_SECONDS);
+      gain.gain.setValueAtTime(BEEP_PEAK_GAIN, startTime + BEEP_DURATION_SECONDS - BEEP_RELEASE_SECONDS);
+      gain.gain.linearRampToValueAtTime(0.0001, startTime + BEEP_DURATION_SECONDS);
 
-    oscillator.start(startTime);
-    oscillator.stop(startTime + BEEP_DURATION_SECONDS);
+      oscillator.start(startTime);
+      oscillator.stop(startTime + BEEP_DURATION_SECONDS);
+    }
+  };
+
+  // iOS Safari／Chrome 閒置省電機制的已知行為：AudioContext 在沒有實際發聲
+  // 一段時間後會被瀏覽器悄悄中斷（suspended）——每組課表只有最後 3 秒有
+  // 嗶聲、中間可能有幾十秒到幾分鐘完全靜音，幾乎每次觸發時 context 都已經
+  // 被自動 suspend。resume() 是非同步的 Promise：如果呼叫完就馬上排程音效
+  // 節點（不等 Promise 真的 resolve），這些節點是排給一個「技術上還沒真的
+  // 恢復運作」的 audio graph，實測在部分瀏覽器上會完全沒有聲音、但也不會
+  // 拋出任何例外，非常難以察覺（regression：這正是「逼逼聲模式完全沒有
+  // 聲音」這個回報的根本原因——見這段程式碼所在 commit 的診斷說明）。改成
+  // 排程動作包在 resume() 的 .then() 裡，確保 audio graph 真的恢復運作
+  // 之後才建立/播放音效節點；ctx.currentTime 也要等到那時候才讀取，不能
+  // 沿用呼叫當下（可能還沒真的往前推進）的舊值。
+  if (typeof ctx.resume === 'function' && ctx.state === 'suspended') {
+    ctx.resume().then(scheduleTones, (err) => {
+      console.error('countdownAlerts: ctx.resume() failed before playCountdownBeeps()', err);
+    });
+    return;
   }
+
+  scheduleTones();
 }
 
 /**
