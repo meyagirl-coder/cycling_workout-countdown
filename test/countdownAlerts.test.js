@@ -517,7 +517,7 @@ describe('playCountdownBeeps (regression: Google Meet tab-audio sharing does not
     vi.resetModules();
   });
 
-  function stubAudioContext(initialState) {
+  function stubAudioContext(initialState, { resumeImpl } = {}) {
     const oscillators = [];
     const gains = [];
     const ctx = {
@@ -534,7 +534,7 @@ describe('playCountdownBeeps (regression: Google Meet tab-audio sharing does not
       destination: {},
       currentTime: 100, // arbitrary non-zero baseline to prove offsets are relative, not absolute
       state: initialState,
-      resume: vi.fn(),
+      resume: vi.fn(resumeImpl ?? (() => Promise.resolve())),
     };
     const AudioContextCtor = vi.fn(() => ctx);
     vi.stubGlobal('AudioContext', AudioContextCtor);
@@ -596,14 +596,53 @@ describe('playCountdownBeeps (regression: Google Meet tab-audio sharing does not
     expect(releaseCall[1]).toBeCloseTo(100.4);
   });
 
-  it('calls ctx.resume() before scheduling when the shared AudioContext is suspended (e.g. after SpeechSynthesis interrupted it)', async () => {
+  it('calls ctx.resume() and schedules tones only after the resume Promise actually resolves, when the shared AudioContext is suspended (e.g. after being auto-suspended for sitting idle between countdowns)', async () => {
     const { ctx, oscillators } = stubAudioContext('suspended');
     const { playCountdownBeeps } = await import('../src/ui/countdownAlerts.js');
 
     playCountdownBeeps();
 
     expect(ctx.resume).toHaveBeenCalledTimes(1);
+    await Promise.resolve(); // flush the resume().then(...) microtask
     expect(oscillators).toHaveLength(3);
+  });
+
+  it('does NOT schedule any tones synchronously before resume() has actually resolved (regression: scheduling oscillators against a still-suspended AudioContext produces no audible sound on real devices, even though nothing throws - this is the root cause of the "beep mode is completely silent" report, since a shared AudioContext idling between once-a-minute beeps reliably gets auto-suspended by the browser before every single trigger)', async () => {
+    let resolveResume;
+    const { ctx, oscillators } = stubAudioContext('suspended', {
+      resumeImpl: () => new Promise((resolve) => { resolveResume = resolve; }),
+    });
+    const { playCountdownBeeps } = await import('../src/ui/countdownAlerts.js');
+
+    playCountdownBeeps();
+
+    // resume() has been called but not yet resolved - no tones may be
+    // scheduled yet, since they'd be scheduled against an audio graph that
+    // hasn't actually resumed processing
+    expect(ctx.resume).toHaveBeenCalledTimes(1);
+    expect(oscillators).toHaveLength(0);
+
+    resolveResume();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    // only once resume() genuinely resolves does scheduling happen
+    expect(oscillators).toHaveLength(3);
+  });
+
+  it('logs (does not throw/reject unhandled) when ctx.resume() itself rejects', async () => {
+    const { playCountdownBeeps } = await import(
+      '../src/ui/countdownAlerts.js'
+    );
+    stubAudioContext('suspended', { resumeImpl: () => Promise.reject(new Error('resume failed')) });
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    expect(() => playCountdownBeeps()).not.toThrow();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('ctx.resume() failed'), expect.any(Error));
+    consoleSpy.mockRestore();
   });
 
   it('does not call ctx.resume() when the context is already running (no unnecessary calls)', async () => {

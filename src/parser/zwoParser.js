@@ -88,16 +88,33 @@ function parseIntervalElement(el, type) {
       return { type: 'steady', duration, powerStart: power, powerEnd: power, cadence };
     }
 
-    // 有些工具（例如 intervals.icu 的課表產生器）匯出的 SteadyState 不是單一
-    // Power，而是用 PowerLow/PowerHigh 表示一個範圍。跟 Warmup/Ramp/Cooldown
-    // 一樣線性內插處理；但既然瓦數會變化、不是真的「穩定」，schema 的 type
-    // 歸類成 ramp，避免畫面上標成「穩定」卻其實在變動，造成誤導。
+    // <SteadyState> 帶 PowerLow/PowerHigh、沒有 Power：這個組合不是 Zwift
+    // 官方 ZWO 格式本來就支援的寫法（官方的 SteadyState 只有單一 Power
+    // 屬性；PowerLow/PowerHigh 是 Warmup/Ramp/Cooldown 才有、代表逐秒線性
+    // 漸變的官方屬性）。這裡遇過的幾個第三方課表產生工具（例如 IntervalCoach
+    // ／intervals.icu）借用同樣的屬性名稱，套在 SteadyState 上表達「這組
+    // 期間維持在這個瓦數區間內即可」的目標範圍（regression: IntervalCoach
+    // 匯出的「Endurance」「Threshold」這類長時間定額區間段——見
+    // test/fixtures/IntervalCoach_節奏推升間歇.zwo／
+    // IntervalCoach_閾值衝刺_正確版.zwo——標籤本身就是「穩定狀態」，訓練
+    // 意圖是整段維持在區間內，不是逐秒精確爬升；真的要逐秒線性漸變的意圖，
+    // 這些工具會用真正的 <Ramp> 標籤，或本來就是漸變形狀的
+    // <Warmup>/<Cooldown>，不會用 <SteadyState>）。曾經誤判成跟
+    // Warmup/Ramp/Cooldown 一樣線性內插（把 type 標成 'ramp'），畫面上會
+    // 顯示成整組瓦數一路平滑漸變，跟使用者「這幾分鐘維持在這個區間內」的
+    // 實際訓練意圖不符。這裡改成跟一般只有單一 Power 屬性的 SteadyState
+    // 一樣處理：取區間中點當作整組期間維持不變的目標值（type 仍然是
+    // 'steady'，powerStart 跟 powerEnd 相等，timerEngine.js 的內插公式在
+    // 兩者相等時自然算出固定值，不需要額外的特殊分支；時間軸顏色／下一組
+    // 預告文字等其他畫面邏輯也都是直接比較 powerStart/powerEnd 是否相等
+    // 來決定要不要顯示範圍，不是看 type，所以這裡不需要另外調整）。
     const powerLow = parsePowerAttr(el, 'PowerLow');
     const powerHigh = parsePowerAttr(el, 'PowerHigh');
     if (powerLow === null || powerHigh === null) {
       throw new Error(`Invalid ZWO XML: <${el.tagName}> is missing a required Power attribute (or PowerLow/PowerHigh)`);
     }
-    return { type: 'ramp', duration, powerStart: powerLow, powerEnd: powerHigh, cadence };
+    const midpoint = Math.round((powerLow + powerHigh) / 2);
+    return { type: 'steady', duration, powerStart: midpoint, powerEnd: midpoint, cadence };
   }
 
   if (type === 'warmup' || type === 'ramp' || type === 'cooldown') {

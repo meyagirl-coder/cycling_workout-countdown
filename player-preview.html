@@ -564,12 +564,17 @@
       if (power !== null) {
         return { type: 'steady', duration, powerStart: power, powerEnd: power, cadence };
       }
+      // SteadyState + PowerLow/PowerHigh（沒有 Power）不是官方 ZWO 格式的組合，
+      // 是部分第三方工具借用來表達「這組期間維持在這個區間內」的目標範圍，
+      // 不是逐秒線性漸變——跟 src/parser/zwoParser.js 保持同一套判斷，見那裡
+      // 的完整說明。
       const powerLow = parseZwoPowerAttr(el, 'PowerLow');
       const powerHigh = parseZwoPowerAttr(el, 'PowerHigh');
       if (powerLow === null || powerHigh === null) {
         throw new Error(`Invalid ZWO XML: <${el.tagName}> is missing a required Power attribute (or PowerLow/PowerHigh)`);
       }
-      return { type: 'ramp', duration, powerStart: powerLow, powerEnd: powerHigh, cadence };
+      const midpoint = Math.round((powerLow + powerHigh) / 2);
+      return { type: 'steady', duration, powerStart: midpoint, powerEnd: midpoint, cadence };
     }
 
     if (type === 'warmup' || type === 'ramp' || type === 'cooldown') {

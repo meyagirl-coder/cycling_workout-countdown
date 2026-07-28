@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<workout_file>
+    <author>EthanLin</author>
+    <name>IntervalCoach - 節奏推升間歇</name>
+    <description>Warmup</description>
+    <sportType>bike</sportType>
+    <tags/>
+    <workout>
+        <SteadyState show_avg="1" PowerHigh="0.47" PowerLow="0.45" Cadence="85" Duration="60"/>
+        <SteadyState show_avg="1" PowerHigh="0.49" PowerLow="0.47" Cadence="85" Duration="60"/>
+        <SteadyState show_avg="1" PowerHigh="0.51" PowerLow="0.49" Cadence="85" Duration="60"/>
+        <SteadyState show_avg="1" PowerHigh="0.53" PowerLow="0.51" Cadence="85" Duration="60"/>
+        <SteadyState show_avg="1" PowerHigh="0.55" PowerLow="0.53" Cadence="85" Duration="60"/>
+        <SteadyState show_avg="1" PowerHigh="0.57" PowerLow="0.55" Cadence="85" Duration="60"/>
+        <SteadyState show_avg="1" PowerHigh="0.59" PowerLow="0.57" Cadence="85" Duration="60"/>
+        <SteadyState show_avg="1" PowerHigh="0.61" PowerLow="0.59" Cadence="85" Duration="60"/>
+        <SteadyState show_avg="1" PowerHigh="0.63" PowerLow="0.61" Cadence="85" Duration="60"/>
+        <SteadyState show_avg="1" PowerHigh="0.65" PowerLow="0.63" Cadence="85" Duration="60"/>
+        <SteadyState show_avg="1" PowerHigh="0.67" PowerLow="0.65" Cadence="85" Duration="60"/>
+        <SteadyState show_avg="1" PowerHigh="0.69" PowerLow="0.67" Cadence="85" Duration="60"/>
+        <SteadyState show_avg="1" PowerHigh="0.71" PowerLow="0.69" Cadence="85" Duration="60"/>
+        <SteadyState show_avg="1" PowerHigh="0.73" PowerLow="0.71" Cadence="85" Duration="60"/>
+        <SteadyState show_avg="1" PowerHigh="0.75" PowerLow="0.73" Cadence="85" Duration="60"/>
+        <SteadyState show_avg="1" PowerHigh="0.75" PowerLow="0.65" Cadence="88" Duration="840">
+            <textevent message="Endurance 1/4" duration="10"/>
+        </SteadyState>
+        <SteadyState show_avg="1" PowerHigh="0.82" PowerLow="0.76" Cadence="90" Duration="300">
+            <textevent message="Tempo" duration="10"/>
+        </SteadyState>
+        <SteadyState show_avg="1" PowerHigh="0.75" PowerLow="0.65" Cadence="88" Duration="840">
+            <textevent message="Endurance 2/4" duration="10"/>
+        </SteadyState>
+        <SteadyState show_avg="1" PowerHigh="0.82" PowerLow="0.76" Cadence="90" Duration="300">
+            <textevent message="Tempo" duration="10"/>
+        </SteadyState>
+        <SteadyState show_avg="1" PowerHigh="0.75" PowerLow="0.65" Cadence="88" Duration="840">
+            <textevent message="Endurance 3/4" duration="10"/>
+        </SteadyState>
+        <SteadyState show_avg="1" PowerHigh="0.82" PowerLow="0.76" Cadence="90" Duration="300">
+            <textevent message="Tempo" duration="10"/>
+        </SteadyState>
+        <SteadyState show_avg="1" PowerHigh="0.75" PowerLow="0.65" Cadence="88" Duration="840">
+            <textevent message="Endurance 4/4" duration="10"/>
+        </SteadyState>
+        <SteadyState show_avg="1" PowerHigh="0.82" PowerLow="0.76" Cadence="90" Duration="300">
+            <textevent message="Tempo" duration="10"/>
+        </SteadyState>
+        <SteadyState show_avg="1" PowerHigh="0.7" PowerLow="0.6" Duration="180">
+            <textevent message="Endurance" duration="10"/>
+        </SteadyState>
+        <SteadyState show_avg="1" PowerHigh="0.63" PowerLow="0.65" Duration="60"/>
+        <SteadyState show_avg="1" PowerHigh="0.61" PowerLow="0.63" Duration="60"/>
+        <SteadyState show_avg="1" PowerHigh="0.59" PowerLow="0.61" Duration="60"/>
+        <SteadyState show_avg="1" PowerHigh="0.57" PowerLow="0.59" Duration="60"/>
+        <SteadyState show_avg="1" PowerHigh="0.55" PowerLow="0.57" Duration="60"/>
+        <SteadyState show_avg="1" PowerHigh="0.53" PowerLow="0.55" Duration="60"/>
+        <SteadyState show_avg="1" PowerHigh="0.51" PowerLow="0.53" Duration="60"/>
+        <SteadyState show_avg="1" PowerHigh="0.49" PowerLow="0.51" Duration="60"/>
+        <SteadyState show_avg="1" PowerHigh="0.47" PowerLow="0.49" Duration="60"/>
+        <SteadyState show_avg="1" PowerHigh="0.45" PowerLow="0.47" Duration="60"/>
+    </workout>
+</workout_file>
