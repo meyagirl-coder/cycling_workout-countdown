@@ -715,7 +715,8 @@ describe('speakCountdownWarning (regression: fast preview speech and digit count
   function stubSpeechSynthesis() {
     const speak = vi.fn();
     const cancel = vi.fn();
-    vi.stubGlobal('speechSynthesis', { speak, cancel });
+    const resume = vi.fn();
+    vi.stubGlobal('speechSynthesis', { speak, cancel, resume });
     vi.stubGlobal(
       'SpeechSynthesisUtterance',
       class {
@@ -726,7 +727,7 @@ describe('speakCountdownWarning (regression: fast preview speech and digit count
         }
       }
     );
-    return { speak, cancel };
+    return { speak, cancel, resume };
   }
 
   it('defaults to rate 1 (normal speed) when no rate argument is given', async () => {
@@ -764,5 +765,37 @@ describe('speakCountdownWarning (regression: fast preview speech and digit count
     const cancelOrder = cancel.mock.invocationCallOrder[0];
     const speakOrder = speak.mock.invocationCallOrder[0];
     expect(cancelOrder).toBeLessThan(speakOrder);
+  });
+
+  it('resumes the SpeechSynthesis engine before every cancel()+speak() call, in that order (regression: a real-device report of the 5-4-3-2-1 countdown consistently losing the middle digits - "3"/"2" - on desktop browsers while "5"/"4"/"1" came through fine; timing-layer testing with fake clocks proved every digit is triggered correctly and exactly once, so the drop must be the browser\'s SpeechSynthesis engine silently stalling after a handful of rapid cancel()+speak() calls in quick succession - a known Chromium quirk, the same class of "browser quietly blocks the audio pipeline until nudged" behavior this file already works around for AudioContext via resume() in playCountdownBeeps()/unlockAudioAndSpeechForAutoplay())', async () => {
+    const { speak, cancel, resume } = stubSpeechSynthesis();
+    const { speakCountdownWarning } = await import('../src/ui/countdownAlerts.js');
+
+    speakCountdownWarning('3');
+
+    expect(resume).toHaveBeenCalledTimes(1);
+    const resumeOrder = resume.mock.invocationCallOrder[0];
+    const cancelOrder = cancel.mock.invocationCallOrder[0];
+    const speakOrder = speak.mock.invocationCallOrder[0];
+    expect(resumeOrder).toBeLessThan(cancelOrder);
+    expect(cancelOrder).toBeLessThan(speakOrder);
+  });
+
+  it('does not throw when speechSynthesis has no resume() method (older/non-standard implementations)', async () => {
+    const speak = vi.fn();
+    const cancel = vi.fn();
+    vi.stubGlobal('speechSynthesis', { speak, cancel }); // no resume
+    vi.stubGlobal(
+      'SpeechSynthesisUtterance',
+      class {
+        constructor(text) {
+          this.text = text;
+        }
+      }
+    );
+    const { speakCountdownWarning } = await import('../src/ui/countdownAlerts.js');
+
+    expect(() => speakCountdownWarning('5')).not.toThrow();
+    expect(speak).toHaveBeenCalledTimes(1);
   });
 });

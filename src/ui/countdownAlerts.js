@@ -375,6 +375,19 @@ export function playCountdownBeeps() {
  * 的永遠是「當下最新的那一句」，代價是前一句可能被腰斬講到一半就停掉，
  * 但這比累積一長串過期的報數更不容易誤導使用者。
  *
+ * cancel() 之前先呼叫 resume()（regression：使用者回報 5-4-3-2-1 逐秒報數
+ * 時，5、4、1 通常聽得到，中間的 3、2 卻常常完全沒聲音，只在電腦瀏覽器上
+ * 出現，跟課表載入方式無關——用假時鐘測過整段觸發時機/次數完全正確，
+ * 問題不在「什麼時候該報數」，而是瀏覽器的語音引擎本身）：這是 Chrome 已知
+ * 的 SpeechSynthesis 行為——短時間內連續呼叫 cancel()＋speak() 好幾次之後，
+ * 引擎有時會悄悄卡住，之後的 speak() 呼叫不會拋出任何錯誤、畫面/程式碼邏輯
+ * 都正常，但就是不會真的發出聲音（跟這個檔案已經處理過的 AudioContext 被
+ * 瀏覽器悄悄 suspend 是同一種「音訊管線悄悄被擋住，呼叫端要主動戳一下才會
+ * 恢復」的行為，只是換成 SpeechSynthesis 這個 API——playCountdownBeeps()／
+ * unlockAudioAndSpeechForAutoplay() 已經在用同一套 resume() 思路處理
+ * AudioContext，這裡補上 SpeechSynthesis 版本）。每次要講新的一句之前主動
+ * resume() 一次，確保引擎真的醒著，不能只靠瀏覽器自己判斷要不要恢復。
+ *
  * @param {string} text
  * @param {number} [rate] - 語速倍率，預設 1（正常語速）；下一組快速預告會傳
  *   FAST_PREVIEW_SPEECH_RATE，5-4-3-2-1 逐秒報數會傳更慢的 DIGIT_SPEECH_RATE
@@ -383,6 +396,9 @@ export function playCountdownBeeps() {
 export function speakCountdownWarning(text, rate = 1) {
   if (typeof window === 'undefined' || !window.speechSynthesis || typeof SpeechSynthesisUtterance === 'undefined') return;
 
+  if (typeof window.speechSynthesis.resume === 'function') {
+    window.speechSynthesis.resume();
+  }
   window.speechSynthesis.cancel();
 
   const utterance = new SpeechSynthesisUtterance(text);
