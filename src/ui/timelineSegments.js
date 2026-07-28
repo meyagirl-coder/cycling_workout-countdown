@@ -17,6 +17,34 @@ function sliceIntervalByZone(iv) {
 
   const { duration, powerStart, powerEnd } = iv;
 
+  // 「區間目標」（band，見 workoutSchema.js 的 powerRangeLow/powerRangeHigh
+  // 說明）：這組不是固定單一瓦數、也不是逐秒漸變，時間軸柱狀圖改成兩層堆疊
+  // 表示範圍，不是依時間切色段——下層是區間下限對應的高度/顏色，上層疊加
+  // 區間上限對應的高度/顏色（renderPlayer.js 會把上層畫成半透明，疊加處
+  // 自然變深、上層單獨覆蓋的部分較淺，見該檔案的說明），兩層都橫跨整組
+  // 時間寬度，只有高度／顏色不同，用 bandLayer 標記讓 buildTimelineSegments()
+  // 原樣傳遞下去，呼叫端（renderPlayer.js）依這個欄位決定要不要疊兩層。
+  if (iv.powerRangeLow != null && iv.powerRangeHigh != null) {
+    return [
+      {
+        startOffset: 0,
+        endOffset: duration,
+        color: getZoneColor(iv.powerRangeLow).color,
+        startPowerPct: iv.powerRangeLow,
+        endPowerPct: iv.powerRangeLow,
+        bandLayer: 'low',
+      },
+      {
+        startOffset: 0,
+        endOffset: duration,
+        color: getZoneColor(iv.powerRangeHigh).color,
+        startPowerPct: iv.powerRangeHigh,
+        endPowerPct: iv.powerRangeHigh,
+        bandLayer: 'high',
+      },
+    ];
+  }
+
   if (duration <= 0 || powerStart === powerEnd) {
     return [
       { startOffset: 0, endOffset: duration, color: getZoneColor(powerStart).color, startPowerPct: powerStart, endPowerPct: powerStart },
@@ -64,7 +92,16 @@ export function buildTimelineSegments(workout, adjustPct = 0) {
     const shifted =
       iv.powerStart === null || iv.powerEnd === null
         ? iv
-        : { ...iv, powerStart: iv.powerStart + adjustPct, powerEnd: iv.powerEnd + adjustPct };
+        : {
+            ...iv,
+            powerStart: iv.powerStart + adjustPct,
+            powerEnd: iv.powerEnd + adjustPct,
+            // 「區間目標」的範圍也要一起平移，不然微調後時間軸的雙層高度會
+            // 跟大字卡片顯示的目標值（同樣套用了 adjustPct）對不上。
+            ...(iv.powerRangeLow != null && iv.powerRangeHigh != null
+              ? { powerRangeLow: iv.powerRangeLow + adjustPct, powerRangeHigh: iv.powerRangeHigh + adjustPct }
+              : {}),
+          };
 
     for (const slice of sliceIntervalByZone(shifted)) {
       const startPct = total > 0 ? ((acc + slice.startOffset) / total) * 100 : 0;
@@ -77,6 +114,7 @@ export function buildTimelineSegments(workout, adjustPct = 0) {
         color: slice.color,
         startPowerPct: slice.startPowerPct,
         endPowerPct: slice.endPowerPct,
+        bandLayer: slice.bandLayer,
       });
     }
     acc += iv.duration;

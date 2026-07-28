@@ -172,4 +172,66 @@ describe('parseSpacePercentText', () => {
       expect(workout.totalDuration).toBe(180 + 4 * (180 + 60));
     });
   });
+
+  describe('"Y-Z%" range syntax (regression: "區間目標" - a target band to stay within, not a linear ramp - same semantics as zwoParser.js\'s SteadyState PowerLow/PowerHigh)', () => {
+    it('parses "14m 65-75%" as a flat steady segment held at the midpoint (70%), with powerRangeLow/powerRangeHigh preserved for the timeline\'s two-layer band visual', () => {
+      const workout = parseSpacePercentText('14m 65-75%');
+      expectValidWorkout(workout);
+      expect(workout.intervals).toEqual([
+        { type: 'steady', duration: 840, powerStart: 70, powerEnd: 70, cadence: null, powerRangeLow: 65, powerRangeHigh: 75 },
+      ]);
+    });
+
+    it('rounds a non-integer midpoint the same way as zwoParser.js (76-82% -> 79%)', () => {
+      const workout = parseSpacePercentText('5m 76-82%');
+      expect(workout.intervals).toEqual([
+        { type: 'steady', duration: 300, powerStart: 79, powerEnd: 79, cadence: null, powerRangeLow: 76, powerRangeHigh: 82 },
+      ]);
+    });
+
+    it('still supports the optional trailing "N rpm" alongside a range ("14m 65-75% 88rpm")', () => {
+      const workout = parseSpacePercentText('14m 65-75% 88rpm');
+      expect(workout.intervals).toEqual([
+        { type: 'steady', duration: 840, powerStart: 70, powerEnd: 70, cadence: 88, powerRangeLow: 65, powerRangeHigh: 75 },
+      ]);
+    });
+
+    it('parses the exact user-provided example ("Endurance 4x" header treated as a plain "4x" repeat, alternating 14m/5m range lines)', () => {
+      const text = ['4x', '14m 65-75%', '5m 76-82%'].join('\n');
+      const workout = parseSpacePercentText(text);
+      expectValidWorkout(workout);
+
+      const enduranceBlock = { type: 'steady', duration: 840, powerStart: 70, powerEnd: 70, cadence: null, powerRangeLow: 65, powerRangeHigh: 75 };
+      const tempoBlock = { type: 'steady', duration: 300, powerStart: 79, powerEnd: 79, cadence: null, powerRangeLow: 76, powerRangeHigh: 82 };
+
+      expect(workout.intervals).toEqual([
+        enduranceBlock,
+        tempoBlock,
+        enduranceBlock,
+        tempoBlock,
+        enduranceBlock,
+        tempoBlock,
+        enduranceBlock,
+        tempoBlock,
+      ]);
+      expect(workout.totalDuration).toBe(4 * (840 + 300));
+    });
+
+    it('works the same inside a repeat block as standalone (single value and range lines can coexist)', () => {
+      const text = ['5m 50%', '', '2x', '3m 60-70%', '1m 90%'].join('\n');
+      const workout = parseSpacePercentText(text);
+
+      const warmup = { type: 'steady', duration: 300, powerStart: 50, powerEnd: 50, cadence: null };
+      const band = { type: 'steady', duration: 180, powerStart: 65, powerEnd: 65, cadence: null, powerRangeLow: 60, powerRangeHigh: 70 };
+      const single = { type: 'steady', duration: 60, powerStart: 90, powerEnd: 90, cadence: null };
+
+      expect(workout.intervals).toEqual([warmup, band, single, band, single]);
+    });
+
+    it('does not treat a plain single-value line as a range (no powerRangeLow/powerRangeHigh keys at all when "-" is absent)', () => {
+      const workout = parseSpacePercentText('5m 50%');
+      expect(workout.intervals[0]).not.toHaveProperty('powerRangeLow');
+      expect(workout.intervals[0]).not.toHaveProperty('powerRangeHigh');
+    });
+  });
 });

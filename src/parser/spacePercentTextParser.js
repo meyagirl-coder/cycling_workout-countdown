@@ -5,6 +5,16 @@
  * 行尾可以再接一段選填的「N rpm」踏頻資訊（例如 `3m 50% 90rpm`），沒有就是
  * `cadence: null`。
  *
+ * 百分比也支援「Y-Z%」範圍寫法（例如 `14m 65-75%`）：跟 zwoParser.js 的
+ * `<SteadyState PowerLow=... PowerHigh=...>` 是同一種「區間目標」語意——
+ * 整組期間維持在這個範圍內即可，不是逐秒精確漸變到某個值（真的要逐秒線性
+ * 漸變，這個純文字格式本來就有 pasteTextRouter.js 判斷成 WhatsOnZwift 格式
+ * 的「from A to B%」寫法可以用，不會跟這個範圍寫法搞混——見
+ * pasteTextRouter.js 的格式判斷順序）。跟 zwoParser.js 共用同一套「取區間
+ * 中點當固定目標值、額外存下 powerRangeLow/powerRangeHigh 給時間軸雙層
+ * 視覺用」的處理方式（見下方 parseIntervalLine()、workoutSchema.js 的欄位
+ * 說明），確保兩種輸入來源畫面呈現完全一致。
+ *
  * 也支援「Nx」換行重複寫法，語意跟 pasteTextParser.js 一致（見
  * newlineRepeatTextParser.js 共用的狀態機）：單獨一行的「Nx」宣告接下來
  * 連續的 `Xm Y%`／`Xs Y%` 行要重複 N 次，直到遇到空行、下一個「Nx」宣告、
@@ -24,8 +34,10 @@ import { generateId } from '../utils/generateId.js';
 import { parseNewlineRepeatText } from './newlineRepeatTextParser.js';
 
 // exported so pasteTextRouter.js 可以用同一套正則判斷貼上的文字是不是這個格式。
-// 行尾的「N rpm」是選填群組（第 4 組），沒有就是 undefined。
-export const SPACE_PERCENT_LINE_RE = /^(\d+(?:\.\d+)?)\s*(m|s)\s+(\d+(?:\.\d+)?)%(?:\s+(\d+(?:\.\d+)?)\s*rpm)?$/i;
+// 百分比欄位（第 3、4 組）：單一值只有第 3 組有值，範圍寫法（`Y-Z%`）第 3
+// 組是下限、第 4 組是上限。行尾的「N rpm」是選填群組（第 5 組），沒有就是
+// undefined。
+export const SPACE_PERCENT_LINE_RE = /^(\d+(?:\.\d+)?)\s*(m|s)\s+(\d+(?:\.\d+)?)(?:-(\d+(?:\.\d+)?))?%(?:\s+(\d+(?:\.\d+)?)\s*rpm)?$/i;
 
 /**
  * @param {string} text - 使用者貼上的純文字
@@ -44,7 +56,7 @@ export function parseSpacePercentText(text) {
   };
 }
 
-/** @returns {object|null} 一個穩定（steady）段，或 null（這行不是「Xm Y%」／「Xs Y%」格式） */
+/** @returns {object|null} 一個穩定（steady）段（含「區間目標」band），或 null（這行不是「Xm Y%」／「Xs Y%」格式） */
 function parseIntervalLine(line) {
   const match = line.match(SPACE_PERCENT_LINE_RE);
   if (!match) return null;
@@ -53,8 +65,21 @@ function parseIntervalLine(line) {
   const unit = match[2].toLowerCase();
   const seconds = unit === 'm' ? amount * 60 : amount;
   const duration = Math.round(seconds);
-  const powerPct = Math.round(Number(match[3]));
-  const cadence = match[4] != null ? Math.round(Number(match[4])) : null;
+  const rpmGroup = match[5];
+  const cadence = rpmGroup != null ? Math.round(Number(rpmGroup)) : null;
 
+  // 「Y-Z%」範圍寫法（第 4 組有值）：跟 zwoParser.js 的 SteadyState
+  // PowerLow/PowerHigh 同一套「區間目標」語意——取中點當固定目標值
+  // （powerStart === powerEnd），額外存下原始的 powerRangeLow/powerRangeHigh
+  // 給時間軸雙層視覺用（見 workoutSchema.js 的欄位說明、timelineSegments.js）。
+  const rangeHighGroup = match[4];
+  if (rangeHighGroup != null) {
+    const powerRangeLow = Math.round(Number(match[3]));
+    const powerRangeHigh = Math.round(Number(rangeHighGroup));
+    const midpoint = Math.round((powerRangeLow + powerRangeHigh) / 2);
+    return { type: 'steady', duration, powerStart: midpoint, powerEnd: midpoint, cadence, powerRangeLow, powerRangeHigh };
+  }
+
+  const powerPct = Math.round(Number(match[3]));
   return { type: 'steady', duration, powerStart: powerPct, powerEnd: powerPct, cadence };
 }

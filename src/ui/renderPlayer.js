@@ -1,4 +1,4 @@
-import { computeCurrentTarget } from '../engine/timerEngine.js';
+import { computeBandTarget, computeCurrentTarget } from '../engine/timerEngine.js';
 import { formatDurationLabel, formatMMSS } from './formatTime.js';
 import { INTERVAL_TYPE_LABELS } from './intervalLabels.js';
 import {
@@ -129,7 +129,12 @@ export function createPlayerView(rootEl, handlers) {
         const startHeightPct = isFreeride ? FREERIDE_BAR_HEIGHT_PCT : computeBarHeightPct(seg.startPowerPct);
         const endHeightPct = isFreeride ? FREERIDE_BAR_HEIGHT_PCT : computeBarHeightPct(seg.endPowerPct);
         const clipPath = `polygon(0% ${100 - startHeightPct}%, 100% ${100 - endHeightPct}%, 100% 100%, 0% 100%)`;
-        return `<div class="timeline-segment ${isFreeride ? 'zone-none' : `zone-${seg.color}`}" style="left:${seg.startPct}%;width:${seg.widthPct}%;clip-path:${clipPath}" title="${INTERVAL_TYPE_LABELS[seg.type]}"></div>`;
+        // 「區間目標」的兩層堆疊（bandLayer，見 timelineSegments.js）：低層
+        // （下限）先畫，高層（上限）疊在後面——buildTimelineSegments() 保證
+        // 低層排在陣列前面，靠 HTML 字串的先後順序（後面的元素蓋在前面）
+        // 就能疊出「下層在底、上層在上」的視覺順序，不需要額外的 z-index。
+        const bandClass = seg.bandLayer ? ` timeline-segment-band-${seg.bandLayer}` : '';
+        return `<div class="timeline-segment${bandClass} ${isFreeride ? 'zone-none' : `zone-${seg.color}`}" style="left:${seg.startPct}%;width:${seg.widthPct}%;clip-path:${clipPath}" title="${INTERVAL_TYPE_LABELS[seg.type]}"></div>`;
       })
       .join('');
 
@@ -180,8 +185,19 @@ export function createPlayerView(rootEl, handlers) {
       els.targetCadence.classList.add('hidden');
       els.statusPanel.className = 'status-panel zone-none';
     } else {
-      els.targetWatt.textContent = `${target.watts} W`;
-      els.targetPct.textContent = `${Math.round(target.pct)}% FTP`;
+      // 「區間目標」（band）固定顯示整個範圍（例如「130-150W」「65-75% FTP」），
+      // 不是逐秒內插出來的單一數字——這種組別的訓練意圖是「範圍內都算合格」，
+      // 顯示單一數字會誤導使用者以為需要精確跟隨某個變化曲線（regression，
+      // 見 computeBandTarget() 的完整說明）。不是 band 的組別（一般 steady／
+      // ramp）維持原本行為不變。
+      const bandTarget = computeBandTarget(currentInterval, ftp, state.powerAdjustPct);
+      if (bandTarget) {
+        els.targetWatt.textContent = `${bandTarget.lowWatts}-${bandTarget.highWatts} W`;
+        els.targetPct.textContent = `${bandTarget.lowPct}-${bandTarget.highPct}% FTP`;
+      } else {
+        els.targetWatt.textContent = `${target.watts} W`;
+        els.targetPct.textContent = `${Math.round(target.pct)}% FTP`;
+      }
       // 建議踏頻是課表資料本身的屬性（來源格式裡明寫的 "N rpm"，跟 FTP／微調
       // 瓦數無關），不是 computeCurrentTarget() 算出來的，直接從目前這組的
       // interval 資料讀。沒有資料就整行隱藏（不只是清空文字）——三行縱向排列

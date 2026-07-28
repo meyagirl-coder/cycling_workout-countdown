@@ -925,6 +925,22 @@ body {
   background: repeating-linear-gradient(45deg, var(--zone-none-stripe-a), var(--zone-none-stripe-a) 6px, var(--zone-none-stripe-b) 6px, var(--zone-none-stripe-b) 12px);
 }
 
+/* 「區間目標」（band）時間軸兩層堆疊——下層（區間下限，.timeline-segment-
+   band-low）維持一般不透明度，上層（區間上限，.timeline-segment-band-high）
+   疊在上面、降低透明度：兩層重疊的部分（0 到下限高度）因為疊加而顯得比較
+   「深」，上層單獨覆蓋、下層沒到達的部分（下限到上限的高度）只剩半透明的
+   上層顏色，顯得比較「淺」——一眼就能看出這是範圍、不是固定值或漸變。兩層
+   顏色各自套用自己實際數值對應的 getZoneColor()（見 timelineSegments.js），
+   範圍剛好跨過功率區間邊界時兩層顏色會不同，不特別處理、資料驅動即可。 */
+.timeline-segment-band-low {
+  z-index: 1;
+}
+
+.timeline-segment-band-high {
+  z-index: 2;
+  opacity: 0.55;
+}
+
 /* 組別交界線：跟頁面底色同色，不管兩側區間顏色是否相同都看得出組別邊界 */
 .timeline-divider {
   position: absolute;

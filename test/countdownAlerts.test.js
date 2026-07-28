@@ -104,6 +104,37 @@ describe('handleTimerEvents: countdownWarning (10 seconds before the CURRENT int
     expect(deps.showNextIntervalBanner).toHaveBeenCalledWith('下一組：20 秒 · 93% FTP', COUNTDOWN_PREVIEW_BANNER_MS);
   });
 
+  it('shows/speaks a "-" range (not a single midpoint number, and not the "→" ramp arrow) when the upcoming interval is a 「區間目標」band (regression: IntervalCoach_節奏推升間歇.zwo\'s 14-minute "Endurance" 65-75% segments)', () => {
+    const deps = makeDeps();
+    const workout = {
+      ...makeWorkout(),
+      intervals: [
+        { type: 'steady', duration: 60, powerStart: 50, powerEnd: 50, cadence: null },
+        { type: 'steady', duration: 840, powerStart: 70, powerEnd: 70, cadence: 88, powerRangeLow: 65, powerRangeHigh: 75 },
+      ],
+    };
+    const state = makeState({ currentIntervalIndex: 0 });
+    handleTimerEvents([TIMER_EVENTS.COUNTDOWN_WARNING], { workout, state, ftp: 200, ...deps });
+
+    expect(deps.showNextIntervalBanner).toHaveBeenCalledWith('下一組：14 分鐘 · 65-75% FTP', COUNTDOWN_PREVIEW_BANNER_MS);
+    expect(deps.speak).toHaveBeenCalledWith('下一組 65% 到 75% 14 分鐘', FAST_PREVIEW_SPEECH_RATE);
+  });
+
+  it('applies the power adjustment to both ends of a band preview', () => {
+    const deps = makeDeps();
+    const workout = {
+      ...makeWorkout(),
+      intervals: [
+        { type: 'steady', duration: 60, powerStart: 50, powerEnd: 50, cadence: null },
+        { type: 'steady', duration: 300, powerStart: 70, powerEnd: 70, cadence: null, powerRangeLow: 65, powerRangeHigh: 75 },
+      ],
+    };
+    const state = makeState({ currentIntervalIndex: 0, powerAdjustPct: 5 });
+    handleTimerEvents([TIMER_EVENTS.COUNTDOWN_WARNING], { workout, state, ftp: 200, ...deps });
+
+    expect(deps.showNextIntervalBanner).toHaveBeenCalledWith('下一組：5 分鐘 · 70-80% FTP', COUNTDOWN_PREVIEW_BANNER_MS);
+  });
+
   it('shows/speaks "自由騎乘" with no percentage when the upcoming interval is freeride', () => {
     const deps = makeDeps();
     // currentIntervalIndex 1 (steady) is about to end; upcoming is index 2 (freeride)
@@ -143,6 +174,21 @@ describe('handleTimerEvents: intervalChanged (unchanged existing format: mm:ss +
     handleTimerEvents([TIMER_EVENTS.INTERVAL_CHANGED], { workout: makeWorkout(), state, ...deps, ftp: 200 });
 
     expect(deps.showNextIntervalBanner).toHaveBeenCalledWith('下一組：自由騎乘 · 0:10');
+  });
+
+  it('shows a plain "duration · range% FTP" banner (no type label, no watts) when the interval just switched into is a 「區間目標」band - matches the 10s-warning preview\'s simplified format, dropping "穩定" since it\'s not a meaningful label for a band', () => {
+    const deps = makeDeps();
+    const workout = {
+      ...makeWorkout(),
+      intervals: [
+        { type: 'steady', duration: 60, powerStart: 50, powerEnd: 50, cadence: null },
+        { type: 'steady', duration: 840, powerStart: 70, powerEnd: 70, cadence: 88, powerRangeLow: 65, powerRangeHigh: 75 },
+      ],
+    };
+    const state = makeState({ currentIntervalIndex: 1, elapsedInInterval: 0, elapsedTotal: 60 });
+    handleTimerEvents([TIMER_EVENTS.INTERVAL_CHANGED], { workout, state, ftp: 200, ...deps });
+
+    expect(deps.showNextIntervalBanner).toHaveBeenCalledWith('下一組：14 分鐘 · 65-75% FTP');
   });
 });
 

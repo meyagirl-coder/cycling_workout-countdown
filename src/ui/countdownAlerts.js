@@ -36,7 +36,7 @@
  *     格式（formatNextIntervalText()），這個格式沒有變，兩種模式都一樣
  *     （純視覺 banner，不涉及語音／嗶聲）。
  */
-import { computeCurrentTarget, TIMER_EVENTS } from '../engine/timerEngine.js';
+import { computeBandTarget, computeCurrentTarget, TIMER_EVENTS } from '../engine/timerEngine.js';
 import { ALERT_MODE_BEEP, ALERT_MODE_VOICE } from './alertModeStore.js';
 import { formatMinuteSecondLabel, formatMMSS } from './formatTime.js';
 import { INTERVAL_TYPE_LABELS } from './intervalLabels.js';
@@ -183,7 +183,13 @@ function computeCurrentCountdownDigit(workout, state) {
  * 已經是最後一組時，回傳 { finishing: true }，呼叫端要顯示「即將完成」而不是
  * 不存在的下一組。
  *
- * @returns {{finishing: true} | {finishing: false, freeride: true, durationLabel: string} | {finishing: false, freeride: false, durationLabel: string, isRange: boolean, startPct: number, endPct: number}}
+ * 「區間目標」（band）優先判斷（isBand）：跟一般 ramp 的 isRange 是兩種不同
+ * 的意圖，不能共用同一組 startPct/endPct——ramp 的 startPct/endPct 是「這組
+ * 開始/結束時分別是多少」（逐秒漸變的兩端），band 的 bandLowPct/bandHighPct
+ * 是「整組期間都要維持在這個範圍內」（沒有先後順序，見 computeBandTarget()
+ * 的說明），語意完全不同，混在一起判斷會顯示出誤導使用者的錯誤數字。
+ *
+ * @returns {{finishing: true} | {finishing: false, freeride: true, durationLabel: string} | {finishing: false, freeride: false, durationLabel: string, isBand: true, bandLowPct: number, bandHighPct: number} | {finishing: false, freeride: false, durationLabel: string, isBand: false, isRange: boolean, startPct: number, endPct: number}}
  */
 function computeUpcomingIntervalPreview(workout, state, ftp) {
   const nextIndex = state.currentIntervalIndex + 1;
@@ -198,6 +204,11 @@ function computeUpcomingIntervalPreview(workout, state, ftp) {
     return { finishing: false, freeride: true, durationLabel };
   }
 
+  const bandTarget = computeBandTarget(iv, ftp, state.powerAdjustPct);
+  if (bandTarget) {
+    return { finishing: false, freeride: false, durationLabel, isBand: true, bandLowPct: bandTarget.lowPct, bandHighPct: bandTarget.highPct };
+  }
+
   const startTarget = computeCurrentTarget(workout, nextIndex, 0, ftp, state.powerAdjustPct);
   const endTarget = computeCurrentTarget(workout, nextIndex, iv.duration, ftp, state.powerAdjustPct);
 
@@ -205,6 +216,7 @@ function computeUpcomingIntervalPreview(workout, state, ftp) {
     finishing: false,
     freeride: false,
     durationLabel,
+    isBand: false,
     isRange: iv.powerStart !== iv.powerEnd,
     startPct: Math.round(startTarget.pct),
     endPct: Math.round(endTarget.pct),
@@ -214,6 +226,11 @@ function computeUpcomingIntervalPreview(workout, state, ftp) {
 function formatCountdownBannerText(preview) {
   if (preview.finishing) return COUNTDOWN_FINISHING_SOON_TEXT;
   if (preview.freeride) return `下一組：${INTERVAL_TYPE_LABELS.freeride} · ${preview.durationLabel}`;
+  // 「-」（範圍，沒有方向性）跟 ramp 的「→」（逐秒往那個方向漸變）故意用不
+  // 同符號，畫面上一眼就能看出這是「區間目標」不是「漸變」，不用特別讀完
+  // 整句文字才能分辨（規格：跟一般 ramp／steady 組別的顯示方式要有清楚
+  // 區隔）。
+  if (preview.isBand) return `下一組：${preview.durationLabel} · ${preview.bandLowPct}-${preview.bandHighPct}% FTP`;
 
   const pctLabel = preview.isRange ? `${preview.startPct}% → ${preview.endPct}% FTP` : `${preview.startPct}% FTP`;
   return `下一組：${preview.durationLabel} · ${pctLabel}`;
@@ -222,23 +239,39 @@ function formatCountdownBannerText(preview) {
 /**
  * 「下一組」語音預告，刻意精簡（不像 formatCountdownBannerText() 那樣完整），
  * 搭配 FAST_PREVIEW_SPEECH_RATE 加快的語速，盡量在 5 秒內講完，好讓緊接著
- * 的 5 秒逐秒報數準確接上下一組開始，例如「下一組 75% 5 分鐘」。
+ * 的 5 秒逐秒報數準確接上下一組開始，例如「下一組 75% 5 分鐘」。「區間目標」
+ * 一樣要唸出範圍（例如「下一組 65% 到 75% 14 分鐘」），不是只唸中點單一
+ * 數字——跟 formatCountdownBannerText() 的視覺文字傳達同一件事，只是語速跟
+ * 精簡程度不同。
  */
 function formatFastCountdownSpeechText(preview) {
   if (preview.finishing) return COUNTDOWN_FINISHING_SOON_TEXT;
   if (preview.freeride) return `下一組 ${INTERVAL_TYPE_LABELS.freeride} ${preview.durationLabel}`;
+  if (preview.isBand) return `下一組 ${preview.bandLowPct}% 到 ${preview.bandHighPct}% ${preview.durationLabel}`;
 
   const pctLabel = preview.isRange ? `${preview.startPct}% 到 ${preview.endPct}%` : `${preview.startPct}%`;
   return `下一組 ${pctLabel} ${preview.durationLabel}`;
 }
 
-/** 切組瞬間的下一組資訊（規格既有格式，mm:ss ＋ watts，沒有變動） */
+/**
+ * 切組瞬間的下一組資訊（規格既有格式，mm:ss ＋ watts）——「區間目標」改成
+ * 跟倒數 10 秒預告（formatCountdownBannerText()）同一種精簡格式：只有
+ * 「時長 · 範圍% FTP」，不放類型標籤（「穩定」）也不放瓦數範圍——「穩定」
+ * 這個標籤對區間目標來說沒有實質意義（不是真的固定不變的穩定值），拿掉
+ * 之後畫面更簡潔，兩個提示點的區間目標呈現完全一致。一般 steady／ramp／
+ * freeride 維持原本格式不變（類型標籤＋mm:ss＋watts）。
+ */
 function formatNextIntervalText(workout, state, ftp) {
   const iv = workout.intervals[state.currentIntervalIndex];
+
+  const bandTarget = computeBandTarget(iv, ftp, state.powerAdjustPct);
+  if (bandTarget) {
+    return `下一組：${formatMinuteSecondLabel(iv.duration)} · ${bandTarget.lowPct}-${bandTarget.highPct}% FTP`;
+  }
+
   const typeLabel = INTERVAL_TYPE_LABELS[iv.type];
   const durationLabel = formatMMSS(iv.duration);
   const target = computeCurrentTarget(workout, state.currentIntervalIndex, 0, ftp, state.powerAdjustPct);
-
   if (target.watts === null) {
     return `下一組：${typeLabel} · ${durationLabel}`;
   }

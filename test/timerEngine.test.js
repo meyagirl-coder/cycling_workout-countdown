@@ -3,7 +3,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { parseZwoXml } from '../src/parser/zwoParser.js';
-import { computeCurrentTarget, createTimerEngine, TIMER_EVENTS } from '../src/engine/timerEngine.js';
+import { computeBandTarget, computeCurrentTarget, createTimerEngine, TIMER_EVENTS } from '../src/engine/timerEngine.js';
 import { getZoneColor } from '../src/constants/powerZones.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -106,6 +106,28 @@ describe('computeCurrentTarget', () => {
 
   it('attaches the correct zone color', () => {
     expect(computeCurrentTarget(workout, 1, 0, 200).zoneColor.key).toBe('Z3'); // 88% -> Z3
+  });
+});
+
+describe('computeBandTarget (regression: 「區間目標」band intervals must expose the real range, not just the flat midpoint from computeCurrentTarget - see the big status card / next-interval banner / speech, which all need to display "65-75% FTP" instead of "70% FTP")', () => {
+  it('returns null for an interval with no powerRangeLow/powerRangeHigh (ordinary steady/ramp/freeride)', () => {
+    expect(computeBandTarget({ powerStart: 70, powerEnd: 70 }, 200)).toBeNull();
+    expect(computeBandTarget({ powerStart: 60, powerEnd: 80 }, 200)).toBeNull();
+  });
+
+  it('computes lowPct/highPct/lowWatts/highWatts for a band interval (65-75% at FTP 200)', () => {
+    const target = computeBandTarget({ powerRangeLow: 65, powerRangeHigh: 75 }, 200);
+    expect(target).toEqual({ lowPct: 65, highPct: 75, lowWatts: 130, highWatts: 150 });
+  });
+
+  it('applies the ±1% power adjustment to both ends of the range', () => {
+    const bumped = computeBandTarget({ powerRangeLow: 65, powerRangeHigh: 75 }, 200, 5);
+    expect(bumped).toEqual({ lowPct: 70, highPct: 80, lowWatts: 140, highWatts: 160 });
+  });
+
+  it('always returns lowPct <= highPct even if powerRangeLow/powerRangeHigh were stored in descending order (a range display has no direction)', () => {
+    const target = computeBandTarget({ powerRangeLow: 80, powerRangeHigh: 60 }, 200);
+    expect(target).toEqual({ lowPct: 60, highPct: 80, lowWatts: 120, highWatts: 160 });
   });
 });
 
