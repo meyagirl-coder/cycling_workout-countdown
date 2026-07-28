@@ -318,12 +318,35 @@ describe('createUploadView: 設定開始時間 (group-ride scheduling, positione
 });
 
 describe('createUploadView: 產生開團分享連結 (share-link generator tool, positioned below 設定開始時間)', () => {
-  it('is positioned after the schedule row and before the four source cards', () => {
+  /** Finds which direct child of .upload-screen contains el, and returns its index (regardless of how deeply nested el is). */
+  function topLevelIndex(screen, el) {
+    let node = el;
+    while (node && node.parentElement !== screen) node = node.parentElement;
+    return Array.from(screen.children).indexOf(node);
+  }
+
+  it('follows the "設定開始時間 -> 貼課表網址 -> 開團分享連結" order (regression: these three schedule-related sections are grouped together so a group-ride organizer does not have to jump around the page setting up a shared session), with the remaining three source cards (貼文字/上傳 .zwo/intervals.icu) still directly after, unmoved relative to each other', () => {
     const { root } = setup();
-    const positions = Array.from(root.querySelectorAll('.upload-schedule-row, .share-link-tool, .upload-source-list')).map(
-      (el) => el.className
+    const screen = root.querySelector('.upload-screen');
+
+    const scheduleIdx = topLevelIndex(screen, root.querySelector('.upload-schedule-row'));
+    const urlCardIdx = topLevelIndex(screen, root.querySelector('.upload-url-form'));
+    const shareLinkIdx = topLevelIndex(screen, root.querySelector('.share-link-tool'));
+    const sourceListIdx = topLevelIndex(screen, root.querySelector('.upload-source-list'));
+
+    expect(scheduleIdx).toBeLessThan(urlCardIdx);
+    expect(urlCardIdx).toBeLessThan(shareLinkIdx);
+    expect(shareLinkIdx).toBeLessThan(sourceListIdx);
+
+    // the url card itself keeps its usual "upload-source-card" styling - it
+    // only moved position, nothing about the card's own markup changed
+    expect(root.querySelector('.upload-url-form').closest('.upload-source-card')).not.toBeNull();
+
+    // the other three cards keep their existing relative order inside the list
+    const remainingTitles = Array.from(root.querySelector('.upload-source-list').querySelectorAll('.upload-source-title')).map(
+      (el) => el.textContent
     );
-    expect(positions).toEqual(['upload-schedule-row', 'share-link-tool', 'upload-source-list']);
+    expect(remainingTitles).toEqual(['貼上課表文字內容', '上傳 ZWO 檔案', '使用 intervals 行事曆課表']);
   });
 
   it('generates a correctly-encoded share link from a workout URL and start time, and shows it in a readonly result field', () => {
