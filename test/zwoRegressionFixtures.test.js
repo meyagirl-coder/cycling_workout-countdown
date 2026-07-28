@@ -71,7 +71,7 @@ function simulateFullPlayback(workout, { ftp = 200, tickIntervalMs = 200 } = {})
 }
 
 describe('regression: IntervalCoach 閾值衝刺 (real-world intervals.icu export with 5 identical repeated Threshold/Surge/Recovery blocks)', () => {
-  it('parses into 18 intervals with the expected repeated structure (5x Threshold-ramp/Surge/Recovery), no two adjacent blocks merged or dropped', () => {
+  it('parses into 18 intervals with the expected repeated structure (5x Threshold-band/Surge/Recovery), no two adjacent blocks merged or dropped', () => {
     const workout = parseZwoXml(loadFixture('IntervalCoach_閾值衝刺_正確版.zwo'));
 
     expect(workout.intervals).toHaveLength(18);
@@ -80,10 +80,12 @@ describe('regression: IntervalCoach 閾值衝刺 (real-world intervals.icu expor
     // opening warmup-style steady block
     expect(workout.intervals[0]).toMatchObject({ type: 'steady', duration: 720, powerStart: 50, powerEnd: 50 });
 
-    // 5x repeated Threshold(ramp 95->100%)/Surge(120% steady)/Recovery(60% steady)
+    // 5x repeated Threshold(95-100% band, held at the 98% midpoint - not a
+    // ramp, see zwoParser.js's SteadyState PowerLow/PowerHigh rationale)/
+    // Surge(120% steady)/Recovery(60% steady)
     for (let rep = 0; rep < 5; rep++) {
       const base = 1 + rep * 3;
-      expect(workout.intervals[base]).toMatchObject({ type: 'ramp', duration: 600, powerStart: 95, powerEnd: 100 });
+      expect(workout.intervals[base]).toMatchObject({ type: 'steady', duration: 600, powerStart: 98, powerEnd: 98 });
       expect(workout.intervals[base + 1]).toMatchObject({ type: 'steady', duration: 30, powerStart: 120, powerEnd: 120 });
       expect(workout.intervals[base + 2]).toMatchObject({ type: 'steady', duration: 120, powerStart: 60, powerEnd: 60 });
     }

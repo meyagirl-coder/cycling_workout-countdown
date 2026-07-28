@@ -111,6 +111,19 @@
 
 Power 值是 0–1 的小數（0.88 = 88% FTP），parser 要 ×100 轉成整數百分比存進 schema。
 
+**`<SteadyState>` 帶 `PowerLow`/`PowerHigh`（沒有 `Power`）的非官方組合**：這不是
+Zwift 官方 ZWO 格式本來就支援的寫法——官方 `SteadyState` 只有單一 `Power`
+屬性，`PowerLow`/`PowerHigh` 是 `Warmup`/`Ramp`/`Cooldown` 才有、代表逐秒線性
+漸變的官方屬性。實測遇過的幾個第三方課表產生工具（例如 IntervalCoach／
+intervals.icu）會借用同樣的屬性名稱套在 `SteadyState` 上，表達「這組期間維持
+在這個瓦數區間內即可」的目標範圍（regression：曾經誤判成跟 `Warmup`/`Ramp`/
+`Cooldown` 一樣線性內插，把 `type` 標成 `ramp`，導致「這幾分鐘維持在區間內」
+的長時間 Endurance/Threshold 區段被畫面誤顯示成整段平滑漸變）——parser 改成
+跟一般只有單一 `Power` 屬性的 `SteadyState` 一樣處理：取 `PowerLow`/
+`PowerHigh` 區間中點當作整組期間維持不變的目標值（`type: steady`，
+`powerStart === powerEnd`），不逐秒內插。真正的 `<Ramp>` 標籤（以及本來就是
+漸變形狀的 `<Warmup>`/`<Cooldown>`）不受影響，維持逐秒線性內插。
+
 **Parser 函式簽名：**
 
 ```js
