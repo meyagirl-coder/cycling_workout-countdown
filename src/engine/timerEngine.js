@@ -65,6 +65,43 @@ export function computeCurrentTarget(workout, intervalIndex, elapsedInInterval, 
 }
 
 /**
+ * 「區間目標」（band，見 workoutSchema.js 的 powerRangeLow/powerRangeHigh
+ * 說明）專用：算出經過 adjustPct 微調後的區間下限／上限（%FTP 跟瓦數），
+ * 給大字執行卡片、下一組預告文字／語音共用，不必各自重複同一套換算邏輯
+ * （regression：這幾個地方原本各自呼叫 computeCurrentTarget() 只拿到
+ * powerStart===powerEnd 的中點單一值，band 組別畫面上誤顯示成固定數字，
+ * 使用者會誤以為需要精確跟隨某個數值，跟「範圍內都算合格」的實際訓練意圖
+ * 不符——這裡改成回傳真正的區間範圍，呼叫端各自决定怎麼顯示）。
+ *
+ * 回傳的 lowPct/highPct 一律 lowPct <= highPct（不管原始 XML／文字裡
+ * PowerLow/PowerHigh 或 Y-Z% 寫的順序為何），因為「範圍」本身沒有方向性，
+ * 顯示／語音只在乎「這個範圍是多少到多少」，不需要照原始屬性順序——跟
+ * zwoParser.js／timelineSegments.js 刻意保留原始 powerRangeLow/powerRangeHigh
+ * 順序（給雙層視覺的下層/上層對應用）不衝突，那裡的順序另有用途，這裡只
+ * 是顯示用的正規化。
+ *
+ * @param {object} iv - 課表的一個 interval（不是整份 workout）
+ * @param {number} ftp
+ * @param {number} [adjustPct]
+ * @returns {{lowPct: number, highPct: number, lowWatts: number, highWatts: number} | null} 不是 band 就回傳 null
+ */
+export function computeBandTarget(iv, ftp, adjustPct = 0) {
+  if (iv.powerRangeLow == null || iv.powerRangeHigh == null) return null;
+
+  const a = iv.powerRangeLow + adjustPct;
+  const b = iv.powerRangeHigh + adjustPct;
+  const lowPct = Math.min(a, b);
+  const highPct = Math.max(a, b);
+
+  return {
+    lowPct,
+    highPct,
+    lowWatts: Math.round((ftp * lowPct) / 100),
+    highWatts: Math.round((ftp * highPct) / 100),
+  };
+}
+
+/**
  * 建立一份課表的計時引擎實例。狀態機：
  *   idle → running → paused → running → finished
  * skip / redo / stop 隨時可觸發，不限狀態。

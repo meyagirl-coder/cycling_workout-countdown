@@ -89,21 +89,29 @@ describe('parseZwoXml', () => {
 
     const workout = parseZwoXml(xml);
     expectValidWorkout(workout);
-    expect(workout.intervals).toEqual([{ type: 'steady', duration: 300, powerStart: 70, powerEnd: 70, cadence: 85 }]);
+    expect(workout.intervals).toEqual([
+      { type: 'steady', duration: 300, powerStart: 70, powerEnd: 70, cadence: 85, powerRangeLow: 65, powerRangeHigh: 75 },
+    ]);
   });
 
-  it('computes the same midpoint regardless of whether PowerLow/PowerHigh are given in ascending or descending order (a band has no direction, unlike a real ramp)', () => {
+  it('computes the same midpoint regardless of whether PowerLow/PowerHigh are given in ascending or descending order (a band has no direction, unlike a real ramp), while powerRangeLow/powerRangeHigh preserve the raw attribute values as-is for the timeline\'s two-layer rendering', () => {
     const ascending = `<workout_file><workout><SteadyState Duration="120" PowerLow="0.6" PowerHigh="0.8"/></workout></workout_file>`;
     const descending = `<workout_file><workout><SteadyState Duration="120" PowerLow="0.8" PowerHigh="0.6"/></workout></workout_file>`;
 
-    expect(parseZwoXml(ascending).intervals).toEqual([{ type: 'steady', duration: 120, powerStart: 70, powerEnd: 70, cadence: null }]);
-    expect(parseZwoXml(descending).intervals).toEqual([{ type: 'steady', duration: 120, powerStart: 70, powerEnd: 70, cadence: null }]);
+    expect(parseZwoXml(ascending).intervals).toEqual([
+      { type: 'steady', duration: 120, powerStart: 70, powerEnd: 70, cadence: null, powerRangeLow: 60, powerRangeHigh: 80 },
+    ]);
+    expect(parseZwoXml(descending).intervals).toEqual([
+      { type: 'steady', duration: 120, powerStart: 70, powerEnd: 70, cadence: null, powerRangeLow: 80, powerRangeHigh: 60 },
+    ]);
   });
 
   it('rounds a non-integer midpoint to the nearest whole percent (95%-100% band -> 97.5 rounds up to 98%)', () => {
     const xml = `<workout_file><workout><SteadyState Duration="600" PowerLow="0.95" PowerHigh="1.0"/></workout></workout_file>`;
 
-    expect(parseZwoXml(xml).intervals).toEqual([{ type: 'steady', duration: 600, powerStart: 98, powerEnd: 98, cadence: null }]);
+    expect(parseZwoXml(xml).intervals).toEqual([
+      { type: 'steady', duration: 600, powerStart: 98, powerEnd: 98, cadence: null, powerRangeLow: 95, powerRangeHigh: 100 },
+    ]);
   });
 
   it('throws when a SteadyState has neither Power nor a full PowerLow/PowerHigh pair', () => {
@@ -174,7 +182,7 @@ describe('parseZwoXml', () => {
     // 是「這 5 分鐘維持在 65-75% FTP 這個區間內」的目標範圍，不是逐秒精確
     // 從 65% 線性爬升到 75%——取區間中點 70% 當作整組期間維持不變的目標值
     // （regression: 曾經誤判成 type: 'ramp'，見 zwoParser.js 的完整說明）。
-    const endurance = { type: 'steady', duration: 300, powerStart: 70, powerEnd: 70, cadence: 85 };
+    const endurance = { type: 'steady', duration: 300, powerStart: 70, powerEnd: 70, cadence: 85, powerRangeLow: 65, powerRangeHigh: 75 };
     const vo2On = { type: 'steady', duration: 300, powerStart: 115, powerEnd: 115, cadence: 95 };
     const vo2Off = { type: 'steady', duration: 300, powerStart: 55, powerEnd: 55, cadence: 80 };
     const cooldown = { type: 'cooldown', duration: 360, powerStart: 65, powerEnd: 45, cadence: 85 };

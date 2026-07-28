@@ -184,6 +184,81 @@ describe('buildTimelineSegments', () => {
     const cooldownSlices = segments.filter((seg) => seg.type === 'cooldown');
     expect(cooldownSlices.map((s) => s.color)).toEqual(['blue', 'gray']);
   });
+
+  describe('「區間目標」(band) segments - powerRangeLow/powerRangeHigh, not a time-based ramp', () => {
+    function makeBandWorkout() {
+      return {
+        id: 'band-workout',
+        name: 'Band Test',
+        source: 'zwo',
+        totalDuration: 840,
+        intervals: [{ type: 'steady', duration: 840, powerStart: 70, powerEnd: 70, cadence: 88, powerRangeLow: 65, powerRangeHigh: 75 }],
+      };
+    }
+
+    it('produces exactly 2 segments for a band interval - a "low" layer and a "high" layer, both spanning the full interval width (not sliced by time like a ramp)', () => {
+      const segments = buildTimelineSegments(makeBandWorkout());
+
+      expect(segments).toHaveLength(2);
+      const [low, high] = segments;
+      expect(low.bandLayer).toBe('low');
+      expect(high.bandLayer).toBe('high');
+      // both layers span the entire interval's time width, unlike a ramp's
+      // zone-crossing slices which split the width by time
+      expect(low.startPct).toBe(0);
+      expect(low.widthPct).toBe(100);
+      expect(high.startPct).toBe(0);
+      expect(high.widthPct).toBe(100);
+    });
+
+    it('the low layer uses powerRangeLow (65%) and the high layer uses powerRangeHigh (75%) as their (flat, non-ramping) start/end power', () => {
+      const [low, high] = buildTimelineSegments(makeBandWorkout());
+
+      expect(low.startPowerPct).toBe(65);
+      expect(low.endPowerPct).toBe(65); // flat within the layer, not a slope
+      expect(high.startPowerPct).toBe(75);
+      expect(high.endPowerPct).toBe(75);
+    });
+
+    it('each layer uses the zone color for its own value, correctly differing when the band straddles a zone boundary (65% and 75% both sit in the same zone here, so colors happen to match - see the next test for a straddling case)', () => {
+      const [low, high] = buildTimelineSegments(makeBandWorkout());
+      expect(low.color).toBe(high.color);
+    });
+
+    it('a band whose low/high straddle a zone boundary (e.g. 70-80%, crossing the 75% Z2/Z3 boundary) gets two DIFFERENT layer colors, not forced into one', () => {
+      const workout = {
+        id: 'band-straddle-workout',
+        name: 'Band Straddle Test',
+        source: 'zwo',
+        totalDuration: 300,
+        intervals: [{ type: 'steady', duration: 300, powerStart: 75, powerEnd: 75, cadence: null, powerRangeLow: 70, powerRangeHigh: 80 }],
+      };
+      const [low, high] = buildTimelineSegments(workout);
+      expect(low.color).not.toBe(high.color);
+    });
+
+    it('shifts both powerRangeLow and powerRangeHigh by the user\'s ±1% adjustPct, keeping the timeline in sync with the target display', () => {
+      const shifted = buildTimelineSegments(makeBandWorkout(), 10);
+      const [low, high] = shifted;
+      expect(low.startPowerPct).toBe(75); // 65 + 10
+      expect(high.startPowerPct).toBe(85); // 75 + 10
+    });
+
+    it('a genuine ramp (no powerRangeLow/powerRangeHigh) is completely unaffected - still a single time-sliced curve, never tagged with bandLayer', () => {
+      const workout = {
+        id: 'genuine-ramp-workout',
+        name: 'Genuine Ramp',
+        source: 'zwo',
+        totalDuration: 300,
+        intervals: [{ type: 'ramp', duration: 300, powerStart: 60, powerEnd: 80, cadence: null }],
+      };
+      const segments = buildTimelineSegments(workout);
+      expect(segments.every((seg) => seg.bandLayer === undefined)).toBe(true);
+      // ramp still slopes from 60 to 80 across its own width, not a flat band
+      expect(segments[0].startPowerPct).toBe(60);
+      expect(segments[segments.length - 1].endPowerPct).toBe(80);
+    });
+  });
 });
 
 describe('buildIntervalBoundaries', () => {
@@ -244,6 +319,66 @@ describe('createPlayerView', () => {
     expect(root.querySelector('.countdown-label')).toBeNull(); // regression: label removed, replaced by elapsed-time
     expect(root.querySelector('.play-pause-btn')).toBeNull(); // sanity: no stray selector typo
     expect(root.querySelector('.btn-play-pause').textContent).toContain('暫停');
+  });
+
+  it('shows the watt AND %FTP as a "-" range (not a single interpolated number) for a 「區間目標」band interval (regression: IntervalCoach_節奏推升間歇.zwo\'s 14-minute "Endurance" 65-75% segments were showing a flat "70% FTP" instead of the actual range)', () => {
+    document.body.innerHTML = '<div id="root"></div>';
+    const root = document.getElementById('root');
+    const view = createPlayerView(root, { onPlayPause: vi.fn(), onSkip: vi.fn(), onRedo: vi.fn(), onStop: vi.fn() });
+
+    const workout = {
+      id: 'band-render-target-workout',
+      name: 'Band Target Test',
+      source: 'zwo',
+      totalDuration: 840,
+      intervals: [{ type: 'steady', duration: 840, powerStart: 70, powerEnd: 70, cadence: 88, powerRangeLow: 65, powerRangeHigh: 75 }],
+    };
+    const state = makeIdleState({ status: 'running', currentIntervalIndex: 0, elapsedInInterval: 400, elapsedTotal: 400 });
+    view.update(workout, state, 200);
+
+    // even 400s into the 840s band, the display stays the full range - not
+    // interpolated/changing over time like a real ramp would be
+    expect(root.querySelector('.target-watt').textContent).toBe('130-150 W');
+    expect(root.querySelector('.target-pct').textContent).toBe('65-75% FTP');
+    expect(root.querySelector('.target-cadence').textContent).toBe('88 rpm');
+  });
+
+  it('keeps the band range in sync with the ±1% power adjustment', () => {
+    document.body.innerHTML = '<div id="root"></div>';
+    const root = document.getElementById('root');
+    const view = createPlayerView(root, { onPlayPause: vi.fn(), onSkip: vi.fn(), onRedo: vi.fn(), onStop: vi.fn() });
+
+    const workout = {
+      id: 'band-render-adjust-workout',
+      name: 'Band Adjust Test',
+      source: 'zwo',
+      totalDuration: 300,
+      intervals: [{ type: 'steady', duration: 300, powerStart: 70, powerEnd: 70, cadence: null, powerRangeLow: 65, powerRangeHigh: 75 }],
+    };
+    const state = makeIdleState({ status: 'running', currentIntervalIndex: 0, elapsedInInterval: 0, elapsedTotal: 0, powerAdjustPct: 5 });
+    view.update(workout, state, 200);
+
+    expect(root.querySelector('.target-pct').textContent).toBe('70-80% FTP');
+    expect(root.querySelector('.target-watt').textContent).toBe('140-160 W');
+  });
+
+  it('a genuine ramp interval still shows a single interpolated number, not a range (regression: band rendering path must not leak into ordinary ramps)', () => {
+    document.body.innerHTML = '<div id="root"></div>';
+    const root = document.getElementById('root');
+    const view = createPlayerView(root, { onPlayPause: vi.fn(), onSkip: vi.fn(), onRedo: vi.fn(), onStop: vi.fn() });
+
+    const workout = {
+      id: 'genuine-ramp-render-workout',
+      name: 'Genuine Ramp Render Test',
+      source: 'zwo',
+      totalDuration: 100,
+      intervals: [{ type: 'ramp', duration: 100, powerStart: 60, powerEnd: 80, cadence: null }],
+    };
+    const state = makeIdleState({ status: 'running', currentIntervalIndex: 0, elapsedInInterval: 50, elapsedTotal: 50 });
+    view.update(workout, state, 200);
+
+    expect(root.querySelector('.target-pct').textContent).toBe('70% FTP'); // halfway between 60 and 80
+    expect(root.querySelector('.target-watt').textContent).toBe('140 W');
   });
 
   it('hides the target watt for freeride segments', () => {
@@ -344,6 +479,57 @@ describe('createPlayerView', () => {
 
     // 100% FTP reference line is positioned once, independent of the workout.
     expect(root.querySelector('.timeline-reference-line').style.top).not.toBe('');
+  });
+
+  it('renders a band ("區間目標") interval as two stacked timeline-segment divs (low layer first in the DOM, high layer painted after/on top), the high layer marked with the lighter overlay class - not a single flat bar or a ramp\'s time-sliced gradient', () => {
+    document.body.innerHTML = '<div id="root"></div>';
+    const root = document.getElementById('root');
+    const view = createPlayerView(root, { onPlayPause: vi.fn(), onSkip: vi.fn(), onRedo: vi.fn(), onStop: vi.fn() });
+
+    const bandWorkout = {
+      id: 'band-render-workout',
+      name: 'Band Render Test',
+      source: 'zwo',
+      totalDuration: 840,
+      intervals: [{ type: 'steady', duration: 840, powerStart: 70, powerEnd: 70, cadence: 88, powerRangeLow: 65, powerRangeHigh: 75 }],
+    };
+    view.update(bandWorkout, makeIdleState(), 200);
+
+    const segments = root.querySelectorAll('.timeline-segment');
+    expect(segments).toHaveLength(2);
+
+    const [lowEl, highEl] = segments;
+    expect(lowEl.className).toContain('timeline-segment-band-low');
+    expect(highEl.className).toContain('timeline-segment-band-high');
+
+    // both layers span the interval's full width (100%, only 1 interval here)
+    expect(lowEl.style.left).toBe('0%');
+    expect(lowEl.style.width).toBe('100%');
+    expect(highEl.style.left).toBe('0%');
+    expect(highEl.style.width).toBe('100%');
+
+    // the high layer's bar is taller (75% FTP) than the low layer's (65% FTP)
+    const heightFromClipPath = (el) => {
+      const match = el.style.clipPath.match(/0% (\d+(?:\.\d+)?)%/);
+      return 100 - parseFloat(match[1]);
+    };
+    expect(heightFromClipPath(highEl)).toBeGreaterThan(heightFromClipPath(lowEl));
+  });
+
+  it('a genuine ramp interval still renders as ordinary single-layer zone-crossing segments, completely unaffected by the band rendering path (regression: previously-tested pure-ramp cases must keep their original one-layer sloped appearance)', () => {
+    document.body.innerHTML = '<div id="root"></div>';
+    const root = document.getElementById('root');
+    const view = createPlayerView(root, { onPlayPause: vi.fn(), onSkip: vi.fn(), onRedo: vi.fn(), onStop: vi.fn() });
+
+    view.update(makeWorkout(), makeIdleState(), 200); // makeWorkout() has real warmup/cooldown ramps, no bands
+
+    const segments = root.querySelectorAll('.timeline-segment');
+    for (const el of segments) {
+      expect(el.className).not.toContain('timeline-segment-band-low');
+      expect(el.className).not.toContain('timeline-segment-band-high');
+    }
+    // still exactly the 6 zone-crossing slices from the pre-existing test above, unchanged
+    expect(segments).toHaveLength(6);
   });
 
   it('keeps the timeline zone colors in sync with the status-panel background as powerAdjustPct changes', () => {

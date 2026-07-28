@@ -105,16 +105,20 @@ function parseIntervalElement(el, type) {
     // 實際訓練意圖不符。這裡改成跟一般只有單一 Power 屬性的 SteadyState
     // 一樣處理：取區間中點當作整組期間維持不變的目標值（type 仍然是
     // 'steady'，powerStart 跟 powerEnd 相等，timerEngine.js 的內插公式在
-    // 兩者相等時自然算出固定值，不需要額外的特殊分支；時間軸顏色／下一組
-    // 預告文字等其他畫面邏輯也都是直接比較 powerStart/powerEnd 是否相等
-    // 來決定要不要顯示範圍，不是看 type，所以這裡不需要另外調整）。
+    // 兩者相等時自然算出固定值，不需要額外的特殊分支；下一組預告文字等
+    // 其他畫面邏輯也都是直接比較 powerStart/powerEnd 是否相等來決定要不要
+    // 顯示範圍，不是看 type，所以這裡不需要另外調整）。額外存下原始的
+    // powerRangeLow/powerRangeHigh（workoutSchema.js 的選填欄位）：時間軸
+    // 柱狀圖需要真正的區間範圍才能畫出「下層區間下限、上層疊加區間上限」
+    // 的雙層視覺效果（見 timelineSegments.js），只取中點的話這個範圍資訊
+    // 就永久遺失了。
     const powerLow = parsePowerAttr(el, 'PowerLow');
     const powerHigh = parsePowerAttr(el, 'PowerHigh');
     if (powerLow === null || powerHigh === null) {
       throw new Error(`Invalid ZWO XML: <${el.tagName}> is missing a required Power attribute (or PowerLow/PowerHigh)`);
     }
     const midpoint = Math.round((powerLow + powerHigh) / 2);
-    return { type: 'steady', duration, powerStart: midpoint, powerEnd: midpoint, cadence };
+    return { type: 'steady', duration, powerStart: midpoint, powerEnd: midpoint, cadence, powerRangeLow: powerLow, powerRangeHigh: powerHigh };
   }
 
   if (type === 'warmup' || type === 'ramp' || type === 'cooldown') {
