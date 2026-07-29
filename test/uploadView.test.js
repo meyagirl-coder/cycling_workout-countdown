@@ -213,6 +213,12 @@ describe('createUploadView: 倒數提示模式 (voice/beep toggle, mirrors the t
     expect(voiceBtn.classList.contains('is-active')).toBe(true);
     expect(beepBtn.classList.contains('is-active')).toBe(false);
   });
+
+  it('the mode-toggle hint warns that video-call tab-audio sharing only works in beep mode (regression: SpeechSynthesis output isn\'t captured by tab-audio sharing - see countdownAlerts.js - so users picking voice mode for a screen-shared group session would get no audio on the remote end unless warned upfront)', () => {
+    const { root } = setup();
+    const hint = root.querySelector('.upload-alertmode-hint');
+    expect(hint.textContent).toBe('兩者擇一：「下一組提示倒數」用語音報數；「逼逼聲倒數」改用三聲提示音，視訊分享音效僅【逼逼聲】模式支援播放');
+  });
 });
 
 describe('createUploadView: 設定開始時間 (group-ride scheduling, positioned right below FTP)', () => {
