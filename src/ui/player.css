@@ -384,6 +384,17 @@ body {
   text-align: center;
 }
 
+/* 補充在上面那行說明文字下方的第二行提醒：字級／顏色跟其他輔助說明文字
+   一致（比選項本身小一級，同一套 --text-muted／0.8rem），margin-top 縮小
+   讓兩行讀起來像同一塊提示的延續，不是切到新的一個區塊（跟
+   .upload-screen 直接子元素之間預設 1rem 的 gap 拉開距離）。 */
+.upload-alertmode-voice-limit-hint {
+  margin: -0.35rem 0 0;
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  text-align: center;
+}
+
 /* 團體訓練排程：「設定開始時間」欄位，位置固定在 FTP 設定列下方 */
 .upload-schedule-row {
   width: 100%;

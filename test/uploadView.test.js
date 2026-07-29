@@ -213,6 +213,19 @@ describe('createUploadView: 倒數提示模式 (voice/beep toggle, mirrors the t
     expect(voiceBtn.classList.contains('is-active')).toBe(true);
     expect(beepBtn.classList.contains('is-active')).toBe(false);
   });
+
+  it('shows a hint below the mode toggle warning that video-call tab-audio sharing only works in beep mode (regression: SpeechSynthesis output isn\'t captured by tab-audio sharing - see countdownAlerts.js - so users picking voice mode for a screen-shared group session would get no audio on the remote end unless warned upfront)', () => {
+    const { root } = setup();
+    const hint = root.querySelector('.upload-alertmode-voice-limit-hint');
+    expect(hint).not.toBeNull();
+    expect(hint.textContent).toBe('視訊分享音效僅【逼逼聲】模式支援播放');
+
+    // positioned directly below the existing mode-toggle hint, still before 設定開始時間
+    const positions = Array.from(
+      root.querySelectorAll('.upload-alertmode-hint, .upload-alertmode-voice-limit-hint, .upload-schedule-row')
+    ).map((el) => el.className);
+    expect(positions).toEqual(['upload-alertmode-hint', 'upload-alertmode-voice-limit-hint', 'upload-schedule-row']);
+  });
 });
 
 describe('createUploadView: 設定開始時間 (group-ride scheduling, positioned right below FTP)', () => {
