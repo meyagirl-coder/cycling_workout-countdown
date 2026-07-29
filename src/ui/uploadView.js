@@ -88,8 +88,7 @@ export function createUploadView(rootEl, handlers) {
           <button type="button" class="upload-alertmode-btn" data-mode="beep">逼逼聲倒數</button>
         </div>
       </div>
-      <p class="upload-alertmode-hint">兩者擇一：「下一組提示倒數」用語音報數；「逼逼聲倒數」改用三聲提示音，適合視訊分享畫面時讓對方也能聽到聲音提示</p>
-      <p class="upload-alertmode-voice-limit-hint">視訊分享音效僅【逼逼聲】模式支援播放</p>
+      <p class="upload-alertmode-hint">兩者擇一：「下一組提示倒數」用語音報數；「逼逼聲倒數」改用三聲提示音，視訊分享音效僅【逼逼聲】模式支援播放</p>
 
       <div class="upload-schedule-row">
         <label class="upload-schedule-label" for="upload-schedule-input">設定開始時間</label>
