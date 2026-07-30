@@ -65,6 +65,8 @@ src/
     countdownAlerts.js             語音／逼逼聲倒數提示邏輯
     scheduledStartRuntime.js       「設定開始時間」排程等待邏輯
     groupJoinLinkParser.js         開團分享連結解析
+    workoutSummaryText.js          「尚未開始」預覽畫面的課表文字摘要（純函式，
+                                     從 Workout Schema 反向組合，跟輸入來源無關）
     alertModeStore.js / ftpStore.js / scheduleStore.js / themeStore.js
       / draftInputStore.js / workoutProgressStore.js  各種 localStorage 狀態
     timelineSegments.js            執行頁時間軸視覺化的分段邏輯
@@ -83,7 +85,7 @@ docs/HANDOFF.md          本文件
 
 ```bash
 npm install
-npm test          # 跑一次全部測試（目前 700+ 支，vitest run）
+npm test          # 跑一次全部測試（目前 750+ 支，vitest run）
 npm run test:watch
 ```
 
@@ -103,6 +105,19 @@ npm run test:watch
 
 ## 5. 目前功能狀態（依 git log 由新到舊）
 
+- 執行頁「尚未開始」預覽畫面新增「課表摘要」卡片：在「開始」按鈕下方顯示
+  整份課表的文字摘要（總時長 + 逐組「時長 @ 瓦數」，重複組自動壓縮成
+  「NX (段落1 | 段落2)」），格式參考 TrainerDay「複製」按鈕產生的文字。
+  純函式從 Workout Schema 反向組合（`workoutSummaryText.js`），跟輸入
+  來源無關；只在 `status === 'idle'`（真正「尚未開始」，不是「暫停」）
+  時顯示。
+- TrainerDay 課表網址標題擷取修正：原本 `api/trainerday-workout.js` 只
+  擷取「Workout structure」課表內容，完全沒處理過頁面標題，所有 URL 載入
+  的 TrainerDay 課表一律顯示「Untitled Workout」——是系統性問題，不是
+  抓錯某個特定網址的格式。修法：新增 `extractTrainerDayTitleFromHtml()`
+  從 `<title>` 撈標題、去除網站名稱前綴，API 回應格式改成 JSON
+  `{ name, workoutText }`。**WhatsOnZwift 的同一支 proxy 還沒有做同樣的
+  標題擷取**，是已知但還沒處理的同類問題。
 - 「視訊分享僅逼逼聲模式支援」提示文字（單行合併版本，已部署）。
 - Homepage 卡片順序：設定開始時間 → 貼課表網址 → 開團分享連結
   → 貼上課表文字內容 → 上傳 ZWO 檔案（已部署）。
