@@ -1140,6 +1140,42 @@ body {
   display: none;
 }
 
+/* 「課表摘要」卡片：只在「尚未開始」的預覽狀態顯示（見 renderPlayer.js），
+   用淺色、偏小字級跟時間軸圖表拉出視覺層級差——這個區塊是輔助性的「整份
+   課表一次看清楚」文字備忘，不是主要互動內容，不該搶走時間軸圖表跟大字
+   倒數卡片的視覺焦點。 */
+.workout-summary-card {
+  padding: 1rem 1.1rem;
+  border-radius: 1rem;
+  background: var(--input-bg-soft);
+  border: 1px solid var(--card-border);
+}
+
+.workout-summary-card.hidden {
+  display: none;
+}
+
+.workout-summary-title {
+  margin: 0 0 0.5rem;
+  font-size: var(--font-tier-3);
+  font-weight: 700;
+  color: var(--text-muted);
+}
+
+/* <pre> 保留原始換行（重複組摘要每一組一行），字體改回跟頁面其他文字一致
+   的字型（<pre> 預設會套用等寬字體，跟中文課表名稱等其他文字混在同一個
+   畫面上字體風格會不一致），white-space: pre-wrap 讓太長的單行（例如很長
+   的重複組摘要）能自動換行，不會被逼著橫向捲動。 */
+.workout-summary-text {
+  margin: 0;
+  font-family: inherit;
+  font-size: var(--font-tier-3);
+  line-height: 1.6;
+  color: var(--text-muted);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
 .zone-gray { background-color: var(--zone-gray); }
 .zone-blue { background-color: var(--zone-blue); }
 .zone-green { background-color: var(--zone-green); }
