@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { extractTrainerDayWorkoutStructureFromHtml } from '../src/parser/extractTrainerDayWorkoutStructureFromHtml.js';
+import { extractTrainerDayTitleFromHtml, extractTrainerDayWorkoutStructureFromHtml } from '../src/parser/extractTrainerDayWorkoutStructureFromHtml.js';
 import { parseTrainerDayWorkoutStructureText } from '../src/parser/trainerDayWorkoutStructureParser.js';
 
 describe('extractTrainerDayWorkoutStructureFromHtml', () => {
@@ -208,5 +208,35 @@ describe('extractTrainerDayWorkoutStructureFromHtml', () => {
     const workout = parseTrainerDayWorkoutStructureText(text);
     expect(workout.intervals).toHaveLength(12);
     expect(workout.intervals.map((iv) => iv.powerStart)).toEqual([50, 55, 60, 65, 70, 75, 80, 85, 90, 95, 100, 50]);
+  });
+});
+
+describe('extractTrainerDayTitleFromHtml', () => {
+  it('extracts the workout title from <title>, stripping the "Trainer Day - " site-name prefix (regression: real-device report of every TrainerDay-URL workout showing as "Untitled Workout" - the fetched page HTML was only ever mined for the "Workout structure" block, never for a title - confirmed against the actual page: <title>Trainer Day - 120% *6 Z2</title>)', () => {
+    const html = '<html><head><title>Trainer Day - 120% *6 Z2</title></head><body></body></html>';
+    expect(extractTrainerDayTitleFromHtml(html)).toBe('120% *6 Z2');
+  });
+
+  it('tolerates different casing/spacing of the site-name prefix and different dash characters', () => {
+    expect(extractTrainerDayTitleFromHtml('<title>TrainerDay – Ramp Up 5</title>')).toBe('Ramp Up 5');
+    expect(extractTrainerDayTitleFromHtml('<title>trainer day: Sweet Spot 3x12</title>')).toBe('Sweet Spot 3x12');
+  });
+
+  it('decodes HTML entities and collapses internal whitespace/newlines in the title text', () => {
+    const html = '<title>Trainer Day - Ramp &amp; Hold\n  6x5</title>';
+    expect(extractTrainerDayTitleFromHtml(html)).toBe('Ramp & Hold 6x5');
+  });
+
+  it('returns null when there is no <title> tag at all', () => {
+    expect(extractTrainerDayTitleFromHtml('<html><body>no title here</body></html>')).toBeNull();
+  });
+
+  it('returns null when the title is only the site name with nothing left after stripping the prefix', () => {
+    expect(extractTrainerDayTitleFromHtml('<title>Trainer Day</title>')).toBeNull();
+  });
+
+  it('returns null for non-string input', () => {
+    expect(extractTrainerDayTitleFromHtml(null)).toBeNull();
+    expect(extractTrainerDayTitleFromHtml(undefined)).toBeNull();
   });
 });

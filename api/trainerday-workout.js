@@ -16,8 +16,15 @@
  * 過的「Workout structure」格式（`X min @ Y% (Zw)`），如果部署後這支 proxy
  * 又抓不到內容，請改用「貼上課表文字內容」，並回報實際的頁面結構以便調整
  * 擷取邏輯。
+ *
+ * 回應格式是 JSON（`{ name, workoutText }`），不是單純文字：課表標題（從
+ * <title> 撈出，見 extractTrainerDayTitleFromHtml()）跟課表結構文字是頁面
+ * 上兩個不相干的區塊，各自擷取失敗的機率不同，用同一個 text/plain 回應把
+ * 兩者硬湊在一起（例如標題當第一行）會讓「擷取失敗」的判斷邏輯混在一起，
+ * 分開放在 JSON 兩個欄位比較清楚；`name` 擷取失敗時是 `null`，前端沿用既有
+ * 的 'Untitled Workout' 預設值，不當成整個請求失敗。
  */
-import { extractTrainerDayWorkoutStructureFromHtml } from '../src/parser/extractTrainerDayWorkoutStructureFromHtml.js';
+import { extractTrainerDayTitleFromHtml, extractTrainerDayWorkoutStructureFromHtml } from '../src/parser/extractTrainerDayWorkoutStructureFromHtml.js';
 import { BROWSER_LIKE_HEADERS } from '../src/utils/httpFetchHeaders.js';
 
 const ALLOWED_HOST = 'app.trainerday.com';
@@ -78,9 +85,11 @@ export default async function handler(req, res) {
     return;
   }
 
-  res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+  const name = extractTrainerDayTitleFromHtml(html);
+
+  res.setHeader('Content-Type', 'application/json; charset=utf-8');
   res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
   res.setHeader('Pragma', 'no-cache');
   res.setHeader('Expires', '0');
-  res.status(200).send(workoutText);
+  res.status(200).json({ name, workoutText });
 }

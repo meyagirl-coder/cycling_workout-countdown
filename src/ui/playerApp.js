@@ -671,12 +671,20 @@ export function initPlayerApp(rootEl) {
   }
 
   /**
-   * 貼的是課表網址：透過對應的代理抓取，拿回課表文字後用對應的 parser 解析。
+   * 貼的是課表網址：透過對應的代理抓取，拿回課表內容後用對應的 parser 解析。
    * TrainerDay／WhatsOnZwift 走同一套流程，只有 proxy 網址、parser、錯誤訊息
    * 用的服務名稱不同，抽成共用函式避免兩邊各自維護一份幾乎一樣的 fetch／
    * 錯誤處理邏輯。
+   *
+   * 兩個 proxy 的回應格式不一定相同：WhatsOnZwift 目前還是回純文字（沒有做
+   * 標題擷取），TrainerDay 改成回 JSON `{ name, workoutText }`（見
+   * api/trainerday-workout.js 的說明）；`extractPayload` 沒帶的話用預設的
+   * 純文字模式（`name` 固定是 null，交給 parseText() 自己填的預設課表名
+   * 稱），帶了的話由它決定怎麼從 Response 撈出 `{ name, workoutText }`——
+   * `name` 非空時會覆蓋 parseText() 解析出來的課表名稱（那些 parser 目前
+   * 因為純文字格式本身不帶標題，一律寫死 'Untitled Workout'）。
    */
-  async function handleRemoteWorkoutUrlSubmit(url, { proxyUrl, parseText, serviceName, errorPrefix }) {
+  async function handleRemoteWorkoutUrlSubmit(url, { proxyUrl, parseText, serviceName, errorPrefix, extractPayload }) {
     uploadView.clearError();
     uploadView.setUrlLoading(true);
     try {
@@ -696,8 +704,15 @@ export function initPlayerApp(rootEl) {
         return;
       }
 
-      const extractedText = await response.text();
-      loadWorkout(() => parseText(extractedText), errorPrefix);
+      const { name, workoutText } = extractPayload
+        ? await extractPayload(response)
+        : { name: null, workoutText: await response.text() };
+
+      loadWorkout(() => {
+        const workout = parseText(workoutText);
+        if (name) workout.name = name;
+        return workout;
+      }, errorPrefix);
     } finally {
       uploadView.setUrlLoading(false);
     }
@@ -709,6 +724,7 @@ export function initPlayerApp(rootEl) {
       parseText: parseTrainerDayWorkoutStructureText,
       serviceName: 'TrainerDay',
       errorPrefix: '無法解析 TrainerDay 課表內容：',
+      extractPayload: (response) => response.json(),
     });
   }
 

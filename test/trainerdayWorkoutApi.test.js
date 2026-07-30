@@ -92,7 +92,7 @@ describe('api/trainerday-workout handler', () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it('fetches the given TrainerDay url over https and extracts/relays the "Workout structure" text', async () => {
+  it('fetches the given TrainerDay url over https and extracts/relays the "Workout structure" text as JSON', async () => {
     const html = '<div>5 min @ 50% (50w)</div><div>5 min @ 55% (55w)</div>';
     const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200, text: async () => html });
     vi.stubGlobal('fetch', fetchMock);
@@ -106,9 +106,37 @@ describe('api/trainerday-workout handler', () => {
     expect(fetchMock.mock.calls[0][0]).toBe(VALID_URL);
 
     expect(res.statusCode).toBe(200);
-    expect(res.body).toBe('5 min @ 50% (50w)\n5 min @ 55% (55w)');
-    expect(res.headers['Content-Type']).toContain('text/plain');
+    expect(res.body).toEqual({ name: null, workoutText: '5 min @ 50% (50w)\n5 min @ 55% (55w)' });
+    expect(res.headers['Content-Type']).toContain('application/json');
     expect(res.headers['Cache-Control']).toContain('no-store');
+  });
+
+  it('extracts the workout title from <title> and includes it as "name" in the JSON response (regression: real-device report of TrainerDay-URL workouts always showing "Untitled Workout" - confirmed against the real page: <title>Trainer Day - 120% *6 Z2</title>)', async () => {
+    const html = '<html><head><title>Trainer Day - 120% *6 Z2</title></head>\n<body><div>5 min @ 50% (50w)</div></body></html>';
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, status: 200, text: async () => html }));
+
+    const req = makeReq({ url: VALID_URL });
+    const res = makeRes();
+
+    await handler(req, res);
+
+    expect(res.statusCode).toBe(200);
+    expect(res.body.name).toBe('120% *6 Z2');
+    expect(res.body.workoutText).toBe('5 min @ 50% (50w)');
+  });
+
+  it('returns name: null (not a request failure) when the page has no <title> tag, leaving the workout text intact', async () => {
+    const html = '<div>5 min @ 50% (50w)</div>';
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, status: 200, text: async () => html }));
+
+    const req = makeReq({ url: VALID_URL });
+    const res = makeRes();
+
+    await handler(req, res);
+
+    expect(res.statusCode).toBe(200);
+    expect(res.body.name).toBeNull();
+    expect(res.body.workoutText).toBe('5 min @ 50% (50w)');
   });
 
   it('upgrades a plain http:// TrainerDay url to https before fetching', async () => {
@@ -205,7 +233,7 @@ describe('api/trainerday-workout handler', () => {
     await handler(req, res);
 
     expect(res.statusCode).toBe(200);
-    expect(res.body).toBe('3x\n2 min @ 105% (210w)\n1 min @ 50% (100w)');
+    expect(res.body.workoutText).toBe('3x\n2 min @ 105% (210w)\n1 min @ 50% (100w)');
   });
 
   it('extracts and relays the full 12-line user-provided "ramp-up-5" example unchanged', async () => {
@@ -231,8 +259,8 @@ describe('api/trainerday-workout handler', () => {
     await handler(req, res);
 
     expect(res.statusCode).toBe(200);
-    expect(res.body.split('\n')).toHaveLength(12);
-    expect(res.body).toContain('5 min @ 50% (50w)');
-    expect(res.body).toContain('5 min @ 100% (100w)');
+    expect(res.body.workoutText.split('\n')).toHaveLength(12);
+    expect(res.body.workoutText).toContain('5 min @ 50% (50w)');
+    expect(res.body.workoutText).toContain('5 min @ 100% (100w)');
   });
 });
