@@ -303,6 +303,62 @@ describe('createPlayerView', () => {
     expect(root.querySelector('.interval-progress').textContent).toContain('第 1 / 4 組');
   });
 
+  it('shows a "課表摘要" summary card (full workout text summary, via buildWorkoutSummaryText()) only in the idle "尚未開始" preview state, not once running/paused/finished', () => {
+    document.body.innerHTML = '<div id="root"></div>';
+    const root = document.getElementById('root');
+    const view = createPlayerView(root, { onPlayPause: vi.fn(), onSkip: vi.fn(), onRedo: vi.fn(), onStop: vi.fn() });
+
+    view.update(makeWorkout(), makeIdleState(), 200);
+    expect(root.querySelector('.workout-summary-card').classList.contains('hidden')).toBe(false);
+    expect(root.querySelector('.workout-summary-text').textContent).toBe(
+      ['Duration: 50s', '12 sec @ 100w → 140w', '10 sec @ 176w', '8 sec free ride', '20 sec @ 140w → 100w'].join('\n')
+    );
+
+    view.update(makeWorkout(), makeIdleState({ status: 'running' }), 200);
+    expect(root.querySelector('.workout-summary-card').classList.contains('hidden')).toBe(true);
+
+    view.update(makeWorkout(), makeIdleState({ status: 'paused' }), 200);
+    expect(root.querySelector('.workout-summary-card').classList.contains('hidden')).toBe(true);
+
+    const finishedState = makeIdleState({ status: 'finished', currentIntervalIndex: 3, elapsedInInterval: 20, elapsedTotal: 50 });
+    view.update(makeWorkout(), finishedState, 200);
+    expect(root.querySelector('.workout-summary-card').classList.contains('hidden')).toBe(true);
+  });
+
+  it('reflects the power adjustment (powerAdjustPct) in the idle summary card wattages', () => {
+    document.body.innerHTML = '<div id="root"></div>';
+    const root = document.getElementById('root');
+    const view = createPlayerView(root, { onPlayPause: vi.fn(), onSkip: vi.fn(), onRedo: vi.fn(), onStop: vi.fn() });
+
+    const workout = {
+      id: 'summary-adjust-workout',
+      name: 'Summary Adjust Test',
+      source: 'zwo',
+      totalDuration: 300,
+      intervals: [{ type: 'steady', duration: 300, powerStart: 100, powerEnd: 100, cadence: null }],
+    };
+    view.update(workout, makeIdleState({ powerAdjustPct: 10 }), 200);
+
+    expect(root.querySelector('.workout-summary-text').textContent).toBe('Duration: 5m\n5 min @ 220w');
+  });
+
+  it('shows the full wattage range (not a single number) in the idle summary card for a 「區間目標」band interval', () => {
+    document.body.innerHTML = '<div id="root"></div>';
+    const root = document.getElementById('root');
+    const view = createPlayerView(root, { onPlayPause: vi.fn(), onSkip: vi.fn(), onRedo: vi.fn(), onStop: vi.fn() });
+
+    const workout = {
+      id: 'summary-band-workout',
+      name: 'Summary Band Test',
+      source: 'zwo',
+      totalDuration: 300,
+      intervals: [{ type: 'steady', duration: 300, powerStart: 70, powerEnd: 70, cadence: null, powerRangeLow: 65, powerRangeHigh: 75 }],
+    };
+    view.update(workout, makeIdleState(), 200);
+
+    expect(root.querySelector('.workout-summary-text').textContent).toBe('Duration: 5m\n5 min @ 130-150w');
+  });
+
   it('shows the countdown and target watt for a steady segment', () => {
     document.body.innerHTML = '<div id="root"></div>';
     const root = document.getElementById('root');

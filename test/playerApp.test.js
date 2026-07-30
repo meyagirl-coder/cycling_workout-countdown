@@ -131,6 +131,60 @@ describe('initPlayerApp: .zwo file upload validation (accept attribute intention
   });
 });
 
+describe('initPlayerApp: 貼課表網址 - TrainerDay workout title extraction', () => {
+  const TRAINERDAY_URL = 'https://app.trainerday.com/workouts/120-6-z2';
+
+  beforeEach(() => {
+    window.localStorage.clear();
+  });
+
+  afterEach(() => {
+    window.localStorage.clear();
+    vi.unstubAllGlobals();
+  });
+
+  function submitTrainerDayUrl(root, url) {
+    root.querySelector('.upload-url-input').value = url;
+    root.querySelector('.upload-url-form').dispatchEvent(new Event('submit', { cancelable: true }));
+  }
+
+  it('uses the workout title extracted from the TrainerDay page (via the JSON proxy response) instead of the "Untitled Workout" fallback (regression: the proxy used to discard the page <title> entirely, so every URL-loaded TrainerDay workout showed as "Untitled Workout" regardless of which workout was loaded - confirmed against the real page: <title>Trainer Day - 120% *6 Z2</title>)', async () => {
+    vi.stubGlobal('Worker', RealisticMockWorker);
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ name: '120% *6 Z2', workoutText: '6x\n1 min @ 120% (240w)\n1 min @ 65% (130w)' }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const { root } = setup();
+    submitTrainerDayUrl(root, TRAINERDAY_URL);
+
+    await vi.waitFor(() => {
+      expect(root.querySelector('.player-mount').classList.contains('hidden')).toBe(false);
+    });
+    expect(root.querySelector('.workout-name').textContent).toBe('120% *6 Z2');
+  });
+
+  it('falls back to "Untitled Workout" when the proxy could not extract a title (name: null) instead of failing the whole load', async () => {
+    vi.stubGlobal('Worker', RealisticMockWorker);
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ name: null, workoutText: '5 min @ 60% (120w)' }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const { root } = setup();
+    submitTrainerDayUrl(root, TRAINERDAY_URL);
+
+    await vi.waitFor(() => {
+      expect(root.querySelector('.player-mount').classList.contains('hidden')).toBe(false);
+    });
+    expect(root.querySelector('.workout-name').textContent).toBe('Untitled Workout');
+  });
+});
+
 describe('initPlayerApp: 團體訓練排程 (group-ride scheduling)', () => {
   beforeEach(() => {
     vi.useFakeTimers();
@@ -386,7 +440,7 @@ describe('initPlayerApp: 一鍵開團連結 (group-join link via URL params: sou
   }
 
   function stubTrainerDayFetch() {
-    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200, text: async () => VALID_WORKOUT_STRUCTURE_TEXT });
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => ({ name: null, workoutText: VALID_WORKOUT_STRUCTURE_TEXT }) });
     vi.stubGlobal('fetch', fetchMock);
     return fetchMock;
   }

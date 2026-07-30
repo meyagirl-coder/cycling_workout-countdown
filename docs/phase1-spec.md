@@ -237,6 +237,32 @@ Vercel 正式環境重新驗證一次「這個防護是不是仍然存在」，�
 裡，`extractWhatsOnZwiftTextFromHtml.js` 也共用同一套 `htmlToLines()`，
 一併受益，不用另外修一份。
 
+**踩過的坑：URL 自動抓取只擷取課表內容，完全沒有處理標題**——實測發現不管
+貼哪個 TrainerDay 課表網址，執行頁跟等待畫面顯示的課表名稱一律是預設值
+「Untitled Workout」，跟課表本身叫什麼完全無關。追查後發現不是「抓錯格式」
+這種可以歸咎於單一網址的問題：`extractTrainerDayWorkoutStructureFromHtml()`
+從一開始設計就只負責從 HTML 撈「Workout structure」區塊的課表內容行，
+整條流程裡沒有任何一步碰過頁面標題；往下 `parseTrainerDayWorkoutStructureText()`
+（以及共用同一套「純文字沒有標題資訊」前提的 `parseTrainerDayFullText()`／
+`parseWhatsOnZwiftText()`）也都是寫死 `name: 'Untitled Workout'`——純文字
+格式本身就不帶標題，這幾個 parser 沒辦法無中生有，是**系統性**問題，不是
+某一份課表特別抓錯。
+
+修法：新增 `extractTrainerDayTitleFromHtml()`（`extractTrainerDayWorkoutStructureFromHtml.js`
+同一個檔案），從 HTML 的 `<title>` 標籤撈標題文字、去掉網站名稱前綴——
+使用者實測回報的真實 `<title>` 內容是「Trainer Day - 120% *6 Z2」，前綴
+規則對空白／有無分隔符號／分隔符號種類（`-`／`–`／`—`／`:`／`|`）保留一點
+容忍度，不是照單一個範例死板比對；`<title>` 整個就是網站名稱（例如首頁）
+或找不到 `<title>` 標籤時回傳 `null`，維持原本的 'Untitled Workout' 預設值，
+不當成擷取失敗。`api/trainerday-workout.js` 的回應格式因此從純文字改成
+JSON（`{ name, workoutText }`）——標題跟課表結構文字是頁面上兩個不相干的
+區塊，各自擷取失敗的機率不同，分開放在 JSON 兩個欄位比硬湊成一份文字
+清楚；前端 `handleRemoteWorkoutUrlSubmit()`（`playerApp.js`）多帶一個
+`extractPayload` 選項決定怎麼從 Response 撈資料，`name` 非空時覆蓋
+parser 解析出來的預設課表名稱——WhatsOnZwift 那支 proxy 目前還沒有做同樣
+的標題擷取（沒帶 `extractPayload` 時維持原本的純文字模式），是已知還沒
+處理的同一類問題，之後有需要可以照同一套模式補上。
+
 ### 3.4 WhatsOnZwift 文字格式（手動貼上）
 
 WhatsOnZwift 的課表文字格式跟 TrainerDay（§3.2）完全不同，所以另外寫了一份
