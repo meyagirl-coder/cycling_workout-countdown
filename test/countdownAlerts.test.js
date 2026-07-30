@@ -676,11 +676,11 @@ describe('playCountdownBeeps (regression: Google Meet tab-audio sharing does not
     expect(oscillators).toHaveLength(3);
   });
 
-  it('logs (does not throw/reject unhandled) when ctx.resume() itself rejects', async () => {
+  it('logs (does not throw/reject unhandled) when ctx.resume() itself rejects, and still manages to schedule tones on a freshly created replacement context', async () => {
     const { playCountdownBeeps } = await import(
       '../src/ui/countdownAlerts.js'
     );
-    stubAudioContext('suspended', { resumeImpl: () => Promise.reject(new Error('resume failed')) });
+    const { AudioContextCtor, oscillators } = stubAudioContext('suspended', { resumeImpl: () => Promise.reject(new Error('resume failed')) });
     const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 
     expect(() => playCountdownBeeps()).not.toThrow();
@@ -688,7 +688,67 @@ describe('playCountdownBeeps (regression: Google Meet tab-audio sharing does not
     await Promise.resolve();
 
     expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('ctx.resume() failed'), expect.any(Error));
+    // a second AudioContext was constructed (the original is discarded, not reused) and tones were scheduled on it
+    expect(AudioContextCtor).toHaveBeenCalledTimes(2);
+    expect(oscillators).toHaveLength(3);
     consoleSpy.mockRestore();
+  });
+
+  it('regression: "開團連結 + Google Meet 分享畫面" report - only the first interval\'s beep had sound, every one after it was silent - discards the AudioContext and builds a fresh one when resume() resolves but the context still is not actually "running" afterwards (observed on real devices after a long background/tab-capture stretch), instead of repeating the same doomed context for every remaining interval', async () => {
+    const oscillatorsByContext = [];
+    const contexts = [];
+    // first context: resume() resolves but the state never actually flips to
+    // "running" (the exact failure mode reported) - second context: behaves
+    // normally, proving the NEXT call gets an independent, working context
+    // instead of being permanently stuck on the first one's failure.
+    const states = ['suspended', 'running'];
+    const AudioContextCtor = vi.fn(() => {
+      const oscillators = [];
+      const ctxIndex = contexts.length;
+      const ctx = {
+        createOscillator: vi.fn(() => {
+          const oscillator = { connect: vi.fn(), start: vi.fn(), stop: vi.fn(), frequency: {} };
+          oscillators.push(oscillator);
+          return oscillator;
+        }),
+        createGain: vi.fn(() => ({ connect: vi.fn(), gain: { setValueAtTime: vi.fn(), linearRampToValueAtTime: vi.fn() } })),
+        destination: {},
+        currentTime: 100,
+        state: 'suspended',
+        resume: vi.fn(() => {
+          // resume() resolves "successfully" but (for the first/broken context
+          // only) never actually flips state to 'running' - this mismatch
+          // between "the promise resolved" and "the context is actually usable"
+          // is the crux of the regression.
+          if (states[ctxIndex] === 'running') ctx.state = 'running';
+          return Promise.resolve();
+        }),
+      };
+      contexts.push(ctx);
+      oscillatorsByContext.push(oscillators);
+      return ctx;
+    });
+    vi.stubGlobal('AudioContext', AudioContextCtor);
+
+    const { playCountdownBeeps } = await import('../src/ui/countdownAlerts.js');
+
+    // interval 1's beep: resume() resolves but state stays 'suspended' -> no
+    // tones on the first context, but a second (fresh) context gets created
+    // and used instead, so the interval still gets its beep.
+    playCountdownBeeps();
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(AudioContextCtor).toHaveBeenCalledTimes(2);
+    expect(oscillatorsByContext[0]).toHaveLength(0); // the stuck first context never got any tones scheduled on it
+    expect(oscillatorsByContext[1]).toHaveLength(3); // the replacement context did
+
+    // interval 2's beep: must reuse the now-healthy second context, not go
+    // back to constructing yet another one on every single call.
+    playCountdownBeeps();
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(AudioContextCtor).toHaveBeenCalledTimes(2);
+    expect(oscillatorsByContext[1]).toHaveLength(6);
   });
 
   it('does not call ctx.resume() when the context is already running (no unnecessary calls)', async () => {

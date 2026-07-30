@@ -105,6 +105,19 @@ npm run test:watch
 
 ## 5. 目前功能狀態（依 git log 由新到舊）
 
+- 逼逼聲倒數（`ALERT_MODE_BEEP`）AudioContext 自我修復修正：使用者實測
+  回報「開團連結＋Google Meet 分享畫面」情境下，只有課表第一組的嗶聲有
+  聲音，之後每一組都完全沒聲音。根因：`ctx.resume()` 的 Promise 有時會
+  確實 resolve，但底下的 `AudioContext` 實際上並沒有真的恢復成
+  `"running"`（分頁音訊被擷取＋長時間背景化疊加時的已知瀏覽器不一致
+  行為）；原本 resolve 後就直接排程音效、沒有再檢查 `ctx.state`，一旦
+  發生就會一直卡在同一個壞掉的 `sharedAudioContext` 上，之後每一組都
+  重複同一個失敗。修法：`playCountdownBeeps()` 的 `resume().then()`
+  裡多檢查一次 `ctx.state`，還不是 `"running"`（或 `resume()` 本身
+  reject）就整個丟棄、重新 `new` 一個乾淨的 `AudioContext`。**已部署，
+  但沒有真的 Google Meet＋螢幕分享的真機環境可以驗證**——如果使用者
+  之後又回報同一個症狀，這是第一個該重新檢視的地方（`src/ui/countdownAlerts.js`
+  的 `playCountdownBeeps()`）。
 - 執行頁「尚未開始」預覽畫面新增「課表摘要」卡片：在「開始」按鈕下方顯示
   整份課表的文字摘要（總時長 + 逐組「時長 @ 瓦數」，重複組自動壓縮成
   「NX (段落1 | 段落2)」），格式參考 TrainerDay「複製」按鈕產生的文字。
