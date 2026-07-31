@@ -318,31 +318,31 @@ const BEEP_RELEASE_SECONDS = 0.05; // 收尾斜坡：最後這段時間才淡出
  * （BEEP_RELEASE_SECONDS）這種形狀，避免瞬間爆音、且中段維持穩定音量，才會
  * 聽起來像警示音那種平穩的「嗶」聲。
  */
+function scheduleBeepTonesOn(ctx) {
+  for (let i = 0; i < BEEP_COUNT; i++) {
+    const startTime = ctx.currentTime + i * BEEP_INTERVAL_SECONDS;
+    const oscillator = ctx.createOscillator();
+    const gain = ctx.createGain();
+    oscillator.connect(gain);
+    gain.connect(ctx.destination);
+
+    oscillator.frequency.value = BEEP_FREQUENCY_HZ;
+    gain.gain.setValueAtTime(0, startTime);
+    gain.gain.linearRampToValueAtTime(BEEP_PEAK_GAIN, startTime + BEEP_ATTACK_SECONDS);
+    gain.gain.setValueAtTime(BEEP_PEAK_GAIN, startTime + BEEP_DURATION_SECONDS - BEEP_RELEASE_SECONDS);
+    gain.gain.linearRampToValueAtTime(0.0001, startTime + BEEP_DURATION_SECONDS);
+
+    oscillator.start(startTime);
+    oscillator.stop(startTime + BEEP_DURATION_SECONDS);
+  }
+}
+
 export function playCountdownBeeps() {
   const AudioContextCtor = typeof window !== 'undefined' && (window.AudioContext || window.webkitAudioContext);
   if (!AudioContextCtor) return;
 
-  if (!sharedAudioContext) sharedAudioContext = new AudioContextCtor();
+  if (!sharedAudioContext || sharedAudioContext.state === 'closed') sharedAudioContext = new AudioContextCtor();
   const ctx = sharedAudioContext;
-
-  const scheduleTones = () => {
-    for (let i = 0; i < BEEP_COUNT; i++) {
-      const startTime = ctx.currentTime + i * BEEP_INTERVAL_SECONDS;
-      const oscillator = ctx.createOscillator();
-      const gain = ctx.createGain();
-      oscillator.connect(gain);
-      gain.connect(ctx.destination);
-
-      oscillator.frequency.value = BEEP_FREQUENCY_HZ;
-      gain.gain.setValueAtTime(0, startTime);
-      gain.gain.linearRampToValueAtTime(BEEP_PEAK_GAIN, startTime + BEEP_ATTACK_SECONDS);
-      gain.gain.setValueAtTime(BEEP_PEAK_GAIN, startTime + BEEP_DURATION_SECONDS - BEEP_RELEASE_SECONDS);
-      gain.gain.linearRampToValueAtTime(0.0001, startTime + BEEP_DURATION_SECONDS);
-
-      oscillator.start(startTime);
-      oscillator.stop(startTime + BEEP_DURATION_SECONDS);
-    }
-  };
 
   // iOS Safari／Chrome 閒置省電機制的已知行為：AudioContext 在沒有實際發聲
   // 一段時間後會被瀏覽器悄悄中斷（suspended）——每組課表只有最後 3 秒有
@@ -355,14 +355,36 @@ export function playCountdownBeeps() {
   // 排程動作包在 resume() 的 .then() 裡，確保 audio graph 真的恢復運作
   // 之後才建立/播放音效節點；ctx.currentTime 也要等到那時候才讀取，不能
   // 沿用呼叫當下（可能還沒真的往前推進）的舊值。
-  if (typeof ctx.resume === 'function' && ctx.state === 'suspended') {
-    ctx.resume().then(scheduleTones, (err) => {
-      console.error('countdownAlerts: ctx.resume() failed before playCountdownBeeps()', err);
-    });
+  if (typeof ctx.resume === 'function' && ctx.state !== 'running') {
+    ctx.resume().then(
+      () => {
+        // regression：使用者回報「開團連結＋Google Meet 分享畫面」這個組合
+        // 下，只有課表第一組的嗶聲有聲音，之後每一組都完全沒聲音——分頁被
+        // 分享畫面／切到視訊軟體後長時間背景化，resume() 這個 Promise 有時
+        // 會確實 resolve，但底下這個 AudioContext 實際上並沒有真的恢復成
+        // 「running」（部分瀏覽器在分頁音訊被分頁擷取／長時間背景化的組合
+        // 情境下有這個已知的不一致行為）。如果沿用同一個「看似 resume 完
+        // 成、實際上還是壞掉」的 context，接下來每一組都會重複同一個失敗、
+        // 永遠恢復不了——一旦偵測到這個狀況，直接丟棄這個 context、建立一個
+        // 全新的實例來排這一組的音效，讓「這一組壞掉」不會連坐拖累後面每一
+        // 組，下一次呼叫也不會一直卡在同一個壞掉的物件上。
+        if (ctx.state === 'running') {
+          scheduleBeepTonesOn(ctx);
+        } else {
+          sharedAudioContext = new AudioContextCtor();
+          scheduleBeepTonesOn(sharedAudioContext);
+        }
+      },
+      (err) => {
+        console.error('countdownAlerts: ctx.resume() failed before playCountdownBeeps() - recreating AudioContext for next time', err);
+        sharedAudioContext = new AudioContextCtor();
+        scheduleBeepTonesOn(sharedAudioContext);
+      }
+    );
     return;
   }
 
-  scheduleTones();
+  scheduleBeepTonesOn(ctx);
 }
 
 /**
