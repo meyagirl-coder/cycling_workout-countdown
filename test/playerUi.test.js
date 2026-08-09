@@ -54,6 +54,16 @@ function makeIdleState(overrides = {}) {
   };
 }
 
+function makeStorage(initial = {}) {
+  const data = { ...initial };
+  return {
+    getItem: (key) => data[key] ?? null,
+    setItem: (key, value) => {
+      data[key] = String(value);
+    },
+  };
+}
+
 describe('formatMMSS', () => {
   it.each([
     [0, '0:00'],
@@ -759,5 +769,30 @@ describe('createPlayerView', () => {
 
     vi.advanceTimersByTime(1);
     expect(banner.classList.contains('hidden')).toBe(true);
+  });
+
+  it('defaults the chart to auto scaling, while keeping the countdown panel outside the scaling container', () => {
+    document.body.innerHTML = '<div id="root"></div>';
+    const root = document.getElementById('root');
+    createPlayerView(root, { onPlayPause: vi.fn(), onSkip: vi.fn(), onRedo: vi.fn(), onStop: vi.fn() }, { storage: makeStorage() });
+
+    const chart = root.querySelector('.chart-visualization');
+    expect(chart.dataset.chartScaleMode).toBe('auto');
+    expect(chart.contains(root.querySelector('.timeline'))).toBe(true);
+    expect(chart.contains(root.querySelector('.status-panel'))).toBe(false);
+  });
+
+  it('switches chart scaling modes and persists the user selection', () => {
+    document.body.innerHTML = '<div id="root"></div>';
+    const root = document.getElementById('root');
+    const storage = makeStorage();
+    createPlayerView(root, { onPlayPause: vi.fn(), onSkip: vi.fn(), onRedo: vi.fn(), onStop: vi.fn() }, { storage });
+
+    const fixed = root.querySelector('[data-chart-scale-mode="fixed"]');
+    fixed.click();
+
+    expect(root.querySelector('.chart-visualization').dataset.chartScaleMode).toBe('fixed');
+    expect(fixed.getAttribute('aria-pressed')).toBe('true');
+    expect(storage.getItem('workout-chart-scale-mode')).toBe('fixed');
   });
 });

@@ -9,6 +9,7 @@ import {
   computeCursorPct,
 } from './timelineSegments.js';
 import { buildWorkoutSummaryText } from './workoutSummaryText.js';
+import { loadChartScaleMode, saveChartScaleMode } from './chartScaleModeStore.js';
 
 const STATUS_LABELS = {
   idle: '尚未開始',
@@ -34,8 +35,10 @@ const FREERIDE_BAR_HEIGHT_PCT = 12;
  *
  * @param {HTMLElement} rootEl
  * @param {{onPlayPause: () => void, onSkip: () => void, onRedo: () => void, onStop: () => void, onReturnHome: () => void}} handlers
+ * @param {{storage?: Storage}} [options]
  */
-export function createPlayerView(rootEl, handlers) {
+export function createPlayerView(rootEl, handlers, options = {}) {
+  const storage = options.storage ?? window.localStorage;
   rootEl.innerHTML = `
     <div class="player">
       <header class="player-header">
@@ -46,11 +49,20 @@ export function createPlayerView(rootEl, handlers) {
         </div>
       </header>
 
-      <div class="timeline">
-        <div class="timeline-reference-line"></div>
-        <div class="timeline-track"></div>
-        <div class="timeline-cursor"></div>
-      </div>
+      <section class="chart-visualization" aria-label="訓練時間軸">
+        <div class="chart-scale-toggle" role="group" aria-label="圖表縮放">
+          <span class="chart-scale-label">圖表縮放</span>
+          <button type="button" class="chart-scale-btn" data-chart-scale-mode="auto">自動縮放</button>
+          <button type="button" class="chart-scale-btn" data-chart-scale-mode="fixed">固定尺寸</button>
+        </div>
+        <div class="timeline-viewport">
+          <div class="timeline">
+            <div class="timeline-reference-line"></div>
+            <div class="timeline-track"></div>
+            <div class="timeline-cursor"></div>
+          </div>
+        </div>
+      </section>
 
       <div class="next-interval-banner hidden"></div>
 
@@ -87,6 +99,8 @@ export function createPlayerView(rootEl, handlers) {
 
   const els = {
     player: rootEl.querySelector('.player'),
+    chartVisualization: rootEl.querySelector('.chart-visualization'),
+    chartScaleButtons: Array.from(rootEl.querySelectorAll('.chart-scale-btn')),
     workoutName: rootEl.querySelector('.workout-name'),
     totalDuration: rootEl.querySelector('.total-duration'),
     intervalProgress: rootEl.querySelector('.interval-progress'),
@@ -115,6 +129,24 @@ export function createPlayerView(rootEl, handlers) {
   els.redoBtn.addEventListener('click', () => handlers.onRedo());
   els.stopBtn.addEventListener('click', () => handlers.onStop());
   els.returnHomeBtn.addEventListener('click', () => handlers.onReturnHome());
+
+  function setChartScaleMode(mode) {
+    els.chartVisualization.dataset.chartScaleMode = mode;
+    els.chartScaleButtons.forEach((button) => {
+      const isActive = button.dataset.chartScaleMode === mode;
+      button.classList.toggle('is-active', isActive);
+      button.setAttribute('aria-pressed', String(isActive));
+    });
+  }
+
+  els.chartScaleButtons.forEach((button) => {
+    button.addEventListener('click', () => {
+      const mode = button.dataset.chartScaleMode;
+      saveChartScaleMode(mode, storage);
+      setChartScaleMode(mode);
+    });
+  });
+  setChartScaleMode(loadChartScaleMode(storage));
 
   // 100% FTP 參考線的位置是固定值（跟課表無關），畫一次就好
   els.timelineReferenceLine.style.top = `${100 - computeBarHeightPct(CHART_REFERENCE_LINE_PCT)}%`;

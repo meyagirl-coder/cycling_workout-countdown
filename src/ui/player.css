@@ -864,7 +864,11 @@ body {
   --font-tier-1: 2.25rem;
   --font-tier-2: 1.1rem;
   --font-tier-3: 0.95rem;
-  max-width: 720px;
+  /* 時間軸在 auto 模式可放大到這個寬度；其餘 UI 元件仍各自維持可讀的
+     寬度與原本 RWD 行為（見 .chart-visualization 以外的規則）。 */
+  /* 兩側 padding 各占 20px，外框需比圖表基準寬 40px，實際可用圖表才會
+     恰好在 1260px 停止放大。 */
+  max-width: 1300px;
   margin: 0 auto;
   /* padding-top 加大到蓋過右上角 .theme-toggle 的高度範圍，避免課表名稱
      標題被蓋住——跟首頁 .app-banner 同一個問題、同一套修法（見上方說明）。 */
@@ -892,9 +896,73 @@ body {
   color: var(--text-secondary);
 }
 
+.chart-visualization {
+  width: 100%;
+}
+
+.chart-scale-toggle {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 0.25rem;
+  margin-bottom: 0.5rem;
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.chart-scale-label {
+  margin-right: 0.25rem;
+}
+
+.chart-scale-btn {
+  padding: 0.35rem 0.55rem;
+  border: 1px solid var(--input-border);
+  border-radius: 0.6rem;
+  background: var(--input-bg-soft);
+  color: var(--text-secondary);
+  font: inherit;
+  cursor: pointer;
+}
+
+.chart-scale-btn.is-active {
+  border-color: var(--accent-strong);
+  background: var(--accent-strong);
+  color: var(--on-zone-text);
+}
+
+/* CSS 原生寬度縮放：避免 transform 讓 DOM 的實際尺寸、焦點與捲動區不一致，
+   也不需 ResizeObserver，因此不會形成 resize loop。基準是 1260px；圖表的
+   高度以原本 720 × 104px 的比例同步算出。時間軸沒有內嵌數值文字，實測
+   260px 仍可辨識各功率區間且能讓 320px 手機完整呈現；低於這個最小寬度時
+   才由 viewport 提供水平捲動，不會裁切左右端。 */
+.timeline-viewport {
+  width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
+}
+
+.chart-visualization[data-chart-scale-mode='auto'] .timeline {
+  width: clamp(260px, 100%, 1260px);
+  height: auto;
+  aspect-ratio: 720 / 104;
+}
+
+/* Fixed 保持改動前的 720px 寬度上限與固定 6.5rem 高度；窄螢幕仍和舊版
+   一樣隨容器縮窄，而非把整個網站縮放。 */
+.chart-visualization[data-chart-scale-mode='fixed'] .timeline-viewport {
+  max-width: 720px;
+  margin: 0 auto;
+}
+
+.chart-visualization[data-chart-scale-mode='fixed'] .timeline {
+  width: 100%;
+  height: 6.5rem;
+}
+
 .timeline {
   position: relative;
-  height: 6.5rem;
   background: var(--card-bg);
   border-radius: 0.75rem;
   overflow: hidden;
