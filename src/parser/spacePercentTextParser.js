@@ -1,7 +1,8 @@
 /**
  * 「時長 百分比」課表文字解析器：跟 pasteTextParser.js（TrainerDay 格式，
- * `X min @ Yw`）並存的第三種手動貼上格式，例如 `5m 50%`——沒有 `@`、沒有
- * `w`、沒有 `FTP` 字樣，單位用 `m`（分鐘）／`s`（秒），數字直接就是 %FTP。
+ * `X min @ Yw`）並存的第三種手動貼上格式，例如 `5m 50%`、`1m30s 50%`——沒有
+ * `@`、沒有 `w`、沒有 `FTP` 字樣，單位用 `m`（分鐘）／`s`（秒），數字直接就是
+ * %FTP。分鐘與秒可以合併寫成 `1m30s` 或 `1m 30s`。
  * 行尾可以再接一段選填的「N rpm」踏頻資訊（例如 `3m 50% 90rpm`），沒有就是
  * `cadence: null`。
  *
@@ -17,7 +18,7 @@
  *
  * 也支援「Nx」換行重複寫法，語意跟 pasteTextParser.js 一致（見
  * newlineRepeatTextParser.js 共用的狀態機）：單獨一行的「Nx」宣告接下來
- * 連續的 `Xm Y%`／`Xs Y%` 行要重複 N 次，直到遇到空行、下一個「Nx」宣告、
+ * 連續的 `Xm Y%`／`Xs Y%`／`1m30s Y%` 行要重複 N 次，直到遇到空行、下一個「Nx」宣告、
  * 或文字結束。
  *
  * 這裡刻意只有一份 `SPACE_PERCENT_LINE_RE` + parseIntervalLine()：不管是
@@ -34,17 +35,17 @@ import { generateId } from '../utils/generateId.js';
 import { parseNewlineRepeatText } from './newlineRepeatTextParser.js';
 
 // exported so pasteTextRouter.js 可以用同一套正則判斷貼上的文字是不是這個格式。
-// 百分比欄位（第 3、4 組）：單一值只有第 3 組有值，範圍寫法（`Y-Z%`）第 3
-// 組是下限、第 4 組是上限。行尾的「N rpm」是選填群組（第 5 組），沒有就是
-// undefined。
-export const SPACE_PERCENT_LINE_RE = /^(\d+(?:\.\d+)?)\s*(m|s)\s+(\d+(?:\.\d+)?)(?:-(\d+(?:\.\d+)?))?%(?:\s+(\d+(?:\.\d+)?)\s*rpm)?$/i;
+// 分鐘與秒都是選填，但至少要有其中一個。百分比欄位（第 3、4 組）：單一值只有
+// 第 3 組有值，範圍寫法（`Y-Z%`）第 3 組是下限、第 4 組是上限。行尾的「N rpm」
+// 是選填群組（第 5 組），沒有就是 undefined。
+export const SPACE_PERCENT_LINE_RE = /^(?:(\d+(?:\.\d+)?)\s*m\s*)?(?:(\d+(?:\.\d+)?)\s*s)\s+(\d+(?:\.\d+)?)(?:-(\d+(?:\.\d+)?))?%(?:\s+(\d+(?:\.\d+)?)\s*rpm)?$|^(?:(\d+(?:\.\d+)?)\s*m)\s+(\d+(?:\.\d+)?)(?:-(\d+(?:\.\d+)?))?%(?:\s+(\d+(?:\.\d+)?)\s*rpm)?$/i;
 
 /**
  * @param {string} text - 使用者貼上的純文字
  * @returns {{id: string, name: string, source: 'paste-percent', totalDuration: number, intervals: Array}}
  */
 export function parseSpacePercentText(text) {
-  const intervals = parseNewlineRepeatText(text, parseIntervalLine, '"Xm Y%" or "Xs Y%"');
+  const intervals = parseNewlineRepeatText(text, parseIntervalLine, '"Xm Y%", "Xs Y%", or "XmYs Y%"');
   const totalDuration = intervals.reduce((sum, iv) => sum + iv.duration, 0);
 
   return {
@@ -56,30 +57,49 @@ export function parseSpacePercentText(text) {
   };
 }
 
-/** @returns {object|null} 一個穩定（steady）段（含「區間目標」band），或 null（這行不是「Xm Y%」／「Xs Y%」格式） */
+/** @returns {object|null} 一個穩定（steady）段（含「區間目標」band），或 null（這行不是有效的時長 + 百分比格式） */
 function parseIntervalLine(line) {
   const match = line.match(SPACE_PERCENT_LINE_RE);
   if (!match) return null;
 
-  const amount = Number(match[1]);
-  const unit = match[2].toLowerCase();
-  const seconds = unit === 'm' ? amount * 60 : amount;
-  const duration = Math.round(seconds);
-  const rpmGroup = match[5];
+  let minutesGroup;
+  let secondsGroup;
+  let powerLowGroup;
+  let powerHighGroup;
+  let rpmGroup;
+
+  // 第一個分支：可選分鐘 + 必要秒數，例如 `30s 50%`、`1m30s 50%`。
+  // 第二個分支：分鐘格式，例如 `1m 50%`。
+  if (match[1] != null || match[2] != null) {
+    minutesGroup = match[1];
+    secondsGroup = match[2];
+    powerLowGroup = match[3];
+    powerHighGroup = match[4];
+    rpmGroup = match[5];
+  } else {
+    minutesGroup = match[6];
+    secondsGroup = null;
+    powerLowGroup = match[7];
+    powerHighGroup = match[8];
+    rpmGroup = match[9];
+  }
+
+  const minutes = minutesGroup != null ? Number(minutesGroup) : 0;
+  const secondsPart = secondsGroup != null ? Number(secondsGroup) : 0;
+  const duration = Math.round(minutes * 60 + secondsPart);
   const cadence = rpmGroup != null ? Math.round(Number(rpmGroup)) : null;
 
-  // 「Y-Z%」範圍寫法（第 4 組有值）：跟 zwoParser.js 的 SteadyState
+  // 「Y-Z%」範圍寫法：跟 zwoParser.js 的 SteadyState
   // PowerLow/PowerHigh 同一套「區間目標」語意——取中點當固定目標值
   // （powerStart === powerEnd），額外存下原始的 powerRangeLow/powerRangeHigh
-  // 給時間軸雙層視覺用（見 workoutSchema.js 的欄位說明、timelineSegments.js）。
-  const rangeHighGroup = match[4];
-  if (rangeHighGroup != null) {
-    const powerRangeLow = Math.round(Number(match[3]));
-    const powerRangeHigh = Math.round(Number(rangeHighGroup));
+  // 給時間軸雙層視覺用。
+  if (powerHighGroup != null) {
+    const powerRangeLow = Math.round(Number(powerLowGroup));
+    const powerRangeHigh = Math.round(Number(powerHighGroup));
     const midpoint = Math.round((powerRangeLow + powerRangeHigh) / 2);
     return { type: 'steady', duration, powerStart: midpoint, powerEnd: midpoint, cadence, powerRangeLow, powerRangeHigh };
   }
 
-  const powerPct = Math.round(Number(match[3]));
+  const powerPct = Math.round(Number(powerLowGroup));
   return { type: 'steady', duration, powerStart: powerPct, powerEnd: powerPct, cadence };
 }
