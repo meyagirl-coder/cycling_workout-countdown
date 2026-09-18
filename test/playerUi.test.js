@@ -598,6 +598,30 @@ describe('createPlayerView', () => {
     expect(segments).toHaveLength(6);
   });
 
+  it('uses a white moving cursor only while the current target is in Zone 7, while other zones keep the existing cursor color', () => {
+    document.body.innerHTML = '<div id="root"></div>';
+    const root = document.getElementById('root');
+    const view = createPlayerView(root, { onPlayPause: vi.fn(), onSkip: vi.fn(), onRedo: vi.fn(), onStop: vi.fn() });
+
+    const workout = {
+      id: 'cursor-zone7-test',
+      name: 'Cursor Zone 7 Test',
+      source: 'zwo',
+      totalDuration: 20,
+      intervals: [
+        { type: 'steady', duration: 10, powerStart: 160, powerEnd: 160, cadence: null },
+        { type: 'steady', duration: 10, powerStart: 120, powerEnd: 120, cadence: null },
+      ],
+    };
+
+    view.update(workout, makeIdleState({ status: 'running', currentIntervalIndex: 0, elapsedInInterval: 0, elapsedTotal: 0 }), 200);
+    const cursor = root.querySelector('.timeline-cursor');
+    expect(cursor.classList.contains('timeline-cursor-zone7')).toBe(true);
+
+    view.update(workout, makeIdleState({ status: 'running', currentIntervalIndex: 1, elapsedInInterval: 0, elapsedTotal: 10 }), 200);
+    expect(cursor.classList.contains('timeline-cursor-zone7')).toBe(false);
+  });
+
   it('keeps the timeline zone colors in sync with the status-panel background as powerAdjustPct changes', () => {
     document.body.innerHTML = '<div id="root"></div>';
     const root = document.getElementById('root');
