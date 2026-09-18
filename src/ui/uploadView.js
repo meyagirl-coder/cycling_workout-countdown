@@ -192,8 +192,6 @@ export function createUploadView(rootEl, handlers) {
             <span>點一下選擇 .zwo 檔案</span>
           </label>
         </div>
-
-        </div>
       </div>
 
       <p class="upload-error hidden"></p>
@@ -230,9 +228,6 @@ export function createUploadView(rootEl, handlers) {
     errorEl.classList.remove('hidden');
   }
 
-  // 「今天」要用使用者瀏覽器的本地日期，不是 Vercel 伺服器的時區（見
-  // api/intervals-events.js 的說明）——伺服器多半是 UTC，UTC+8 的使用者在
-  // 當地已經跨到隔天、UTC 卻還沒跨日的那幾小時內，兩者會差一天。
   fileInput.addEventListener('change', () => {
     const file = fileInput.files && fileInput.files[0];
     fileInput.value = ''; // allow re-selecting the same file again after an error
