@@ -5,7 +5,7 @@ import { parseScheduledStartTimeInput } from './scheduledStartTimeParser.js';
 
 /**
  * 上傳畫面：四個平行的課表載入方式——貼課表網址／貼上課表文字內容／上傳
- * .zwo 檔案／intervals.icu 行事曆課表，都用同樣的卡片樣式（`.upload-source-
+ * .zwo 檔案，都用同樣的卡片樣式（`.upload-source-
  * card`），讓使用者一眼就能看出這是平行選項，不是主功能＋附加說明的層級
  * 關係——但畫面上不是四張卡片緊鄰排在一起：「貼課表網址」這張卡片刻意搬到
  * 「設定開始時間」跟「產生開團分享連結」這兩個排程相關區塊中間（規格：
@@ -19,11 +19,6 @@ import { parseScheduledStartTimeInput } from './scheduledStartTimeParser.js';
  * 邏輯，不碰 parser／計時引擎／fetch —— 收到輸入就透過對應的 handler 丟給
  * 呼叫端處理：
  *
- * 「intervals.icu 行事曆課表」這張卡片目前用不到，先在畫面上用 `hidden`
- * class 隱藏（`.upload-intervals-card.hidden`，見 player.css），底下的
- * DOM／表單／handler／`/api/intervals-zwo`、`/api/intervals-events` 這兩支
- * proxy function 都完整保留，沒有刪除任何程式碼——之後如果要重新啟用，只要
- * 把這個 class 拿掉就好，不需要重新開發。
  *   onFileSelected(file)              選了本機 .zwo 檔案——檔案輸入框故意
  *                                     不設 `accept` 屬性（見下方），副檔名／
  *                                     內容格式檢查交給呼叫端（playerApp.js）
