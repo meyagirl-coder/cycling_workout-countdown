@@ -31,35 +31,40 @@ function setup(handlerOverrides = {}) {
   return { root, handlers, view };
 }
 
-describe('createUploadView layout (four parallel source cards)', () => {
-  it('renders exactly four source cards, in order: url, paste text, .zwo upload, intervals.icu', () => {
+describe('createUploadView layout (three workout source cards + group share tool)', () => {
+  it('renders exactly three workout source cards, in order: url, paste text, .zwo upload', () => {
     const { root } = setup();
     const titles = Array.from(root.querySelectorAll('.upload-source-title')).map((el) => el.textContent);
-    expect(titles).toEqual(['貼課表網址', '貼上課表文字內容', '上傳 ZWO 檔案', '使用 intervals 行事曆課表']);
+    expect(titles).toEqual(['貼課表網址', '貼上課表文字內容', '上傳 ZWO 檔案']);
   });
 
-  it('hides the intervals.icu card from view (temporarily unused) without removing it from the DOM - the underlying form/handlers/elements are all still present and wired up', () => {
+  it('removes the intervals-related card and text from the upload UI', () => {
     const { root } = setup();
-    const card = root.querySelector('.upload-intervals-card');
-    expect(card.classList.contains('hidden')).toBe(true);
-    expect(root.querySelector('.upload-intervals-form')).not.toBeNull();
-    expect(root.querySelector('.upload-intervals-input')).not.toBeNull();
-    expect(root.querySelector('.upload-intervals-submit')).not.toBeNull();
-    expect(root.querySelector('.upload-intervals-lookup-link')).not.toBeNull();
+    expect(root.querySelector('.upload-intervals-card')).toBeNull();
+    expect(root.textContent).not.toContain('intervals');
+    expect(root.textContent).not.toContain('行事曆');
+  });
+
+  it('places the group share-link card immediately after the countdown hint and before the schedule/source controls', () => {
+    const { root } = setup();
+    const children = Array.from(root.querySelector('.upload-screen').children).map((el) => el.className);
+    expect(children.indexOf('share-link-tool')).toBe(children.indexOf('upload-alertmode-hint') + 1);
+    expect(children.indexOf('share-link-tool')).toBeLessThan(children.indexOf('upload-schedule-row'));
+    expect(children.indexOf('share-link-tool')).toBeLessThan(children.indexOf('upload-source-card'));
   });
 
   it('gives every source card title the same font-size/weight via one shared class (visual consistency)', () => {
     const { root } = setup();
     const titles = root.querySelectorAll('.upload-source-title');
-    expect(titles).toHaveLength(4);
+    expect(titles).toHaveLength(3);
     for (const title of titles) {
       expect(title.tagName).toBe('H2');
     }
   });
 
-  it('wraps each of the four blocks in the same card class', () => {
+  it('wraps each of the three workout blocks in the same card class', () => {
     const { root } = setup();
-    expect(root.querySelectorAll('.upload-source-card')).toHaveLength(4);
+    expect(root.querySelectorAll('.upload-source-card')).toHaveLength(3);
   });
 
   it('renders the url card\'s hint text mentioning only TrainerDay (WhatsOnZwift fetch is blocked by anti-scraping, so it must not be advertised as supported)', () => {
@@ -81,7 +86,7 @@ describe('createUploadView layout (four parallel source cards)', () => {
     expect(hint.textContent).not.toContain('Zwift');
   });
 
-  it('keeps a single shared error area below all four cards', () => {
+  it('keeps a single shared error area below all three source cards', () => {
     const { root } = setup();
     expect(root.querySelectorAll('.upload-error')).toHaveLength(1);
     expect(root.querySelector('.upload-error').classList.contains('hidden')).toBe(true);
