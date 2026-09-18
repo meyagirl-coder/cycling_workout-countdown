@@ -11,6 +11,7 @@
   --zone-purple: #8e24aa;
   --zone-black: #212121;
   --zone-none: #334155;
+  --timeline-bg: #ffffff;
 
   /* 大字卡片（.status-panel）背景永遠是高飽和度的區間顏色，裡面的文字固定
      用淺色，不隨主題切換——深色文字在 Z6 紅／Z7 紫這種本身就偏暗的顏色上
@@ -963,7 +964,9 @@ body {
 
 .timeline {
   position: relative;
-  background: var(--card-bg);
+  /* 執行課表的功率時間軸固定使用白色底，讓 Z7 黑色區間與背景形成清楚對比，
+     不受 dark/light/auto 頁面主題影響。 */
+  background: var(--timeline-bg);
   border-radius: 0.75rem;
   overflow: hidden;
 }
@@ -979,7 +982,9 @@ body {
   position: absolute;
   left: 0;
   right: 0;
-  border-top: 1px dashed var(--reference-line-color);
+  /* 時間軸固定白底後，100% FTP 參考線改用中性灰，避免 dark theme 原本的
+     半透明白線在白底上幾乎消失。 */
+  border-top: 1px dashed #94a3b8;
 }
 
 .timeline-segment {
