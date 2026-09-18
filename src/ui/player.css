@@ -11,7 +11,7 @@
   --zone-purple: #8e24aa;
   --zone-black: #212121;
   --zone-none: #334155;
-  --timeline-bg: #0F0F36;
+  --timeline-bg: #1E293C;
 
   /* 大字卡片（.status-panel）背景永遠是高飽和度的區間顏色，裡面的文字固定
      用淺色，不隨主題切換——深色文字在 Z6 紅／Z7 紫這種本身就偏暗的顏色上
