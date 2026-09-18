@@ -805,7 +805,7 @@ export function initPlayerApp(rootEl) {
   return { client };
 }
 
-async function extractProxyErrorMessage(response, serviceName = 'intervals.icu') {
+async function extractProxyErrorMessage(response, serviceName = '課表代理服務') {
   try {
     const body = await response.json();
     if (body && typeof body.error === 'string') return body.error;
