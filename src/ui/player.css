@@ -1021,8 +1021,13 @@ body {
 /* 移動游標：跟圖表下方「目前／下一組」提示的背景色一致，讓白色時間軸上
    的目前位置保持清楚可辨識。 */
 .timeline-cursor {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 3px;
   background: var(--cursor-color);
   box-shadow: 0 0 6px var(--cursor-glow-color);
+  transition: left 0.2s linear;
 }
 
 /* 組別交界線：跟頁面底色同色，不管兩側區間顏色是否相同都看得出組別邊界 */
@@ -1033,16 +1038,6 @@ body {
   width: 2px;
   background: var(--bg-page);
   transform: translateX(-1px);
-}
-
-.timeline-cursor {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  width: 3px;
-  background: var(--cursor-color);
-  box-shadow: 0 0 6px var(--cursor-glow-color);
-  transition: left 0.2s linear;
 }
 
 .next-interval-banner {
