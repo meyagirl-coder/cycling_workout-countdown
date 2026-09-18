@@ -11,7 +11,7 @@
   --zone-purple: #8e24aa;
   --zone-black: #212121;
   --zone-none: #334155;
-  --timeline-bg: #ffffff;
+  --timeline-bg: #093683;
 
   /* 大字卡片（.status-panel）背景永遠是高飽和度的區間顏色，裡面的文字固定
      用淺色，不隨主題切換——深色文字在 Z6 紅／Z7 紫這種本身就偏暗的顏色上
@@ -42,8 +42,7 @@
   --btn-bg: #1e293b;
   --btn-primary-bg: #f8fafc;
   --btn-primary-text: #020617;
-  /* 時間軸目前進行位置使用「目前／下一組」提示卡片的背景色，與圖表白底形成
-     明顯對比；不再使用原本的白色游標，避免白色圖表底上游標消失。 */
+  /* 一般 Zone 維持目前游標顏色；進入 Z7 時由 JS 加上 .timeline-cursor-zone7 改成白色。 */
   --cursor-color: var(--next-banner-bg);
   --cursor-glow-color: var(--next-banner-bg);
   --reference-line-color: rgba(248, 250, 252, 0.4);
@@ -81,7 +80,7 @@
     --btn-bg: #e2e8f0;
     --btn-primary-bg: #0f172a;
     --btn-primary-text: #ffffff;
-    /* 與目前／下一組提示卡片共用同一個背景色，讓白色時間軸上的移動游標清楚可見。 */
+    /* 一般 Zone 維持目前游標顏色；Z7 由 .timeline-cursor-zone7 改成白色。 */
     --cursor-color: var(--next-banner-bg);
     --cursor-glow-color: var(--next-banner-bg);
     --reference-line-color: rgba(15, 23, 42, 0.3);
@@ -116,7 +115,7 @@
   --btn-bg: #e2e8f0;
   --btn-primary-bg: #0f172a;
   --btn-primary-text: #ffffff;
-    /* 與目前／下一組提示卡片共用同一個背景色，讓白色時間軸上的移動游標清楚可見。 */
+    /* 一般 Zone 維持目前游標顏色；Z7 由 .timeline-cursor-zone7 改成白色。 */
     --cursor-color: var(--next-banner-bg);
     --cursor-glow-color: var(--next-banner-bg);
   --reference-line-color: rgba(15, 23, 42, 0.3);
