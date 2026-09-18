@@ -1029,6 +1029,12 @@ body {
   transition: left 0.2s linear;
 }
 
+/* Z7 黑色區間時改用白色游標；其他 Zone 沿用既有游標顏色。 */
+.timeline-cursor.timeline-cursor-zone7 {
+  --cursor-color: #ffffff;
+  --cursor-glow-color: rgba(255, 255, 255, 0.9);
+}
+
 /* 組別交界線：跟頁面底色同色，不管兩側區間顏色是否相同都看得出組別邊界 */
 .timeline-divider {
   position: absolute;
