@@ -1,7 +1,6 @@
 import { VALID_ALERT_MODES } from './alertModeStore.js';
 import { formatDateTimeLabel } from './formatTime.js';
 import { buildGroupJoinLink } from './groupJoinLinkParser.js';
-import { getLocalDateString } from '../utils/localDate.js';
 import { parseScheduledStartTimeInput } from './scheduledStartTimeParser.js';
 
 /**
@@ -90,46 +89,6 @@ export function createUploadView(rootEl, handlers) {
       </div>
       <p class="upload-alertmode-hint">兩者擇一：「下一組提示倒數」用語音報數；「逼逼聲倒數」改用三聲提示音，視訊分享音效僅【逼逼聲】模式支援播放</p>
 
-      <div class="upload-schedule-row">
-        <label class="upload-schedule-label" for="upload-schedule-input">設定開始時間</label>
-        <div class="upload-schedule-input-wrap">
-          <input
-            type="text"
-            id="upload-schedule-input"
-            class="upload-schedule-input"
-            placeholder="202607242000"
-            inputmode="numeric"
-            maxlength="12"
-            autocomplete="off"
-          />
-          <button type="button" class="upload-schedule-submit">設定</button>
-        </div>
-      </div>
-      <p class="upload-schedule-hint">
-        選填，用於團體訓練排程：格式為年月日時分連續 12 位數字（不含空格或冒號），例如「202607242000」代表 2026/07/24 20:00。設定後，接下來載入的課表會依這個時間自動開始（時間已過就立刻開始播放，還沒到就顯示等待畫面倒數）。
-      </p>
-      <p class="upload-schedule-status hidden">
-        已設定開始時間：<span class="upload-schedule-status-text"></span>
-        <button type="button" class="upload-schedule-cancel">取消</button>
-      </p>
-
-      <div class="upload-source-card">
-        <h2 class="upload-source-title">貼課表網址</h2>
-        <form class="upload-url-form">
-          <div class="upload-url-row">
-            <input
-              type="text"
-              id="upload-url-input"
-              class="upload-url-input"
-              placeholder="貼上課表網址"
-              autocomplete="off"
-            />
-            <button type="submit" class="upload-url-submit">載入</button>
-          </div>
-        </form>
-        <p class="upload-source-hint">目前支援 TrainerDay</p>
-      </div>
-
       <div class="share-link-tool">
         <h2 class="share-link-title">產生開團分享連結</h2>
         <p class="share-link-hint">
@@ -158,6 +117,47 @@ export function createUploadView(rootEl, handlers) {
           <button type="button" class="share-link-copy">複製連結</button>
           <span class="share-link-copied hidden">已複製！</span>
         </div>
+      </div>
+
+
+      <div class="upload-schedule-row">
+        <label class="upload-schedule-label" for="upload-schedule-input">設定開始時間</label>
+        <div class="upload-schedule-input-wrap">
+          <input
+            type="text"
+            id="upload-schedule-input"
+            class="upload-schedule-input"
+            placeholder="202607242000"
+            inputmode="numeric"
+            maxlength="12"
+            autocomplete="off"
+          />
+          <button type="button" class="upload-schedule-submit">設定</button>
+        </div>
+      </div>
+      <p class="upload-schedule-hint">
+        選填，用於團體訓練排程：格式為年月日時分連續 12 位數字（不含空格或冒號），例如「202607242000」代表 2026/07/24 20:00。設定後，接下來不論是「貼課表網址」、「貼上課表文字內容」或「上傳 ZWO 檔案」載入的課表，都會依這個時間自動開始（時間已過就立刻開始播放，還沒到就顯示等待畫面倒數）。
+      </p>
+      <p class="upload-schedule-status hidden">
+        已設定開始時間：<span class="upload-schedule-status-text"></span>
+        <button type="button" class="upload-schedule-cancel">取消</button>
+      </p>
+
+      <div class="upload-source-card">
+        <h2 class="upload-source-title">貼課表網址</h2>
+        <form class="upload-url-form">
+          <div class="upload-url-row">
+            <input
+              type="text"
+              id="upload-url-input"
+              class="upload-url-input"
+              placeholder="貼上課表網址"
+              autocomplete="off"
+            />
+            <button type="submit" class="upload-url-submit">載入</button>
+          </div>
+        </form>
+        <p class="upload-source-hint">目前支援 TrainerDay</p>
       </div>
 
       <div class="upload-source-list">
@@ -193,26 +193,6 @@ export function createUploadView(rootEl, handlers) {
           </label>
         </div>
 
-        <div class="upload-source-card upload-intervals-card hidden">
-          <h2 class="upload-source-title">使用 intervals 行事曆課表</h2>
-          <form class="upload-intervals-form">
-            <div class="upload-intervals-row">
-              <input
-                type="text"
-                id="upload-intervals-input"
-                class="upload-intervals-input"
-                placeholder="輸入 event ID"
-                autocomplete="off"
-              />
-              <button type="submit" class="upload-intervals-submit">載入</button>
-            </div>
-          </form>
-          <a
-            class="upload-intervals-lookup-link"
-            href="/api/intervals-events"
-            target="_blank"
-            rel="noopener noreferrer"
-          >點此查詢最近一筆行事曆訓練代碼</a>
         </div>
       </div>
 
@@ -222,10 +202,6 @@ export function createUploadView(rootEl, handlers) {
 
   const fileInput = rootEl.querySelector('.upload-input');
   const errorEl = rootEl.querySelector('.upload-error');
-  const intervalsForm = rootEl.querySelector('.upload-intervals-form');
-  const intervalsInput = rootEl.querySelector('.upload-intervals-input');
-  const intervalsSubmitBtn = rootEl.querySelector('.upload-intervals-submit');
-  const lookupLink = rootEl.querySelector('.upload-intervals-lookup-link');
   const ftpInput = rootEl.querySelector('.upload-ftp-input');
   const ftpPrompt = rootEl.querySelector('.upload-ftp-prompt');
   const ftpSkipBtn = rootEl.querySelector('.upload-ftp-skip-btn');
@@ -257,18 +233,10 @@ export function createUploadView(rootEl, handlers) {
   // 「今天」要用使用者瀏覽器的本地日期，不是 Vercel 伺服器的時區（見
   // api/intervals-events.js 的說明）——伺服器多半是 UTC，UTC+8 的使用者在
   // 當地已經跨到隔天、UTC 卻還沒跨日的那幾小時內，兩者會差一天。
-  lookupLink.href = `/api/intervals-events?today=${getLocalDateString()}`;
-
   fileInput.addEventListener('change', () => {
     const file = fileInput.files && fileInput.files[0];
     fileInput.value = ''; // allow re-selecting the same file again after an error
     if (file) handlers.onFileSelected(file);
-  });
-
-  intervalsForm.addEventListener('submit', (event) => {
-    event.preventDefault();
-    const value = intervalsInput.value.trim();
-    if (value) handlers.onIntervalsIcuSubmit(value);
   });
 
   // 「貼上課表文字內容」只處理文字，不做網址判斷——網址判斷完全交給
