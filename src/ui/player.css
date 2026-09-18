@@ -42,8 +42,10 @@
   --btn-bg: #1e293b;
   --btn-primary-bg: #f8fafc;
   --btn-primary-text: #020617;
-  --cursor-color: #f8fafc;
-  --cursor-glow-color: rgba(248, 250, 252, 0.9);
+  /* 時間軸目前進行位置使用「目前／下一組」提示卡片的背景色，與圖表白底形成
+     明顯對比；不再使用原本的白色游標，避免白色圖表底上游標消失。 */
+  --cursor-color: var(--next-banner-bg);
+  --cursor-glow-color: var(--next-banner-bg);
   --reference-line-color: rgba(248, 250, 252, 0.4);
   --next-banner-bg: #1e293b;
   --finished-bg: #14532d;
@@ -79,8 +81,9 @@
     --btn-bg: #e2e8f0;
     --btn-primary-bg: #0f172a;
     --btn-primary-text: #ffffff;
-    --cursor-color: #0f172a;
-    --cursor-glow-color: rgba(15, 23, 42, 0.4);
+    /* 與目前／下一組提示卡片共用同一個背景色，讓白色時間軸上的移動游標清楚可見。 */
+    --cursor-color: var(--next-banner-bg);
+    --cursor-glow-color: var(--next-banner-bg);
     --reference-line-color: rgba(15, 23, 42, 0.3);
     --next-banner-bg: #f1f5f9;
     --finished-bg: #dcfce7;
@@ -113,8 +116,9 @@
   --btn-bg: #e2e8f0;
   --btn-primary-bg: #0f172a;
   --btn-primary-text: #ffffff;
-  --cursor-color: #0f172a;
-  --cursor-glow-color: rgba(15, 23, 42, 0.4);
+    /* 與目前／下一組提示卡片共用同一個背景色，讓白色時間軸上的移動游標清楚可見。 */
+    --cursor-color: var(--next-banner-bg);
+    --cursor-glow-color: var(--next-banner-bg);
   --reference-line-color: rgba(15, 23, 42, 0.3);
   --next-banner-bg: #f1f5f9;
   --finished-bg: #dcfce7;
@@ -1012,6 +1016,13 @@ body {
 .timeline-segment-band-high {
   z-index: 2;
   opacity: 0.55;
+}
+
+/* 移動游標：跟圖表下方「目前／下一組」提示的背景色一致，讓白色時間軸上
+   的目前位置保持清楚可辨識。 */
+.timeline-cursor {
+  background: var(--cursor-color);
+  box-shadow: 0 0 6px var(--cursor-glow-color);
 }
 
 /* 組別交界線：跟頁面底色同色，不管兩側區間顏色是否相同都看得出組別邊界 */
