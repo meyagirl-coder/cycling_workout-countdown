@@ -186,21 +186,61 @@ export function createPlayerView(rootEl, handlers, options = {}) {
   }
 
   let nextIntervalBannerTimeoutId = null;
+  let isShowingNextIntervalBanner = false;
+  let currentIntervalTextProvider = null;
 
   function hideNextIntervalBannerNow() {
     if (nextIntervalBannerTimeoutId !== null) {
       clearTimeout(nextIntervalBannerTimeoutId);
       nextIntervalBannerTimeoutId = null;
     }
+    isShowingNextIntervalBanner = false;
     els.nextIntervalBanner.classList.add('hidden');
+  }
+
+  /**
+   * 目前進行中的這一組課表內容，沿用「下一組」提示的相同格式與相同位置。
+   * 平常顯示目前組別；倒數預告／切組提示出現時，暫時由「下一組」內容覆蓋，
+   * 提示自動收起後再恢復目前組別。
+   */
+  function formatCurrentIntervalText(workout, state, ftp) {
+    const iv = workout.intervals[state.currentIntervalIndex];
+    if (!iv) return '';
+
+    const bandTarget = computeBandTarget(iv, ftp, state.powerAdjustPct);
+    if (bandTarget) {
+      return `目前：${formatMinuteSecondLabel(iv.duration)} · ${bandTarget.lowPct}-${bandTarget.highPct}% FTP`;
+    }
+
+    const typeLabel = INTERVAL_TYPE_LABELS[iv.type];
+    const durationLabel = formatMMSS(iv.duration);
+    const target = computeCurrentTarget(workout, state.currentIntervalIndex, 0, ftp, state.powerAdjustPct);
+    if (target.watts === null) {
+      return `目前：${typeLabel} · ${durationLabel}`;
+    }
+    return `目前：${typeLabel} · ${durationLabel} · ${Math.round(target.pct)}% FTP · ${target.watts}W`;
+  }
+
+  function showCurrentIntervalBanner(text) {
+    if (!text) {
+      els.nextIntervalBanner.classList.add('hidden');
+      return;
+    }
+    els.nextIntervalBanner.textContent = text;
+    els.nextIntervalBanner.classList.remove('hidden');
   }
 
   function update(workout, state, ftp) {
     renderTimelineIfNeeded(workout, state.powerAdjustPct);
 
     // 'idle' 只會出現在一份全新課表剛載入、還沒開始的那一刻，藉此收起上一份
-    // 課表可能還沒消失的「下一組資訊」提示，避免殘留到新課表（規格 §4.5）
-    if (state.status === 'idle') hideNextIntervalBannerNow();
+    // 課表可能還沒消失的提示，避免殘留到新課表（規格 §4.5）。
+    // running／paused 則在原本「下一組」提示的相同位置顯示目前這一組內容；
+    // 倒數提示正在顯示時不要覆蓋它。
+    if (state.status === 'idle' || state.status === 'finished') {
+      currentIntervalTextProvider = null;
+      hideNextIntervalBannerNow();
+    }
 
     els.workoutName.textContent = workout.name;
     els.totalDuration.textContent = `總時長 ${formatDurationLabel(workout.totalDuration)}`;
@@ -254,6 +294,15 @@ export function createPlayerView(rootEl, handlers, options = {}) {
 
     const isRunning = state.status === 'running';
     const isFinished = state.status === 'finished';
+
+    if (isRunning || state.status === 'paused') {
+      currentIntervalTextProvider = () => formatCurrentIntervalText(workout, state, ftp);
+      if (!isShowingNextIntervalBanner) {
+        showCurrentIntervalBanner(currentIntervalTextProvider());
+      }
+    } else {
+      currentIntervalTextProvider = null;
+    }
     els.playPauseBtn.textContent = isRunning ? '⏸ 暫停' : '▶ 開始';
     els.playPauseBtn.disabled = isFinished;
     els.skipBtn.disabled = isFinished;
@@ -283,13 +332,24 @@ export function createPlayerView(rootEl, handlers, options = {}) {
    * @param {number} [durationMs]
    */
   function showNextIntervalBanner(text, durationMs = NEXT_INTERVAL_BANNER_MS) {
+    isShowingNextIntervalBanner = true;
     els.nextIntervalBanner.textContent = text;
     els.nextIntervalBanner.classList.remove('hidden');
 
     if (nextIntervalBannerTimeoutId !== null) clearTimeout(nextIntervalBannerTimeoutId);
     nextIntervalBannerTimeoutId = setTimeout(() => {
       nextIntervalBannerTimeoutId = null;
-      els.nextIntervalBanner.classList.add('hidden');
+      isShowingNextIntervalBanner = false;
+      // 下一組提示結束後，回到同一位置顯示目前正在進行的這一組內容。
+      // update() 下一個 tick 也會同步更新它，但這裡立即恢復，避免留下空白。
+      const currentText = currentIntervalTextProvider
+        ? currentIntervalTextProvider()
+        : '';
+      if (currentText) {
+        showCurrentIntervalBanner(currentText);
+      } else {
+        els.nextIntervalBanner.classList.add('hidden');
+      }
     }, durationMs);
   }
 
