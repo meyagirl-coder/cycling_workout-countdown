@@ -1,15 +1,15 @@
-/* 功率區間顏色是 TrainerDay 官方精確色碼（Z1-Z6，直接從網站檢查元素查出來
-   的，不是估計值）；Z7 TrainerDay 沒有定義這個區間的顏色，維持原本的紫色。
-   這幾個色碼故意不隨主題切換——它們本身就是高飽和度的色塊（時間軸柱狀圖／
-   執行頁大字卡片背景），不管淺色或深色頁面底色都看得出來，不需要跟著換。 */
+/* 功率區間顏色集中由這裡定義，時間軸柱狀圖與執行頁大字卡片共用同一套色碼。
+   色碼固定不隨主題切換，確保同一個 %FTP 在任何主題下都維持相同辨識。
+   Z1 <55%、Z2 55–75%、Z3 76–90%、Z4 91–105%、Z5 106–120%、Z6 121–150%、
+   Z7 >=151%。 */
 :root {
-  --zone-gray: #7f7f7f;
-  --zone-blue: #3f8fce;
-  --zone-green: #49c072;
-  --zone-yellow: #ffcc3f;
-  --zone-orange: #f46d41;
-  --zone-red: #d6270b;
-  --zone-purple: #9333ea;
+  --zone-gray: #a6a6a6;
+  --zone-blue: #1e88e5;
+  --zone-green: #4caf50;
+  --zone-yellow: #ffb300;
+    --zone-red: #e53935;
+  --zone-purple: #8e24aa;
+  --zone-black: #212121;
   --zone-none: #334155;
 
   /* 大字卡片（.status-panel）背景永遠是高飽和度的區間顏色，裡面的文字固定
@@ -1248,7 +1248,7 @@ body {
 .zone-blue { background-color: var(--zone-blue); }
 .zone-green { background-color: var(--zone-green); }
 .zone-yellow { background-color: var(--zone-yellow); }
-.zone-orange { background-color: var(--zone-orange); }
 .zone-red { background-color: var(--zone-red); }
 .zone-purple { background-color: var(--zone-purple); }
+.zone-black { background-color: var(--zone-black); }
 .zone-none { background-color: var(--zone-none); }
