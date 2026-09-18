@@ -656,6 +656,32 @@ describe('createPlayerView', () => {
     expect(handlers.onReturnHome).toHaveBeenCalledTimes(1);
   });
 
+  it('shows the current interval content in the same banner position as the next-interval prompt, and restores it after a next-interval prompt', () => {
+    vi.useFakeTimers();
+    document.body.innerHTML = '<div id="root"></div>';
+    const root = document.getElementById('root');
+    const view = createPlayerView(root, { onPlayPause: vi.fn(), onSkip: vi.fn(), onRedo: vi.fn(), onStop: vi.fn() });
+    const banner = root.querySelector('.next-interval-banner');
+
+    const runningState = makeIdleState({
+      status: 'running',
+      currentIntervalIndex: 1,
+      elapsedInInterval: 4,
+      elapsedTotal: 16,
+    });
+    view.update(makeWorkout(), runningState, 200);
+
+    expect(banner.classList.contains('hidden')).toBe(false);
+    expect(banner.textContent).toBe('目前：穩定 · 0:10 · 88% FTP · 176W');
+
+    view.showNextIntervalBanner('下一組：自由騎乘 · 0:08', 5000);
+    expect(banner.textContent).toBe('下一組：自由騎乘 · 0:08');
+
+    vi.advanceTimersByTime(5000);
+    expect(banner.classList.contains('hidden')).toBe(false);
+    expect(banner.textContent).toBe('目前：穩定 · 0:10 · 88% FTP · 176W');
+  });
+
   it('shows a "回到主畫面" button inside the finished banner (regression 4.5)', () => {
     document.body.innerHTML = '<div id="root"></div>';
     const root = document.getElementById('root');
