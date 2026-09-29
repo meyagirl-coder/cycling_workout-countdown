@@ -23,6 +23,18 @@ describe('parseTrainerDayFullText', () => {
     expect(workout.intervals).toEqual([{ type: 'steady', duration: 300, powerStart: 50, powerEnd: 50, cadence: null }]);
   });
 
+  it('parses TrainerDay M:SS minute notation as minutes plus seconds ("1:30 min")', () => {
+    const workout = parseTrainerDayFullText('1:30 min @ 80w');
+    expect(workout.intervals).toEqual([{ type: 'steady', duration: 90, powerStart: 80, powerEnd: 80, cadence: null }]);
+  });
+
+  it('parses M:SS notation inside an inline repeat block', () => {
+    const workout = parseTrainerDayFullText('2X (1:30 min @ 100w | 0:30 min @ 50w)');
+    const on = { type: 'steady', duration: 90, powerStart: 100, powerEnd: 100, cadence: null };
+    const off = { type: 'steady', duration: 30, powerStart: 50, powerEnd: 50, cadence: null };
+    expect(workout.intervals).toEqual([on, off, on, off]);
+  });
+
   it('parses a "X sec @ Yw" line (seconds, not supported by the older manual-entry format)', () => {
     const workout = parseTrainerDayFullText('30 sec @ 110w');
     expect(workout.intervals).toEqual([{ type: 'steady', duration: 30, powerStart: 110, powerEnd: 110, cadence: null }]);
