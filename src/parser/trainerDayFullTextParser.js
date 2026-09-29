@@ -25,6 +25,7 @@
  */
 import { generateId } from '../utils/generateId.js';
 import { stripBulletPrefix } from './newlineRepeatTextParser.js';
+import { parseTrainerDayDuration } from './trainerDayDuration.js';
 
 /** 第一行常見的總時長說明文字，例如「持续时间: 59m」——不是課表資料，跳過不解析 */
 export const TRAINERDAY_FULL_DURATION_HEADER_RE = /^持续时间\s*[:：]/;
@@ -107,10 +108,8 @@ function parseIntervalLine(line) {
   const match = line.match(TRAINERDAY_FULL_LINE_RE);
   if (!match) return null;
 
-  const amount = Number(match[1]);
-  const unit = match[2].toLowerCase();
-  const seconds = unit === 'min' ? amount * 60 : amount; // FTP=100 基準換算，Yw 直接等於 Y% FTP
-  const duration = Math.round(seconds);
+  const duration = parseTrainerDayDuration(match[1], match[2]);
+  if (duration == null) return null; // FTP=100 基準換算，Yw 直接等於 Y% FTP
   const powerPct = Math.round(Number(match[3]));
 
   return { type: 'steady', duration, powerStart: powerPct, powerEnd: powerPct, cadence: null };
