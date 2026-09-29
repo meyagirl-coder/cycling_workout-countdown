@@ -17,6 +17,7 @@
  */
 import { generateId } from '../utils/generateId.js';
 import { parseNewlineRepeatText, REPEAT_LINE_RE } from './newlineRepeatTextParser.js';
+import { parseTrainerDayDuration } from './trainerDayDuration.js';
 
 // exported so other modules that need to recognize the same line shapes
 // （例如判斷貼上文字是哪一種格式的 pasteTextRouter.js）可以重複使用同一套
@@ -46,9 +47,9 @@ function parseIntervalLine(line) {
   const match = line.match(INTERVAL_LINE_RE);
   if (!match) return null;
 
-  const minutes = Number(match[1]);
+  const duration = parseTrainerDayDuration(match[1], 'min');
   const watts = Number(match[2]); // FTP=100 基準換算，Yw 直接等於 Y% FTP
-  const duration = Math.round(minutes * 60);
+  if (duration == null) return null;
   const powerPct = Math.round(watts);
 
   return { type: 'steady', duration, powerStart: powerPct, powerEnd: powerPct, cadence: null };
