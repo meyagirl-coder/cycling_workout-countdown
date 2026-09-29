@@ -35,6 +35,11 @@ describe('parsePasteText', () => {
     ]);
   });
 
+  it('parses TrainerDay M:SS minute notation as minutes plus seconds ("1:30 min")', () => {
+    const workout = parsePasteText('1:30 min @ 100w');
+    expect(workout.intervals).toEqual([{ type: 'steady', duration: 90, powerStart: 100, powerEnd: 100, cadence: null }]);
+  });
+
   it('is tolerant of case, whitespace, and blank lines between entries', () => {
     const text = '10 MIN @ 53W\n\n  20   min   @   68w  \n';
     const workout = parsePasteText(text);
