@@ -16,8 +16,8 @@ export const TRAINERDAY_STRUCTURE_LINE_RE = new RegExp(
 export { REPEAT_LINE_RE, BRACKET_REPEAT_LINE_RE };
 
 const CORE_INTERVAL_RE =
-  /(\\d+(?::\\d{2})?|\\d+(?:\\.\\d+)?)\\s*(min|sec)\\s*@\\s*(\\d+(?:\\.\\d+)?)\\s*%\\s*\\(\\s*\\d+(?:\\.\\d+)?\\s*w\\s*\\)/i;
-const CADENCE_RE = /(\\d+(?:\\.\\d+)?)\\s*rpm/i;
+  /(\d+(?::\d{2})?|\d+(?:\.\d+)?)\s*(min|sec)\s*@\s*(\d+(?:\.\d+)?)\s*%\s*\(\s*\d+(?:\.\d+)?\s*w\s*\)/i;
+const CADENCE_RE = /(\d+(?:\.\d+)?)\s*rpm/i;
 
 export function parseTrainerDayWorkoutStructureText(text) {
   const intervals = parseNewlineRepeatText(text, parseIntervalLine, '"X min @ Y% (Zw)"');
