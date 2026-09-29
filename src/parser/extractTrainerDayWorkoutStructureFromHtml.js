@@ -27,7 +27,7 @@ import { REPEAT_LINE_RE, TRAINERDAY_STRUCTURE_LINE_RE } from './trainerDayWorkou
 import { collapseToMatchingLines, decodeHtmlEntities, htmlToLines } from './htmlTextExtraction.js';
 import { stripBulletPrefix, stripMarkdownBold } from './newlineRepeatTextParser.js';
 
-const INTERVAL_SEARCH_RE = /\d+(?:\.\d+)?\s*(?:min|sec)\s*@\s*\d+(?:\.\d+)?%\s*\(\s*\d+(?:\.\d+)?\s*w\s*\)/gi;
+const INTERVAL_SEARCH_RE = /\d+(?::\d{2})?\s*(?:min|sec)\s*@\s*\d+(?:\.\d+)?%\s*\(\s*\d+(?:\.\d+)?\s*w\s*\)/gi;
 const REPEAT_SEARCH_RE = /(?:^|[^\w])(\d+)\s*x(?=[^\w]|$)/gi;
 
 const TITLE_TAG_RE = /<title[^>]*>([\s\S]*?)<\/title>/i;
