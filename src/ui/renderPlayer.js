@@ -60,6 +60,7 @@ export function createPlayerView(rootEl, handlers, options = {}) {
           <div class="timeline">
             <div class="timeline-reference-line"></div>
             <div class="timeline-track"></div>
+            <div class="timeline-progress-overlay" aria-hidden="true"></div>
             <div class="timeline-cursor"></div>
           </div>
         </div>
@@ -106,6 +107,7 @@ export function createPlayerView(rootEl, handlers, options = {}) {
     totalDuration: rootEl.querySelector('.total-duration'),
     intervalProgress: rootEl.querySelector('.interval-progress'),
     timelineTrack: rootEl.querySelector('.timeline-track'),
+    timelineProgressOverlay: rootEl.querySelector('.timeline-progress-overlay'),
     timelineCursor: rootEl.querySelector('.timeline-cursor'),
     timelineReferenceLine: rootEl.querySelector('.timeline-reference-line'),
     nextIntervalBanner: rootEl.querySelector('.next-interval-banner'),
@@ -247,7 +249,11 @@ export function createPlayerView(rootEl, handlers, options = {}) {
     els.totalDuration.textContent = `總時長 ${formatDurationLabel(workout.totalDuration)}`;
     els.intervalProgress.textContent = `第 ${state.currentIntervalIndex + 1} / ${workout.intervals.length} 組 · ${STATUS_LABELS[state.status]}`;
 
-    els.timelineCursor.style.left = `${computeCursorPct(state.elapsedTotal, workout.totalDuration)}%`;
+    const progressPct = computeCursorPct(state.elapsedTotal, workout.totalDuration);
+    // 進度條式時間軸：已經完成的區域由左向右以半透明白色「布幕」覆蓋，
+    // 未完成區域仍保留原本的功率區間顏色；游標則保留在最前緣作為精確位置提示。
+    els.timelineProgressOverlay.style.width = `${progressPct}%`;
+    els.timelineCursor.style.left = `${progressPct}%`;
 
     const currentInterval = workout.intervals[state.currentIntervalIndex];
     const remaining = currentInterval.duration - state.elapsedInInterval;
