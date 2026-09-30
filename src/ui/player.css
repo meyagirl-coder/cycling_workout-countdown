@@ -997,6 +997,27 @@ body {
   background: var(--zone-none);
 }
 
+/* 已完成進度的「白色布幕」：從時間軸左端向右推進，覆蓋已經走過的課表區段。
+   保留底下功率區間的輪廓與顏色，只用半透明白色降低已完成區域的視覺權重，
+   讓使用者一眼看出「已完成／尚未完成」的進度，而不是用一條細線表示進度。 */
+.timeline-progress-overlay {
+  position: absolute;
+  z-index: 3;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 0;
+  background: rgba(255, 255, 255, 0.58);
+  box-shadow: 2px 0 8px rgba(255, 255, 255, 0.16);
+  pointer-events: none;
+  transition: width 0.2s linear;
+}
+
+/* 游標位於白色布幕最前緣，維持目前精確時間位置的辨識度。 */
+.timeline-cursor {
+  z-index: 4;
+}
+
 .timeline-segment.zone-none {
   background: repeating-linear-gradient(45deg, var(--zone-none-stripe-a), var(--zone-none-stripe-a) 6px, var(--zone-none-stripe-b) 6px, var(--zone-none-stripe-b) 12px);
 }
