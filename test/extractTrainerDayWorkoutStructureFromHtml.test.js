@@ -29,6 +29,37 @@ describe('extractTrainerDayWorkoutStructureFromHtml', () => {
     );
   });
 
+  it('always uses Original Indoor and never mixes in Outdoor intervals', () => {
+    const indoorLines = Array.from({ length: 10 }, () => '10 min @ 110% (275w)');
+    const outdoorLines = [
+      '4 min @ 110% (275w)',
+      '4 min @ 110% (275w)',
+      '4 min @ 110% (275w)',
+      '4 min @ 110% (275w)',
+      '3 min @ 115% (287w)',
+      '3 min @ 115% (287w)',
+      '3 min @ 115% (287w)',
+      '3 min @ 120% (300w)',
+      '3 min @ 120% (300w)',
+      '3 min @ 120% (300w)',
+    ];
+
+    const html = [
+      '<div class="variant-label">Original Indoor</div>',
+      ...indoorLines.map((line) => `<div>${line}</div>`),
+      '<div class="variant-label">Outdoor</div>',
+      ...outdoorLines.map((line) => `<div>${line}</div>`),
+    ].join('');
+
+    const text = extractTrainerDayWorkoutStructureFromHtml(html);
+    expect(text.split('\\n')).toEqual(indoorLines);
+
+    const workout = parseTrainerDayWorkoutStructureText(text);
+    expect(workout.intervals).toHaveLength(10);
+    expect(workout.intervals.every((interval) => interval.powerStart === 110)).toBe(true);
+    expect(workout.intervals.every((interval) => interval.duration === 10 * 60)).toBe(true);
+  });
+
   it('extracts workout lines rendered as their own block elements (strict mode)', () => {
     const html = `
       <html><body>
