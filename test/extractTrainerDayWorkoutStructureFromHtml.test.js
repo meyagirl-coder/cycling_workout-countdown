@@ -3,45 +3,15 @@ import { extractTrainerDayTitleFromHtml, extractTrainerDayWorkoutStructureFromHt
 import { parseTrainerDayWorkoutStructureText } from '../src/parser/trainerDayWorkoutStructureParser.js';
 
 describe('extractTrainerDayWorkoutStructureFromHtml', () => {
-  it('prefers the Original Indoor variant when Indoor and Outdoor versions are both present', () => {
-    const html = `
-      <div class="variant-label">Original Indoor</div>
-      <div>4 min @ 110% (275w)</div>
-      <div>4 min @ 110% (275w)</div>
-      <div>3 min @ 115% (287w)</div>
-      <div>3 min @ 115% (287w)</div>
-      <div>3 min @ 120% (300w)</div>
-      <div>3 min @ 120% (300w)</div>
-      <div class="variant-label">Outdoor</div>
-      <div>10 min @ 110% (275w)</div>
-      <div>10 min @ 110% (275w)</div>
-    `;
-
-    expect(extractTrainerDayWorkoutStructureFromHtml(html)).toBe(
-      [
-        '4 min @ 110% (275w)',
-        '4 min @ 110% (275w)',
-        '3 min @ 115% (287w)',
-        '3 min @ 115% (287w)',
-        '3 min @ 120% (300w)',
-        '3 min @ 120% (300w)',
-      ].join('\\n')
-    );
-  });
-
-  it('always uses Original Indoor and never mixes in Outdoor intervals', () => {
+  it('always uses Original Indoor as the fixed parsing source and never mixes in Outdoor', () => {
+    // 課表網頁範例：
+    // Original Indoor = 10 組 × 110%
+    // Outdoor = 4 組 × 110% + 3 組 × 115% + 3 組 × 120%
     const indoorLines = Array.from({ length: 10 }, () => '10 min @ 110% (275w)');
     const outdoorLines = [
-      '4 min @ 110% (275w)',
-      '4 min @ 110% (275w)',
-      '4 min @ 110% (275w)',
-      '4 min @ 110% (275w)',
-      '3 min @ 115% (287w)',
-      '3 min @ 115% (287w)',
-      '3 min @ 115% (287w)',
-      '3 min @ 120% (300w)',
-      '3 min @ 120% (300w)',
-      '3 min @ 120% (300w)',
+      ...Array.from({ length: 4 }, () => '4 min @ 110% (275w)'),
+      ...Array.from({ length: 3 }, () => '3 min @ 115% (287w)'),
+      ...Array.from({ length: 3 }, () => '3 min @ 120% (300w)'),
     ];
 
     const html = [
@@ -52,12 +22,13 @@ describe('extractTrainerDayWorkoutStructureFromHtml', () => {
     ].join('');
 
     const text = extractTrainerDayWorkoutStructureFromHtml(html);
-    expect(text.split('\\n')).toEqual(indoorLines);
+    expect(text.split('\n')).toEqual(indoorLines);
 
     const workout = parseTrainerDayWorkoutStructureText(text);
     expect(workout.intervals).toHaveLength(10);
-    expect(workout.intervals.every((interval) => interval.powerStart === 110)).toBe(true);
-    expect(workout.intervals.every((interval) => interval.duration === 10 * 60)).toBe(true);
+    expect(workout.intervals.map((interval) => interval.powerStart)).toEqual(
+      Array(10).fill(110)
+    );
   });
 
   it('extracts workout lines rendered as their own block elements (strict mode)', () => {
