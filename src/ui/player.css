@@ -1044,9 +1044,15 @@ body {
   position: absolute;
   top: 0;
   bottom: 0;
-  width: 3px;
-  background: var(--cursor-color);
-  box-shadow: 0 0 6px var(--cursor-glow-color);
+  width: 2px;
+  background: repeating-linear-gradient(
+    to bottom,
+    var(--cursor-color) 0,
+    var(--cursor-color) 4px,
+    transparent 4px,
+    transparent 7px
+  );
+  box-shadow: none;
   transition: left 0.2s linear;
 }
 
