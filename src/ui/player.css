@@ -11,7 +11,7 @@
   --zone-purple: #8e24aa;
   --zone-black: #212121;
   --zone-none: #334155;
-  --timeline-bg: #1E293C;
+  --timeline-bg: #000000;
 
   /* 大字卡片（.status-panel）背景永遠是高飽和度的區間顏色，裡面的文字固定
      用淺色，不隨主題切換——深色文字在 Z6 紅／Z7 紫這種本身就偏暗的顏色上
@@ -43,8 +43,8 @@
   --btn-primary-bg: #f8fafc;
   --btn-primary-text: #020617;
   /* 一般 Zone 維持目前游標顏色；進入 Z7 時由 JS 加上 .timeline-cursor-zone7 改成白色。 */
-  --cursor-color: var(--next-banner-bg);
-  --cursor-glow-color: var(--next-banner-bg);
+  --cursor-color: #ffffff;
+  --cursor-glow-color: rgba(255, 255, 255, 0.85);
   --reference-line-color: rgba(248, 250, 252, 0.4);
   --next-banner-bg: #1e293b;
   --finished-bg: #14532d;
@@ -81,8 +81,8 @@
     --btn-primary-bg: #0f172a;
     --btn-primary-text: #ffffff;
     /* 一般 Zone 維持目前游標顏色；Z7 由 .timeline-cursor-zone7 改成白色。 */
-    --cursor-color: var(--next-banner-bg);
-    --cursor-glow-color: var(--next-banner-bg);
+    --cursor-color: #000000;
+    --cursor-glow-color: rgba(0, 0, 0, 0.45);
     --reference-line-color: rgba(15, 23, 42, 0.3);
     --next-banner-bg: #f1f5f9;
     --finished-bg: #dcfce7;
@@ -116,8 +116,8 @@
   --btn-primary-bg: #0f172a;
   --btn-primary-text: #ffffff;
     /* 一般 Zone 維持目前游標顏色；Z7 由 .timeline-cursor-zone7 改成白色。 */
-    --cursor-color: var(--next-banner-bg);
-    --cursor-glow-color: var(--next-banner-bg);
+  --cursor-color: #000000;
+  --cursor-glow-color: rgba(0, 0, 0, 0.45);
   --reference-line-color: rgba(15, 23, 42, 0.3);
   --next-banner-bg: #f1f5f9;
   --finished-bg: #dcfce7;
@@ -127,6 +127,7 @@
   --warning-text: #b45309;
   --zone-none-stripe-a: #e2e8f0;
   --zone-none-stripe-b: #f8fafc;
+  --timeline-bg: #ffffff;
 }
 
 * {
@@ -967,8 +968,7 @@ body {
 
 .timeline {
   position: relative;
-  /* 執行課表的功率時間軸固定使用白色底，讓 Z7 黑色區間與背景形成清楚對比，
-     不受 dark/light/auto 頁面主題影響。 */
+  /* 時間軸背景跟隨頁面主題：light 為白、dark 為黑；進度最前緣因此可用反差色清楚標示。 */
   background: var(--timeline-bg);
   border-radius: 0.75rem;
   overflow: hidden;
@@ -1050,20 +1050,9 @@ body {
   transition: left 0.2s linear;
 }
 
-/* Z7 黑色區間時改用白色游標；其他 Zone 沿用既有游標顏色。 */
-.timeline-cursor.timeline-cursor-zone7 {
-  --cursor-color: #ffffff;
-  --cursor-glow-color: rgba(255, 255, 255, 0.9);
-}
-
-/* 組別交界線：跟頁面底色同色，不管兩側區間顏色是否相同都看得出組別邊界 */
+/* 組別交界線不再繪製；相鄰課表區間直接無縫銜接。 */
 .timeline-divider {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  width: 2px;
-  background: var(--bg-page);
-  transform: translateX(-1px);
+  display: none;
 }
 
 .next-interval-banner {
