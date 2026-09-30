@@ -39,6 +39,54 @@ const SITE_TITLE_PREFIX_RE = /^\s*trainer\s*day\s*[-–—:|]\s*/i;
 // Day</title>）：整個標題就只是網站名稱，沒有可用的課表標題可以抓。
 const BARE_SITE_TITLE_RE = /^\s*trainer\s*day\s*$/i;
 
+const ORIGINAL_INDOOR_RE = /original\\s*[-_]??\\s*indoor/i;
+const OUTDOOR_RE = /\\boutdoor\\b/i;
+
+/**
+ * TrainerDay 某些課表同時存在 Original Indoor / Outdoor 兩個版本。
+ * 解析器固定優先 Original Indoor；若頁面把兩個版本直接渲染成同一份 HTML，
+ * 不能把兩者的 interval 混在一起。
+ *
+ * 這裡先處理「版本文字本身包住課表內容」的常見 DOM 形式；若目前頁面沒有
+ * 暴露可辨識的版本區塊，才回到既有 strict/loose extraction（通常代表伺服器
+ * 回傳的 HTML 本身只有目前預設版本）。
+ */
+function extractOriginalIndoorVariantHtml(html) {
+  if (typeof html !== 'string') return null;
+
+  // 常見做法：版本名稱出現在 data-* / id / class 等元素屬性中，課表內容
+  // 位於同一個容器內。只取含 original-indoor 語意的容器，避免把 outdoor
+  // 版本一起交給後面的 interval matcher。
+  const containerRe =
+    /<(section|article|div|li|ul|ol|main|aside|form)\\b[^>]*(?:data-[^=\\s>]*(?:variant|workout|source|type)[^=\\s>]*|id|class|data-variant|data-workout-type)\\s*=\\s*["'][^"']*original[\\s_-]*indoor[^"']*["'][^>]*>[\\s\\S]*?<\\/\\1>/gi;
+  const matches = [...html.matchAll(containerRe)];
+  if (matches.length > 0) {
+    return matches.map((m) => m[0]).join('\\n');
+  }
+
+  return null;
+}
+
+function extractOriginalIndoorVariantLines(lines) {
+  const markerIndices = lines
+    .map((line, index) => ({ line, index }))
+    .filter(({ line }) => ORIGINAL_INDOOR_RE.test(line))
+    .map(({ index }) => index);
+
+  if (markerIndices.length === 0) return null;
+
+  // 若 Original Indoor 標記之後、下一個版本標記之前就有完整課表行，
+  // 直接視為該版本；這是沒有 data-* 容器時最安全的文字層 fallback。
+  for (const start of markerIndices) {
+    const end = lines.findIndex((line, index) => index > start && OUTDOOR_RE.test(line));
+    const slice = lines.slice(start + 1, end === -1 ? lines.length : end);
+    const extracted = extractStrict(slice);
+    if (extracted.length > 0) return extracted;
+  }
+
+  return null;
+}
+
 /**
  * 從 TrainerDay 課表頁面的完整 HTML 撈出 <title> 標籤內容，去掉網站名稱前綴
  * 後回傳課表真正的標題；找不到 <title> 或去掉前綴後是空字串就回傳 null，
@@ -99,7 +147,19 @@ function extractLoose(lines) {
 export function extractTrainerDayWorkoutStructureFromHtml(html) {
   if (typeof html !== 'string' || html.trim() === '') return '';
 
+  const preferredVariantHtml = extractOriginalIndoorVariantHtml(html);
+  if (preferredVariantHtml) {
+    const preferredLines = htmlToLines(preferredVariantHtml);
+    const preferredStrict = extractStrict(preferredLines);
+    if (preferredStrict.length > 0) return preferredStrict.join('\\n');
+  }
+
   const lines = htmlToLines(html);
+
+  const preferredVariantLines = extractOriginalIndoorVariantLines(lines);
+  if (preferredVariantLines && preferredVariantLines.length > 0) {
+    return preferredVariantLines.join('\\n');
+  }
 
   const strictLines = extractStrict(lines);
   // 跟 extractStrict() 內部判斷用的是同一套正規化（去項目符號、去 Markdown
