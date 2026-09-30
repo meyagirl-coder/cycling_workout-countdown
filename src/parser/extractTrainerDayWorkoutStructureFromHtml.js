@@ -161,6 +161,15 @@ export function extractTrainerDayWorkoutStructureFromHtml(html) {
     return preferredVariantLines.join('\\n');
   }
 
+  // 頁面明確同時存在 Original Indoor / Outdoor，但目前 HTML 結構又沒有辦法
+  // 安全地定位 Indoor 容器時，寧可停止擷取，也不能退回整頁把 Outdoor 誤當成
+  // Indoor。這是「只使用 Original Indoor」的安全閘門。
+  const hasOriginalIndoorLabel = lines.some((line) => ORIGINAL_INDOOR_RE.test(line));
+  const hasOutdoorLabel = lines.some((line) => OUTDOOR_RE.test(line));
+  if (hasOriginalIndoorLabel && hasOutdoorLabel) {
+    return '';
+  }
+
   const strictLines = extractStrict(lines);
   // 跟 extractStrict() 內部判斷用的是同一套正規化（去項目符號、去 Markdown
   // 粗體）——這裡只是再次確認「至少有一行是真的課表內容行，不是只湊到一堆
