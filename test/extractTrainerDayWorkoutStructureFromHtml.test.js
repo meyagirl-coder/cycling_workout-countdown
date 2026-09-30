@@ -3,6 +3,32 @@ import { extractTrainerDayTitleFromHtml, extractTrainerDayWorkoutStructureFromHt
 import { parseTrainerDayWorkoutStructureText } from '../src/parser/trainerDayWorkoutStructureParser.js';
 
 describe('extractTrainerDayWorkoutStructureFromHtml', () => {
+  it('prefers the Original Indoor variant when Indoor and Outdoor versions are both present', () => {
+    const html = `
+      <div class="variant-label">Original Indoor</div>
+      <div>4 min @ 110% (275w)</div>
+      <div>4 min @ 110% (275w)</div>
+      <div>3 min @ 115% (287w)</div>
+      <div>3 min @ 115% (287w)</div>
+      <div>3 min @ 120% (300w)</div>
+      <div>3 min @ 120% (300w)</div>
+      <div class="variant-label">Outdoor</div>
+      <div>10 min @ 110% (275w)</div>
+      <div>10 min @ 110% (275w)</div>
+    `;
+
+    expect(extractTrainerDayWorkoutStructureFromHtml(html)).toBe(
+      [
+        '4 min @ 110% (275w)',
+        '4 min @ 110% (275w)',
+        '3 min @ 115% (287w)',
+        '3 min @ 115% (287w)',
+        '3 min @ 120% (300w)',
+        '3 min @ 120% (300w)',
+      ].join('\\n')
+    );
+  });
+
   it('extracts workout lines rendered as their own block elements (strict mode)', () => {
     const html = `
       <html><body>
