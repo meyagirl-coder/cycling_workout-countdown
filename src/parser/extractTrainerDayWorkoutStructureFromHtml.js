@@ -58,8 +58,7 @@ function extractOriginalIndoorVariantHtml(html) {
   // 位於同一個容器內。只取含 original-indoor 語意的容器，避免把 outdoor
   // 版本一起交給後面的 interval matcher。
   const containerRe =
-    /<(section|article|div|li|ul|ol|main|aside|form)\b[^>]*(?:data-[^=\s>]*(?:variant|workout|source|type)[^=\s>]*|id|class|data-variant|data-workout-type)\s*=\s*["'][^"']*original[\s_-]*indoor[^"']*["'][^>]*>[\s\\S]*?<\/\\1>/gi;
-  const matches = [...html.matchAll(containerRe)];
+    /<(section|article|div|li|ul|ol|main|aside|form)\b[^>]*(?:data-[^=\s>]*(?:variant|workout|source|type)[^=\s>]*|id|class|data-variant|data-workout-type)\s*=\s*["'][^"']*original[\s_-]*indoor[^"']*["'][^>]*>[\s\S]*?<\/\1>/gi;  const matches = [...html.matchAll(containerRe)];
   if (matches.length > 0) {
     return matches.map((m) => m[0]).join('\\n');
   }
