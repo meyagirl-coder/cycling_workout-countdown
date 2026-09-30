@@ -266,12 +266,8 @@ export function createPlayerView(rootEl, handlers, options = {}) {
 
     const target = computeCurrentTarget(workout, state.currentIntervalIndex, state.elapsedInInterval, ftp, state.powerAdjustPct);
 
-    // 圖表背景改為深藍 #093683 後，只有 Z7 黑色柱狀區會讓原本的游標顏色
-    // 失去辨識度；其餘 Zone 保持既有游標顏色。以目前這一刻的實際目標
-    // （含 ±1% 功率調整）判斷是否位於 Z7，若是就切成白色。
-    const currentPowerPct = target.watts === null ? null : (target.watts / ftp) * 100;
-    els.timelineCursor.classList.toggle('timeline-cursor-zone7', currentPowerPct != null && getZoneColor(currentPowerPct).color === 'black');
-
+    // 時間軸最前緣固定使用「主題反差色」：淺色主題黑線、深色主題白線。
+    // 不再依目前 Zone 改色，避免游標跨越課表區間時視覺風格跳動。
     if (target.watts === null) {
       els.targetWatt.textContent = '自由騎乘';
       els.targetPct.textContent = '';
