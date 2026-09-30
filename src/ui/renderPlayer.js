@@ -1,5 +1,4 @@
 import { computeBandTarget, computeCurrentTarget } from '../engine/timerEngine.js';
-import { getZoneColor } from '../constants/powerZones.js';
 import { formatDurationLabel, formatMMSS } from './formatTime.js';
 import { INTERVAL_TYPE_LABELS } from './intervalLabels.js';
 import {
