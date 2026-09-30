@@ -61,7 +61,7 @@ function extractOriginalIndoorVariantHtml(html) {
     /<(section|article|div|li|ul|ol|main|aside|form)\b[^>]*(?:data-[^=\s>]*(?:variant|workout|source|type)[^=\s>]*|id|class|data-variant|data-workout-type)\s*=\s*["'][^"']*original[\s_-]*indoor[^"']*["'][^>]*>[\s\S]*?<\/\1>/gi;
   const matches = [...html.matchAll(containerRe)];
   if (matches.length > 0) {
-    return matches.map((m) => m[0]).join('\\n');
+    return matches.map((m) => m[0]).join('\n');
   }
 
   return null;
