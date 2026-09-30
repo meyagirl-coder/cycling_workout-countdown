@@ -39,8 +39,8 @@ const SITE_TITLE_PREFIX_RE = /^\s*trainer\s*day\s*[-–—:|]\s*/i;
 // Day</title>）：整個標題就只是網站名稱，沒有可用的課表標題可以抓。
 const BARE_SITE_TITLE_RE = /^\s*trainer\s*day\s*$/i;
 
-const ORIGINAL_INDOOR_RE = /original\\s*[-_]??\\s*indoor/i;
-const OUTDOOR_RE = /\\boutdoor\\b/i;
+const ORIGINAL_INDOOR_RE = /original\s*[-_]?\s*indoor/i;
+const OUTDOOR_RE = /\boutdoor\b/i;
 
 /**
  * TrainerDay 某些課表同時存在 Original Indoor / Outdoor 兩個版本。
@@ -58,7 +58,7 @@ function extractOriginalIndoorVariantHtml(html) {
   // 位於同一個容器內。只取含 original-indoor 語意的容器，避免把 outdoor
   // 版本一起交給後面的 interval matcher。
   const containerRe =
-    /<(section|article|div|li|ul|ol|main|aside|form)\\b[^>]*(?:data-[^=\\s>]*(?:variant|workout|source|type)[^=\\s>]*|id|class|data-variant|data-workout-type)\\s*=\\s*["'][^"']*original[\\s_-]*indoor[^"']*["'][^>]*>[\\s\\S]*?<\\/\\1>/gi;
+    /<(section|article|div|li|ul|ol|main|aside|form)\b[^>]*(?:data-[^=\s>]*(?:variant|workout|source|type)[^=\s>]*|id|class|data-variant|data-workout-type)\s*=\s*["'][^"']*original[\s_-]*indoor[^"']*["'][^>]*>[\s\\S]*?<\/\\1>/gi;
   const matches = [...html.matchAll(containerRe)];
   if (matches.length > 0) {
     return matches.map((m) => m[0]).join('\\n');
