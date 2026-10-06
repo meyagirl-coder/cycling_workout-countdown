@@ -158,6 +158,7 @@ export function createPlayerView(rootEl, handlers, options = {}) {
   els.timelineReferenceLine.style.top = `${100 - computeBarHeightPct(CHART_REFERENCE_LINE_PCT)}%`;
 
   let renderedTimelineKey = null;
+  let currentWorkoutForTooltip = null;
 
   function formatTimelineDuration(durationSeconds) {
     const seconds = Math.max(0, Math.round(Number(durationSeconds) || 0));
@@ -195,13 +196,20 @@ export function createPlayerView(rootEl, handlers, options = {}) {
     els.timelineAxis.innerHTML = ticks.join('');
   }
 
-  function showTimelineTooltip(segmentEl, clientX) {
-    const text = segmentEl?.dataset?.tooltip;
-    if (!text || !els.timelineTooltip) return;
+  function showTimelineTooltip(segmentEl, clientX, workout) {
+    if (!segmentEl || !els.timelineTooltip || !workout) return;
+
+    // 不使用 title／[穩定] 這種「區段類型」提示；改從目前滑到的柱狀區段
+    // 反查原始 interval，確保顯示的是該組真正的課表資料。
+    const intervalIndex = Number(segmentEl.dataset.intervalIndex);
+    const interval = Number.isInteger(intervalIndex) ? workout.intervals[intervalIndex] : null;
+    const text = formatTimelineTooltip(interval);
+    if (!text) return;
+
     const rect = els.timeline.getBoundingClientRect();
     const x = Math.min(Math.max(clientX - rect.left, 8), Math.max(8, rect.width - 8));
     els.timelineTooltip.textContent = text;
-    els.timelineTooltip.style.left = `${x}px`;
+    els.timelineTooltip.style.left = x + 'px';
     els.timelineTooltip.classList.add('is-visible');
     els.timelineTooltip.setAttribute('aria-hidden', 'false');
   }
@@ -212,18 +220,30 @@ export function createPlayerView(rootEl, handlers, options = {}) {
     els.timelineTooltip.setAttribute('aria-hidden', 'true');
   }
 
-  els.timelineTrack.addEventListener('pointermove', (event) => {
+  // 使用 mouseover/mousemove 讓桌面瀏覽器滑鼠移入每一個實際柱狀區段時
+  // 都能穩定觸發；tooltip 資料由 intervalIndex 回到 workout.intervals 取得。
+  els.timelineTrack.addEventListener('mouseover', (event) => {
     const segment = event.target.closest('.timeline-segment');
     if (!segment || !els.timelineTrack.contains(segment)) {
       hideTimelineTooltip();
       return;
     }
-    showTimelineTooltip(segment, event.clientX);
+    showTimelineTooltip(segment, event.clientX, currentWorkoutForTooltip);
   });
 
-  els.timelineTrack.addEventListener('pointerleave', hideTimelineTooltip);
+  els.timelineTrack.addEventListener('mousemove', (event) => {
+    const segment = event.target.closest('.timeline-segment');
+    if (!segment || !els.timelineTrack.contains(segment)) {
+      hideTimelineTooltip();
+      return;
+    }
+    showTimelineTooltip(segment, event.clientX, currentWorkoutForTooltip);
+  });
+
+  els.timelineTrack.addEventListener('mouseleave', hideTimelineTooltip);
 
   function renderTimelineIfNeeded(workout, adjustPct) {
+    currentWorkoutForTooltip = workout;
     const key = `${workout.id}::${adjustPct}`;
     if (renderedTimelineKey === key) return;
     renderedTimelineKey = key;
@@ -244,9 +264,7 @@ export function createPlayerView(rootEl, handlers, options = {}) {
         // 低層排在陣列前面，靠 HTML 字串的先後順序（後面的元素蓋在前面）
         // 就能疊出「下層在底、上層在上」的視覺順序，不需要額外的 z-index。
         const bandClass = seg.bandLayer ? ` timeline-segment-band-${seg.bandLayer}` : '';
-        const interval = workout.intervals[seg.intervalIndex];
-        const tooltip = formatTimelineTooltip(interval);
-        return `<div class="timeline-segment${bandClass} ${isFreeride ? 'zone-none' : `zone-${seg.color}`}" style="left:${seg.startPct}%;width:${seg.widthPct}%;clip-path:${clipPath}" data-tooltip="${tooltip}" title="${INTERVAL_TYPE_LABELS[seg.type]}"></div>`;
+        return `<div class="timeline-segment${bandClass} ${isFreeride ? 'zone-none' : `zone-${seg.color}`}" style="left:${seg.startPct}%;width:${seg.widthPct}%;clip-path:${clipPath}" data-interval-index="${seg.intervalIndex}" aria-label="${INTERVAL_TYPE_LABELS[seg.type]}"></div>`;
       })
       .join('');
 
