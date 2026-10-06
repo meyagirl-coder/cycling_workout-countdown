@@ -61,7 +61,9 @@ export function createPlayerView(rootEl, handlers, options = {}) {
             <div class="timeline-track"></div>
             <div class="timeline-progress-overlay" aria-hidden="true"></div>
             <div class="timeline-cursor"></div>
+            <div class="timeline-tooltip" role="status" aria-hidden="true"></div>
           </div>
+          <div class="timeline-axis" aria-hidden="true"></div>
         </div>
       </section>
 
@@ -107,6 +109,8 @@ export function createPlayerView(rootEl, handlers, options = {}) {
     intervalProgress: rootEl.querySelector('.interval-progress'),
     timelineTrack: rootEl.querySelector('.timeline-track'),
     timelineProgressOverlay: rootEl.querySelector('.timeline-progress-overlay'),
+    timelineTooltip: rootEl.querySelector('.timeline-tooltip'),
+    timelineAxis: rootEl.querySelector('.timeline-axis'),
     timelineCursor: rootEl.querySelector('.timeline-cursor'),
     timelineReferenceLine: rootEl.querySelector('.timeline-reference-line'),
     nextIntervalBanner: rootEl.querySelector('.next-interval-banner'),
@@ -155,6 +159,70 @@ export function createPlayerView(rootEl, handlers, options = {}) {
 
   let renderedTimelineKey = null;
 
+  function formatTimelineDuration(durationSeconds) {
+    const seconds = Math.max(0, Math.round(Number(durationSeconds) || 0));
+    const minutes = Math.floor(seconds / 60);
+    const remainder = seconds % 60;
+    if (minutes > 0 && remainder > 0) return `${minutes}m${remainder}s`;
+    if (minutes > 0) return `${minutes}m`;
+    return `${remainder}s`;
+  }
+
+  function formatTimelineTooltip(iv) {
+    if (!iv) return '';
+    const duration = formatTimelineDuration(iv.duration);
+    if (iv.powerRangeLow != null && iv.powerRangeHigh != null) return `${duration} ${Math.round(iv.powerRangeLow)}-${Math.round(iv.powerRangeHigh)}%`;
+    if (iv.powerStart == null || iv.powerEnd == null) return `${duration} 自由騎乘`;
+    if (iv.powerStart === iv.powerEnd) return `${duration} ${Math.round(iv.powerStart)}%`;
+    return `${duration} ${Math.round(iv.powerStart)}→${Math.round(iv.powerEnd)}%`;
+  }
+
+  function renderTimelineAxis(totalDuration) {
+    if (!els.timelineAxis) return;
+    const totalSeconds = Math.max(0, Math.round(Number(totalDuration) || 0));
+    const tickCount = Math.floor(totalSeconds / 300);
+    const ticks = [];
+    for (let seconds = 0; seconds <= tickCount * 300; seconds += 300) {
+      const pct = totalSeconds > 0 ? (seconds / totalSeconds) * 100 : 0;
+      ticks.push(`<span class="timeline-axis-tick" style="left:${pct}%"><span class="timeline-axis-mark"></span><span class="timeline-axis-label">${seconds / 60}</span></span>`);
+    }
+    if (totalSeconds > 0 && totalSeconds % 300 !== 0) {
+      const minutes = Math.floor(totalSeconds / 60);
+      const remainder = totalSeconds % 60;
+      const label = remainder === 0 ? `${minutes}` : `${minutes}:${String(remainder).padStart(2, '0')}`;
+      ticks.push(`<span class="timeline-axis-tick timeline-axis-tick-end" style="left:100%"><span class="timeline-axis-mark"></span><span class="timeline-axis-label">${label}</span></span>`);
+    }
+    els.timelineAxis.innerHTML = ticks.join('');
+  }
+
+  function showTimelineTooltip(segmentEl, clientX) {
+    const text = segmentEl?.dataset?.tooltip;
+    if (!text || !els.timelineTooltip) return;
+    const rect = els.timeline.getBoundingClientRect();
+    const x = Math.min(Math.max(clientX - rect.left, 8), Math.max(8, rect.width - 8));
+    els.timelineTooltip.textContent = text;
+    els.timelineTooltip.style.left = `${x}px`;
+    els.timelineTooltip.classList.add('is-visible');
+    els.timelineTooltip.setAttribute('aria-hidden', 'false');
+  }
+
+  function hideTimelineTooltip() {
+    if (!els.timelineTooltip) return;
+    els.timelineTooltip.classList.remove('is-visible');
+    els.timelineTooltip.setAttribute('aria-hidden', 'true');
+  }
+
+  els.timelineTrack.addEventListener('pointermove', (event) => {
+    const segment = event.target.closest('.timeline-segment');
+    if (!segment || !els.timelineTrack.contains(segment)) {
+      hideTimelineTooltip();
+      return;
+    }
+    showTimelineTooltip(segment, event.clientX);
+  });
+
+  els.timelineTrack.addEventListener('pointerleave', hideTimelineTooltip);
+
   function renderTimelineIfNeeded(workout, adjustPct) {
     const key = `${workout.id}::${adjustPct}`;
     if (renderedTimelineKey === key) return;
@@ -176,7 +244,9 @@ export function createPlayerView(rootEl, handlers, options = {}) {
         // 低層排在陣列前面，靠 HTML 字串的先後順序（後面的元素蓋在前面）
         // 就能疊出「下層在底、上層在上」的視覺順序，不需要額外的 z-index。
         const bandClass = seg.bandLayer ? ` timeline-segment-band-${seg.bandLayer}` : '';
-        return `<div class="timeline-segment${bandClass} ${isFreeride ? 'zone-none' : `zone-${seg.color}`}" style="left:${seg.startPct}%;width:${seg.widthPct}%;clip-path:${clipPath}" title="${INTERVAL_TYPE_LABELS[seg.type]}"></div>`;
+        const interval = workout.intervals[seg.intervalIndex];
+        const tooltip = formatTimelineTooltip(interval);
+        return `<div class="timeline-segment${bandClass} ${isFreeride ? 'zone-none' : `zone-${seg.color}`}" style="left:${seg.startPct}%;width:${seg.widthPct}%;clip-path:${clipPath}" data-tooltip="${tooltip}" title="${INTERVAL_TYPE_LABELS[seg.type]}"></div>`;
       })
       .join('');
 
@@ -185,6 +255,7 @@ export function createPlayerView(rootEl, handlers, options = {}) {
       .join('');
 
     els.timelineTrack.innerHTML = segmentsHtml + dividersHtml;
+    renderTimelineAxis(workout.totalDuration);
   }
 
   let nextIntervalBannerTimeoutId = null;
