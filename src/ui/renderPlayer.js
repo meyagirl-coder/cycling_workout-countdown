@@ -158,7 +158,6 @@ export function createPlayerView(rootEl, handlers, options = {}) {
   els.timelineReferenceLine.style.top = `${100 - computeBarHeightPct(CHART_REFERENCE_LINE_PCT)}%`;
 
   let renderedTimelineKey = null;
-  let currentWorkoutForTooltip = null;
 
   function formatTimelineDuration(durationSeconds) {
     const seconds = Math.max(0, Math.round(Number(durationSeconds) || 0));
@@ -196,14 +195,12 @@ export function createPlayerView(rootEl, handlers, options = {}) {
     els.timelineAxis.innerHTML = ticks.join('');
   }
 
-  function showTimelineTooltip(segmentEl, clientX, workout) {
-    if (!segmentEl || !els.timelineTooltip || !workout) return;
+  function showTimelineTooltip(segmentEl, clientX) {
+    if (!segmentEl || !els.timelineTooltip) return;
 
-    // 不使用 title／[穩定] 這種「區段類型」提示；改從目前滑到的柱狀區段
-    // 反查原始 interval，確保顯示的是該組真正的課表資料。
-    const intervalIndex = Number(segmentEl.dataset.intervalIndex);
-    const interval = Number.isInteger(intervalIndex) ? workout.intervals[intervalIndex] : null;
-    const text = formatTimelineTooltip(interval);
+    // 每個柱狀區段在渲染時直接綁定該組實際課表文字，
+    // 不依賴目前播放狀態，確保滑到哪一組就顯示哪一組。
+    const text = segmentEl.dataset.tooltip;
     if (!text) return;
 
     const rect = els.timeline.getBoundingClientRect();
@@ -228,7 +225,7 @@ export function createPlayerView(rootEl, handlers, options = {}) {
       hideTimelineTooltip();
       return;
     }
-    showTimelineTooltip(segment, event.clientX, currentWorkoutForTooltip);
+    showTimelineTooltip(segment, event.clientX);
   });
 
   els.timelineTrack.addEventListener('mousemove', (event) => {
@@ -243,7 +240,6 @@ export function createPlayerView(rootEl, handlers, options = {}) {
   els.timelineTrack.addEventListener('mouseleave', hideTimelineTooltip);
 
   function renderTimelineIfNeeded(workout, adjustPct) {
-    currentWorkoutForTooltip = workout;
     const key = `${workout.id}::${adjustPct}`;
     if (renderedTimelineKey === key) return;
     renderedTimelineKey = key;
@@ -264,7 +260,9 @@ export function createPlayerView(rootEl, handlers, options = {}) {
         // 低層排在陣列前面，靠 HTML 字串的先後順序（後面的元素蓋在前面）
         // 就能疊出「下層在底、上層在上」的視覺順序，不需要額外的 z-index。
         const bandClass = seg.bandLayer ? ` timeline-segment-band-${seg.bandLayer}` : '';
-        return `<div class="timeline-segment${bandClass} ${isFreeride ? 'zone-none' : `zone-${seg.color}`}" style="left:${seg.startPct}%;width:${seg.widthPct}%;clip-path:${clipPath}" data-interval-index="${seg.intervalIndex}" aria-label="${INTERVAL_TYPE_LABELS[seg.type]}"></div>`;
+        const interval = workout.intervals[seg.intervalIndex];
+        const tooltip = formatTimelineTooltip(interval);
+        return `<div class="timeline-segment${bandClass} ${isFreeride ? 'zone-none' : `zone-${seg.color}`}" style="left:${seg.startPct}%;width:${seg.widthPct}%;clip-path:${clipPath}" data-tooltip="${tooltip}" aria-label="${tooltip}"></div>`;
       })
       .join('');
 
