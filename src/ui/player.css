@@ -943,13 +943,11 @@ body {
    才由 viewport 提供水平捲動，不會裁切左右端。 */
 .timeline-viewport {
   width: 100%;
-  overflow-x: auto;
-  overflow-y: hidden;
-  scrollbar-width: thin;
+  overflow: hidden;
 }
 
 .chart-visualization[data-chart-scale-mode='auto'] .timeline {
-  width: clamp(260px, 100%, 1260px);
+  width: 100%;
   height: auto;
   aspect-ratio: 720 / 104;
 }
@@ -989,7 +987,7 @@ body {
 /* X 軸時間刻度：與時間軸保持完全相同的寬度，每 5 分鐘一個刻度。 */
 .timeline-axis {
   position: relative;
-  width: clamp(260px, 100%, 1260px);
+  width: 100%;
   height: 1.75rem;
   flex: 0 0 auto;
   color: var(--text-secondary);
