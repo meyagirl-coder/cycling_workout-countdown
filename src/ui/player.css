@@ -966,6 +966,12 @@ body {
   height: 6.5rem;
 }
 
+.chart-visualization[data-chart-scale-mode='fixed'] .timeline-axis {
+  width: 100%;
+  max-width: 720px;
+  margin: 0 auto;
+}
+
 .timeline {
   position: relative;
   /* 時間軸背景跟隨頁面主題：light 為白、dark 為黑；進度最前緣因此可用反差色清楚標示。 */
@@ -978,6 +984,50 @@ body {
   position: relative;
   width: 100%;
   height: 100%;
+}
+
+/* X 軸時間刻度：與時間軸保持完全相同的寬度，每 5 分鐘一個刻度。 */
+.timeline-axis {
+  position: relative;
+  width: clamp(260px, 100%, 1260px);
+  height: 1.75rem;
+  flex: 0 0 auto;
+  color: var(--text-secondary);
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
+  user-select: none;
+}
+
+.timeline-axis-tick {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 0;
+  transform: translateX(-50%);
+}
+
+.timeline-axis-mark {
+  display: block;
+  width: 1px;
+  height: 0.35rem;
+  margin: 0 auto;
+  background: var(--text-secondary);
+  opacity: 0.7;
+}
+
+.timeline-axis-label {
+  display: block;
+  margin-top: 0.12rem;
+  white-space: nowrap;
+  text-align: center;
+}
+
+.timeline-axis-tick:first-child {
+  transform: translateX(0);
+}
+
+.timeline-axis-tick-end {
+  transform: translateX(-100%);
 }
 
 /* 100% FTP 參考線（規格截圖裡的「標準高度線」）：top 由 JS 依 CHART_REFERENCE_LINE_PCT 算好後設定 */
@@ -1040,6 +1090,36 @@ body {
 
 /* 移動游標：跟圖表下方「目前／下一組」提示的背景色一致，讓白色時間軸上
    的目前位置保持清楚可辨識。 */
+/* 滑鼠移到課表區段時顯示的訓練資訊：固定使用淺灰底＋黑字，
+   不跟著深／淺色主題反轉，確保在兩種主題與各種功率區間顏色上都清楚。 */
+.timeline-tooltip {
+  position: absolute;
+  z-index: 10;
+  top: 0.35rem;
+  left: 0;
+  max-width: min(12rem, 70%);
+  padding: 0.35rem 0.55rem;
+  border: 1px solid #9ca3af;
+  border-radius: 0.35rem;
+  background: #e5e7eb;
+  color: #111827;
+  font-size: 0.8rem;
+  font-weight: 700;
+  line-height: 1.25;
+  white-space: nowrap;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.18);
+  pointer-events: none;
+  opacity: 0;
+  visibility: hidden;
+  transform: translateX(-50%);
+  transition: opacity 0.1s ease;
+}
+
+.timeline-tooltip.is-visible {
+  opacity: 1;
+  visibility: visible;
+}
+
 .timeline-cursor {
   position: absolute;
   top: 0;
