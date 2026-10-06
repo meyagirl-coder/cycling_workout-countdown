@@ -234,7 +234,7 @@ export function createPlayerView(rootEl, handlers, options = {}) {
       hideTimelineTooltip();
       return;
     }
-    showTimelineTooltip(segment, event.clientX, currentWorkoutForTooltip);
+    showTimelineTooltip(segment, event.clientX);
   });
 
   els.timelineTrack.addEventListener('mouseleave', hideTimelineTooltip);
