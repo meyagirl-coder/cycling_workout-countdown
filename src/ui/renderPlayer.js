@@ -406,16 +406,11 @@ export function createPlayerView(rootEl, handlers, options = {}) {
     els.stopBtn.disabled = isFinished;
     els.finishedBanner.classList.toggle('hidden', !isFinished);
 
-    // 課表摘要只在「尚未開始」（規格用語：等待畫面的預覽狀態）顯示——
-    // 'idle' 只會出現在一份全新課表剛載入、還沒按過第一次「開始」的那一刻
-    // （跟上面 hideNextIntervalBannerNow() 判斷用的是同一個狀態），不是
-    // 「暫停」（使用者已經開始跑、中途按暫停）；已經開始過的課表不需要再
-    // 佔位顯示整份摘要，畫面上已經有時間軸／目前組別可以看。
-    const isIdle = state.status === 'idle';
-    els.workoutSummaryCard.classList.toggle('hidden', !isIdle);
-    if (isIdle) {
-      els.workoutSummaryText.textContent = buildWorkoutSummaryText(workout, ftp, state.powerAdjustPct);
-    }
+    // 課表摘要是「完整課表內容說明」，開始後仍需保留顯示，
+    // 讓使用者可以一邊執行一邊查看完整課表；不再因 running／paused
+    // 狀態而隱藏。每次 update 都同步目前 FTP 微調後的摘要內容。
+    els.workoutSummaryCard.classList.remove('hidden');
+    els.workoutSummaryText.textContent = buildWorkoutSummaryText(workout, ftp, state.powerAdjustPct);
   }
 
   /**
