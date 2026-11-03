@@ -145,6 +145,29 @@ body {
   transition: background-color 0.2s ease, color 0.2s ease;
 }
 
+
+/* 可複製的課表文字：全站仍維持避免誤選的設定，但課表頁標題與最下方
+   完整課表摘要必須能以滑鼠拖曳選取，並使用 Ctrl/Cmd+C 複製。 */
+.player .workout-name,
+.player .workout-summary-card,
+.player .workout-summary-title,
+.player .workout-summary-text {
+  -webkit-user-select: text;
+  user-select: text;
+  cursor: text;
+}
+
+.player .workout-summary-text {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+.player .workout-name::selection,
+.player .workout-summary-title::selection,
+.player .workout-summary-text::selection {
+  background: rgba(96, 165, 250, 0.35);
+}
+
 .hidden {
   display: none;
 }
