@@ -215,7 +215,33 @@ export function initPlayerApp(rootEl) {
   });
 
   /** 執行頁完成橫幅的「回到主畫面」按鈕（規格 §4.5）：純畫面切換，不用重置引擎 */
+  /**
+   * 清除已經消耗過的團練分享參數，讓網址列回到一般主站網址。
+   * 團練參數已解析並保存在記憶體／排程資料中，不需要一直留在網址列；
+   * 否則回到主畫面後，舊的 source_url／startTime 會看起來像仍是目前課表。
+   */
+  function resetAddressBarToHomeUrl() {
+    try {
+      window.history.replaceState(
+        window.history.state,
+        '',
+        `${window.location.origin}${window.location.pathname}`
+      );
+    } catch (err) {
+      // 特殊瀏覽器環境若不允許修改 history，不影響課表載入與播放。
+      console.warn('playerApp: unable to reset address bar URL', err);
+    }
+  }
+
   function returnToHome() {
+    stopScheduleRuntimeIfRunning();
+    pendingScheduledStartTimestamp = null;
+    pendingGroupJoinStartTimestamp = null;
+    pendingGroupJoin = null;
+    groupJoinAwaitingConfirmation = null;
+    clearSchedule();
+    resetAddressBarToHomeUrl();
+
     playerMount.classList.add('hidden');
     groupJoinConfirmMount.classList.add('hidden');
     uploadMount.classList.remove('hidden');
@@ -227,6 +253,7 @@ export function initPlayerApp(rootEl) {
     clearWorkoutProgress();
     // 離開執行頁了，不再需要保持螢幕常亮。
     wakeLockManager.disable();
+    scrollToTop();
   }
 
   /**
@@ -614,6 +641,11 @@ export function initPlayerApp(rootEl) {
       return;
     }
     if (!groupJoin) return;
+
+    // 分享連結的參數已成功解析並保存在 groupJoin 物件中，立即清除網址列
+    // 的舊參數。後續下載 TrainerDay 課表、設定開始時間與進入播放頁都使用
+    // 記憶體中的資料，不應讓瀏覽器持續顯示可再次觸發的舊團練連結。
+    resetAddressBarToHomeUrl();
 
     if (loadFtp() === null) {
       pendingGroupJoin = groupJoin;
